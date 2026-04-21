@@ -1,0 +1,802 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+)
+
+// TestMainSuccess verifies that main completes without calling fatalf
+// when start succeeds. It sends SIGTERM to the current process because
+// main reads RUNNER_PORT and calls start, making injection impractical.
+func TestMainSuccess(t *testing.T) {
+	t.Setenv("RUNNER_PORT", "3000")
+	stubValidator(t)
+
+	broker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer broker.Close()
+	t.Setenv("BROKER_URL", broker.URL)
+
+	orig := fatalf
+	defer func() { fatalf = orig }()
+
+	fatalf = func(format string, args ...any) {
+		t.Fatalf("unexpected fatalf: "+format, args...)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		main()
+	}()
+
+	time.Sleep(200 * time.Millisecond)
+
+	proc, _ := os.FindProcess(os.Getpid())
+	proc.Signal(syscall.SIGTERM)
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("main did not return within 10 seconds")
+	}
+}
+
+// TestMainError verifies that main calls fatalf when start returns an error,
+// such as when the configured port is already in use.
+func TestMainError(t *testing.T) {
+	t.Setenv("RUNNER_PORT", "3000")
+
+	// Occupy :3000 to make start fail.
+	ln, err := net.Listen("tcp", ":3000")
+	if err != nil {
+		t.Skipf("cannot bind :3000 for test: %v", err)
+	}
+	defer ln.Close()
+
+	orig := fatalf
+	defer func() { fatalf = orig }()
+
+	var called bool
+	fatalf = func(format string, args ...any) {
+		called = true
+		// Log but don't exit.
+		log.Printf("captured fatalf: "+format, args...)
+	}
+
+	main()
+
+	if !called {
+		t.Fatal("fatalf should have been called when start fails")
+	}
+}
+
+// TestMainMissingPort verifies that main calls fatalf when RUNNER_PORT is not set.
+func TestMainMissingPort(t *testing.T) {
+	t.Setenv("RUNNER_PORT", "")
+
+	orig := fatalf
+	defer func() { fatalf = orig }()
+
+	var called bool
+	var msg string
+	fatalf = func(format string, args ...any) {
+		called = true
+		msg = fmt.Sprintf(format, args...)
+	}
+
+	main()
+
+	if !called {
+		t.Fatal("fatalf should have been called when RUNNER_PORT is missing")
+	}
+	if !strings.Contains(msg, "RUNNER_PORT") {
+		t.Fatalf("fatalf message should mention RUNNER_PORT, got: %s", msg)
+	}
+}
+
+// TestRunGracefulShutdown verifies that run starts the server and shuts down
+// gracefully when a signal is sent on the injected channel.
+func TestRunGracefulShutdown(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen error: %v", err)
+	}
+	addr := ln.Addr().String()
+
+	sigCh := make(chan os.Signal, 1)
+	cfg := serverConfig{
+		sm:              NewSessionManager(),
+		shutdownTimeout: 10 * time.Second,
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- run(ln, sigCh, cfg)
+	}()
+
+	// Wait for the server to start accepting connections.
+	waitForServer(t, addr)
+
+	sigCh <- os.Interrupt
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("run returned error: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("run did not return within 10 seconds")
+	}
+}
+
+// TestRunServeError verifies that run returns an error when the listener is
+// closed before serving, causing Serve to fail immediately.
+func TestRunServeError(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen error: %v", err)
+	}
+	ln.Close()
+
+	sigCh := make(chan os.Signal, 1)
+	cfg := serverConfig{
+		sm:              NewSessionManager(),
+		shutdownTimeout: 10 * time.Second,
+	}
+
+	err = run(ln, sigCh, cfg)
+	if err == nil {
+		t.Fatal("run should return error when listener is closed")
+	}
+}
+
+// TestRunCloseAllError verifies that run returns the CloseAll error
+// when a session was manually closed before shutdown.
+func TestRunCloseAllError(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen error: %v", err)
+	}
+	addr := ln.Addr().String()
+
+	sm := NewSessionManager()
+	cfg := serverConfig{
+		sm:              sm,
+		shutdownTimeout: 10 * time.Second,
+	}
+
+	sigCh := make(chan os.Signal, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- run(ln, sigCh, cfg)
+	}()
+
+	waitForServer(t, addr)
+
+	// Create a session and close it manually so CloseAll will fail.
+	id, _, err := sm.Create()
+	if err != nil {
+		t.Fatalf("Create error: %v", err)
+	}
+	shell, _ := sm.Get(id)
+	shell.Close()
+
+	sigCh <- os.Interrupt
+
+	select {
+	case err := <-errCh:
+		if err == nil {
+			t.Fatal("run should return error when CloseAll fails")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("run did not return within 10 seconds")
+	}
+}
+
+// TestRunDeregisterOnShutdown verifies that run calls deregisterFn during
+// graceful shutdown when brokerURL and runnerID are set in serverConfig.
+func TestRunDeregisterOnShutdown(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen error: %v", err)
+	}
+	addr := ln.Addr().String()
+
+	orig := deregisterFn
+	defer func() { deregisterFn = orig }()
+
+	var called bool
+	var gotRunnerID string
+	deregisterFn = func(ctx context.Context, deps deregisterDeps) error {
+		called = true
+		gotRunnerID = deps.runnerID
+		return nil
+	}
+
+	sigCh := make(chan os.Signal, 1)
+	cfg := serverConfig{
+		sm:              NewSessionManager(),
+		shutdownTimeout: 10 * time.Second,
+		brokerURL:       "http://broker:8080",
+		runnerID:        "test-runner",
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- run(ln, sigCh, cfg)
+	}()
+
+	waitForServer(t, addr)
+	sigCh <- os.Interrupt
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("run returned error: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("run did not return within 10 seconds")
+	}
+
+	if !called {
+		t.Fatal("deregisterFn should have been called on shutdown")
+	}
+	if gotRunnerID != "test-runner" {
+		t.Errorf("runnerID = %q, want %q", gotRunnerID, "test-runner")
+	}
+}
+
+// TestRunDeregisterFailureNonFatal verifies that run completes gracefully
+// even when deregisterFn returns an error.
+func TestRunDeregisterFailureNonFatal(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen error: %v", err)
+	}
+	addr := ln.Addr().String()
+
+	orig := deregisterFn
+	defer func() { deregisterFn = orig }()
+	deregisterFn = func(ctx context.Context, deps deregisterDeps) error {
+		return errors.New("deregister failed")
+	}
+
+	sigCh := make(chan os.Signal, 1)
+	cfg := serverConfig{
+		sm:              NewSessionManager(),
+		shutdownTimeout: 10 * time.Second,
+		brokerURL:       "http://broker:8080",
+		runnerID:        "test-runner",
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- run(ln, sigCh, cfg)
+	}()
+
+	waitForServer(t, addr)
+	sigCh <- os.Interrupt
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("run should succeed even when deregister fails, got: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("run did not return within 10 seconds")
+	}
+}
+
+// TestIntegrationCreateExecuteDelete verifies the full lifecycle of creating a session,
+// executing a command, and deleting the session through the HTTP API using httptest.
+func TestIntegrationCreateExecuteDelete(t *testing.T) {
+	sm := NewSessionManager()
+	defer sm.CloseAll()
+
+	v := &mockValidator{result: ValidationResult{Safe: true, Reason: "ok"}}
+	ts := httptest.NewServer(newHandler(sm, v))
+	defer ts.Close()
+
+	// Create session.
+	resp, err := http.Post(ts.URL+"/api/session", "application/json", nil)
+	if err != nil {
+		t.Fatalf("POST /api/session error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var sessionID string
+	for _, c := range resp.Cookies() {
+		if c.Name == "session_id" {
+			sessionID = c.Value
+		}
+	}
+	if sessionID == "" {
+		t.Fatal("session_id cookie not found in response")
+	}
+
+	// Execute whitelisted command; validator should not be called.
+	body := strings.NewReader(`{"command":"pwd"}`)
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/execute", body)
+	req.AddCookie(&http.Cookie{Name: "session_id", Value: sessionID})
+	resp2, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST /api/execute error: %v", err)
+	}
+	defer resp2.Body.Close()
+
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp2.StatusCode, http.StatusOK)
+	}
+	if v.called {
+		t.Fatal("validator should not be called for whitelisted command")
+	}
+
+	// Execute validated command; validator should be called.
+	v.called = false
+	body2 := strings.NewReader(`{"command":"echo hello"}`)
+	req2, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/execute", body2)
+	req2.AddCookie(&http.Cookie{Name: "session_id", Value: sessionID})
+	resp4, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatalf("POST /api/execute validated error: %v", err)
+	}
+	defer resp4.Body.Close()
+
+	if resp4.StatusCode != http.StatusOK {
+		t.Fatalf("validated status = %d, want %d", resp4.StatusCode, http.StatusOK)
+	}
+	if !v.called {
+		t.Fatal("validator should be called for non-whitelisted command")
+	}
+
+	// Delete session.
+	req3, _ := http.NewRequest(http.MethodDelete, ts.URL+"/api/session", nil)
+	req3.AddCookie(&http.Cookie{Name: "session_id", Value: sessionID})
+	resp3, err := http.DefaultClient.Do(req3)
+	if err != nil {
+		t.Fatalf("DELETE /api/session error: %v", err)
+	}
+	defer resp3.Body.Close()
+
+	if resp3.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", resp3.StatusCode, http.StatusNoContent)
+	}
+}
+
+// TestRunShutdownTimeout verifies that run returns an error when the shutdown
+// context times out due to an in-flight connection that does not complete in time.
+func TestRunShutdownTimeout(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen error: %v", err)
+	}
+	addr := ln.Addr().String()
+
+	// slowHandler blocks until the channel is closed, keeping the HTTP request in-flight.
+	reqStarted := make(chan struct{})
+	blockCh := make(chan struct{})
+	defer close(blockCh)
+	slow := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(reqStarted)
+		<-blockCh
+	})
+
+	sm := NewSessionManager()
+	cfg := serverConfig{
+		sm:              sm,
+		shutdownTimeout: 1 * time.Nanosecond,
+		handler:         slow,
+	}
+
+	sigCh := make(chan os.Signal, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- run(ln, sigCh, cfg)
+	}()
+
+	waitForServer(t, addr)
+
+	// Start an HTTP request that will block on the server side.
+	go http.Get("http://" + addr + "/slow") //nolint:errcheck
+
+	// Wait until the handler is actually processing the request.
+	select {
+	case <-reqStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("slow handler did not start within 2 seconds")
+	}
+
+	sigCh <- os.Interrupt
+
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("run error = %v, want context.DeadlineExceeded", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("run did not return within 10 seconds")
+	}
+}
+
+// TestStartAndShutdown verifies that start binds to the given address and
+// shuts down when SIGTERM is delivered to the process.
+// registerFn is replaced with a no-op to avoid race conditions caused by
+// leftover SIGTERM signals from other tests canceling the registration context.
+func TestStartAndShutdown(t *testing.T) {
+	t.Setenv("BROKER_URL", "http://dummy:8080")
+	stubValidator(t)
+
+	origReg := registerFn
+	defer func() { registerFn = origReg }()
+	registerFn = func(ctx context.Context, deps registerDeps) error {
+		return nil
+	}
+
+	// Reserve a free port, then release it so start can bind to it.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen error: %v", err)
+	}
+	addr := ln.Addr().String()
+	ln.Close()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- start(addr)
+	}()
+
+	// Poll until the server is accepting connections instead of using a fixed sleep.
+	waitForServer(t, addr)
+
+	proc, err := os.FindProcess(os.Getpid())
+	if err != nil {
+		t.Fatalf("FindProcess error: %v", err)
+	}
+	if err := proc.Signal(syscall.SIGTERM); err != nil {
+		t.Fatalf("Signal error: %v", err)
+	}
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("start returned error: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("start did not return within 10 seconds")
+	}
+}
+
+// TestStartListenError verifies that start returns an error when the address
+// is already in use.
+func TestStartListenError(t *testing.T) {
+	// Bind a port first to cause a conflict.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen error: %v", err)
+	}
+	defer ln.Close()
+
+	err = start(ln.Addr().String())
+	if err == nil {
+		t.Fatal("start should return error when address is already in use")
+	}
+}
+
+// TestStartIdentityError verifies that start returns an error and closes the
+// listener when identity resolution fails.
+func TestStartIdentityError(t *testing.T) {
+	orig := resolveIdentityFn
+	defer func() { resolveIdentityFn = orig }()
+
+	resolveIdentityFn = func(ctx context.Context, deps identityDeps) (Identity, error) {
+		return Identity{}, errors.New("identity failure")
+	}
+
+	err := start("127.0.0.1:0")
+	if err == nil {
+		t.Fatal("start should return error when identity resolution fails")
+	}
+	if !strings.Contains(err.Error(), "identity failure") {
+		t.Fatalf("error should mention identity failure, got: %v", err)
+	}
+}
+
+// TestStartPortParsing verifies that start correctly extracts the port from
+// addresses with a host component like 127.0.0.1:12345.
+func TestStartPortParsing(t *testing.T) {
+	orig := resolveIdentityFn
+	defer func() { resolveIdentityFn = orig }()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen error: %v", err)
+	}
+	addr := ln.Addr().String()
+	_, wantPort, _ := net.SplitHostPort(addr)
+	ln.Close()
+
+	var gotPort string
+	resolveIdentityFn = func(ctx context.Context, deps identityDeps) (Identity, error) {
+		gotPort = deps.port
+		return Identity{}, errors.New("stop here")
+	}
+
+	err = start(addr)
+	if err == nil || !strings.Contains(err.Error(), "stop here") {
+		t.Fatalf("start error = %v, want contains %q", err, "stop here")
+	}
+	if gotPort != wantPort {
+		t.Fatalf("port = %q, want %q", gotPort, wantPort)
+	}
+}
+
+// TestStartEphemeralPort verifies that start resolves the actual port when
+// the listen address uses port 0 to request an ephemeral port from the OS.
+func TestStartEphemeralPort(t *testing.T) {
+	orig := resolveIdentityFn
+	defer func() { resolveIdentityFn = orig }()
+
+	var gotPort string
+	resolveIdentityFn = func(ctx context.Context, deps identityDeps) (Identity, error) {
+		gotPort = deps.port
+		return Identity{}, errors.New("stop here")
+	}
+
+	start(":0")
+
+	if gotPort == "0" || gotPort == "" {
+		t.Fatalf("port should be resolved to actual ephemeral port, got %q", gotPort)
+	}
+}
+
+// TestStartMissingBrokerURL verifies that start returns an error when
+// BROKER_URL is not set.
+func TestStartMissingBrokerURL(t *testing.T) {
+	t.Setenv("BROKER_URL", "")
+
+	err := start("127.0.0.1:0")
+	if err == nil {
+		t.Fatal("start should return error when BROKER_URL is missing")
+	}
+	if !strings.Contains(err.Error(), "BROKER_URL") {
+		t.Fatalf("error should mention BROKER_URL, got: %v", err)
+	}
+}
+
+// TestStartRegisterError verifies that start returns an error when
+// broker registration fails.
+func TestStartRegisterError(t *testing.T) {
+	t.Setenv("BROKER_URL", "http://broker:8080")
+	stubValidator(t)
+
+	orig := registerFn
+	defer func() { registerFn = orig }()
+
+	registerFn = func(ctx context.Context, deps registerDeps) error {
+		return errors.New("register failed")
+	}
+
+	err := start("127.0.0.1:0")
+	if err == nil {
+		t.Fatal("start should return error when registration fails")
+	}
+	if !strings.Contains(err.Error(), "register failed") {
+		t.Fatalf("error should mention register failed, got: %v", err)
+	}
+}
+
+// TestStartRegisterCanceledBySignal verifies that start cancels registration
+// when a termination signal is received during the registration phase.
+func TestStartRegisterCanceledBySignal(t *testing.T) {
+	t.Setenv("BROKER_URL", "http://broker:8080")
+	stubValidator(t)
+
+	orig := registerFn
+	defer func() { registerFn = orig }()
+
+	registerFn = func(ctx context.Context, deps registerDeps) error {
+		proc, _ := os.FindProcess(os.Getpid())
+		proc.Signal(syscall.SIGTERM)
+		<-ctx.Done()
+		return ctx.Err()
+	}
+
+	err := start("127.0.0.1:0")
+	if err == nil {
+		t.Fatal("start should return error when registration is canceled by signal")
+	}
+}
+
+// TestStartRegisterReceivesBrokerURL verifies that the broker URL from
+// the environment is passed to the register function.
+func TestStartRegisterReceivesBrokerURL(t *testing.T) {
+	stubValidator(t)
+
+	broker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer broker.Close()
+	t.Setenv("BROKER_URL", broker.URL)
+
+	orig := registerFn
+	defer func() { registerFn = orig }()
+
+	var gotBrokerURL string
+	registerFn = func(ctx context.Context, deps registerDeps) error {
+		gotBrokerURL = deps.brokerURL
+		return nil
+	}
+
+	// start will call run which blocks, so send SIGTERM after a short delay.
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		proc, _ := os.FindProcess(os.Getpid())
+		proc.Signal(syscall.SIGTERM)
+	}()
+
+	start("127.0.0.1:0")
+
+	if gotBrokerURL != broker.URL {
+		t.Errorf("brokerURL = %q, want %q", gotBrokerURL, broker.URL)
+	}
+}
+
+// TestNewBedrockValidatorFromEnvDefault verifies that newBedrockValidatorFromEnv
+// returns a non-nil Validator using the default model ID when BEDROCK_MODEL_ID is not set.
+func TestNewBedrockValidatorFromEnvDefault(t *testing.T) {
+	t.Setenv("BEDROCK_MODEL_ID", "")
+	t.Setenv("AWS_REGION", "us-east-1")
+	v, err := newBedrockValidatorFromEnv(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	bv, ok := v.(*BedrockValidator)
+	if !ok {
+		t.Fatal("expected *BedrockValidator")
+	}
+	if bv.modelID != defaultModelID {
+		t.Fatalf("modelID = %q, want %q", bv.modelID, defaultModelID)
+	}
+}
+
+// TestNewBedrockValidatorFromEnvConfigError verifies that newBedrockValidatorFromEnv
+// returns an error when AWS config loading fails.
+func TestNewBedrockValidatorFromEnvConfigError(t *testing.T) {
+	orig := loadAWSConfigFn
+	defer func() { loadAWSConfigFn = orig }()
+	loadAWSConfigFn = func(ctx context.Context, optFns ...func(*awsconfig.LoadOptions) error) (aws.Config, error) {
+		return aws.Config{}, errors.New("config load failed")
+	}
+
+	_, err := newBedrockValidatorFromEnv(context.Background())
+	if err == nil {
+		t.Fatal("expected error when AWS config loading fails")
+	}
+	if !strings.Contains(err.Error(), "load aws config") {
+		t.Fatalf("error should mention load aws config, got: %v", err)
+	}
+}
+
+// TestNewBedrockValidatorFromEnvMissingRegion verifies that newBedrockValidatorFromEnv
+// returns an error when the AWS region is not configured.
+func TestNewBedrockValidatorFromEnvMissingRegion(t *testing.T) {
+	t.Setenv("AWS_REGION", "")
+	t.Setenv("AWS_DEFAULT_REGION", "")
+	t.Setenv("AWS_CONFIG_FILE", "/dev/null")
+	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", "/dev/null")
+	_, err := newBedrockValidatorFromEnv(context.Background())
+	if err == nil {
+		t.Fatal("expected error when AWS region is missing")
+	}
+	if !strings.Contains(err.Error(), "aws region is required") {
+		t.Fatalf("error should mention aws region, got: %v", err)
+	}
+}
+
+// TestNewBedrockValidatorFromEnvCustomModel verifies that newBedrockValidatorFromEnv
+// uses the BEDROCK_MODEL_ID environment variable when set.
+func TestNewBedrockValidatorFromEnvCustomModel(t *testing.T) {
+	t.Setenv("BEDROCK_MODEL_ID", "custom-model-id")
+	t.Setenv("AWS_REGION", "us-east-1")
+	v, err := newBedrockValidatorFromEnv(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	bv, ok := v.(*BedrockValidator)
+	if !ok {
+		t.Fatal("expected *BedrockValidator")
+	}
+	if bv.modelID != "custom-model-id" {
+		t.Fatalf("modelID = %q, want %q", bv.modelID, "custom-model-id")
+	}
+}
+
+// TestStartValidatorFallback verifies that start continues with a nil validator
+// when the validator factory function fails, logging a warning instead of failing.
+func TestStartValidatorFallback(t *testing.T) {
+	t.Setenv("BROKER_URL", "http://dummy:8080")
+
+	orig := newValidatorFn
+	defer func() { newValidatorFn = orig }()
+	newValidatorFn = func(ctx context.Context) (Validator, error) {
+		return nil, errors.New("validator init failed")
+	}
+
+	origReg := registerFn
+	defer func() { registerFn = origReg }()
+	registerFn = func(ctx context.Context, deps registerDeps) error {
+		return nil
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen error: %v", err)
+	}
+	addr := ln.Addr().String()
+	ln.Close()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- start(addr)
+	}()
+
+	waitForServer(t, addr)
+
+	proc, err := os.FindProcess(os.Getpid())
+	if err != nil {
+		t.Fatalf("FindProcess error: %v", err)
+	}
+	if err := proc.Signal(syscall.SIGTERM); err != nil {
+		t.Fatalf("Signal error: %v", err)
+	}
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("start should succeed even when validator fails, got: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("start did not return within 10 seconds")
+	}
+}
+
+// stubValidator replaces newValidatorFn with a function that returns a no-op
+// mock validator and restores the original function when the test completes.
+func stubValidator(t *testing.T) {
+	t.Helper()
+	orig := newValidatorFn
+	t.Cleanup(func() { newValidatorFn = orig })
+	newValidatorFn = func(ctx context.Context) (Validator, error) {
+		return &mockValidator{result: ValidationResult{Safe: true, Reason: "ok"}}, nil
+	}
+}
+
+// waitForServer polls the given address with a TCP dial until it accepts a connection or times out.
+// It uses a raw TCP connection instead of an HTTP request to avoid side effects such as creating sessions.
+func waitForServer(t *testing.T, addr string) {
+	t.Helper()
+	for i := 0; i < 50; i++ {
+		conn, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
+		if err == nil {
+			conn.Close()
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatal("server did not start within 5 seconds")
+}

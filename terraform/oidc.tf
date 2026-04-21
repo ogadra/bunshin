@@ -1,0 +1,105 @@
+# GitHub OIDC provider for GitHub Actions keyless authentication
+resource "aws_iam_openid_connect_provider" "github" {
+  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  url             = "https://token.actions.githubusercontent.com"
+  client_id_list  = ["sts.amazonaws.com"]
+  thumbprint_list = ["ffffffffffffffffffffffffffffffffffffffff"]
+
+  tags = merge(local.common_tags, {
+    Service = "cd"
+  })
+}
+
+locals {
+  # ECS services that need deploy roles with ECR push and ECS update permissions
+  ecs_deploy_services = toset(["nginx", "broker", "runner"])
+
+  # Map of service name to ECS service ID for IAM policy resource references
+  ecs_service_ids = {
+    nginx  = aws_ecs_service.nginx.id
+    broker = aws_ecs_service.broker.id
+    runner = aws_ecs_service.runner.id
+  }
+}
+
+# IAM roles for GitHub Actions deployment workflows per service
+resource "aws_iam_role" "github_actions_deploy" {
+  for_each = local.ecs_deploy_services
+
+  name = "bunshin-deploy-${each.key}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Federated = aws_iam_openid_connect_provider.github.arn
+      }
+      Action = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+          "token.actions.githubusercontent.com:sub" = "repo:ogadra/bunshin:ref:refs/heads/main"
+        }
+      }
+    }]
+  })
+
+  tags = merge(local.common_tags, {
+    Service = each.key
+  })
+}
+
+# ECR push permissions scoped to each service repository
+resource "aws_iam_role_policy" "deploy_ecr" {
+  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  for_each = local.ecs_deploy_services
+
+  name = "bunshin-deploy-${each.key}-ecr"
+  role = aws_iam_role.github_actions_deploy[each.key].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:PutImage",
+          "ecr:InitiateLayerUpload",
+          "ecr:UploadLayerPart",
+          "ecr:CompleteLayerUpload",
+        ]
+        Resource = aws_ecr_repository.service[each.key].arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = "ecr:GetAuthorizationToken"
+        Resource = "*"
+      },
+    ]
+  })
+}
+
+# ECS deploy permissions scoped to each service
+resource "aws_iam_role_policy" "deploy_ecs" {
+  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  for_each = local.ecs_deploy_services
+
+  name = "bunshin-deploy-${each.key}-ecs"
+  role = aws_iam_role.github_actions_deploy[each.key].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "ecs:UpdateService",
+        "ecs:DescribeServices",
+      ]
+      Resource = local.ecs_service_ids[each.key]
+    }]
+  })
+}

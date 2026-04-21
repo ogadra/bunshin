@@ -1,0 +1,31 @@
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  };
+
+  outputs = { nixpkgs, ... }:
+    let
+      system = "x86_64-linux";
+      pkgs = import nixpkgs {
+        inherit system;
+        config.allowUnfreePredicate = pkg:
+          builtins.elem (nixpkgs.lib.getName pkg) [ "terraform" ];
+      };
+    in
+    {
+      devShells.${system}.default = pkgs.mkShell {
+        packages = with pkgs; [
+          awscli2
+          checkov
+          gitleaks
+          just
+          go_1_26
+          k6
+          lefthook
+          terraform
+          tflint
+          trivy
+        ];
+      };
+    };
+}
