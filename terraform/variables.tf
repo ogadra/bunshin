@@ -1,7 +1,12 @@
-variable "domain_name" {
-  description = "Domain name for ALB ACM certificate lookup"
+variable "acm_certificate_arn" {
+  description = "ARN of the ACM certificate for the ALB HTTPS listener"
   type        = string
   sensitive   = true
+}
+
+variable "domain_name" {
+  description = "FQDN for the service (e.g. ogadra-bunshin.mad.bcr.dev)"
+  type        = string
 }
 
 variable "aws_profile" {
@@ -15,8 +20,8 @@ variable "proxy_secret" {
   sensitive   = true
 
   validation {
-    condition     = length(var.proxy_secret) >= 16 && length(var.proxy_secret) <= 50
-    error_message = "proxy_secret must be between 16 and 50 characters."
+    condition     = length(var.proxy_secret) >= 50
+    error_message = "proxy_secret must be at least 50 characters."
   }
 }
 

@@ -16,13 +16,6 @@ resource "aws_lb" "main" {
   })
 }
 
-# ACM certificate for ALB HTTPS listener
-data "aws_acm_certificate" "alb" {
-  domain      = var.domain_name
-  statuses    = ["ISSUED"]
-  most_recent = true
-}
-
 # trivy:ignore:AVD-AWS-0053 -- target group uses HTTP, HTTPS terminates at ALB
 resource "aws_lb_target_group" "nginx" {
   # checkov:skip=CKV_AWS_378:HTTPS terminates at ALB, target uses HTTP
@@ -55,7 +48,7 @@ resource "aws_lb_listener" "https" {
   port              = 443
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-  certificate_arn   = data.aws_acm_certificate.alb.arn
+  certificate_arn   = var.acm_certificate_arn
 
   default_action {
     type             = "forward"
