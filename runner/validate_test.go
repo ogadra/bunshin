@@ -15,9 +15,8 @@ func TestClassifyExactWhitelisted(t *testing.T) {
 		{"date", "bare date"},
 		{"whoami", "bare whoami"},
 		{"env", "bare env"},
-		{"tree", "bare tree"},
 		{"id", "bare id"},
-		{"hostname", "bare hostname"},
+		{"ip -4 -o addr show eth0 | awk '{print $4}'", "ip addr with awk"},
 		{"uptime", "bare uptime"},
 		{"df", "bare df"},
 		{"free", "bare free"},
@@ -46,6 +45,7 @@ func TestClassifyPrefixWhitelisted(t *testing.T) {
 		cmd  string
 		name string
 	}{
+		{"tree", "bare tree"},
 		{"ls", "bare ls"},
 		{"ls -la", "ls with flags"},
 		{"ls -la /tmp", "ls with flags and path"},
@@ -69,6 +69,8 @@ func TestClassifyPrefixWhitelisted(t *testing.T) {
 		{"which ls", "which ls"},
 		{"  ls -la  ", "ls with surrounding spaces"},
 		{"  which cowsay  ", "which cowsay with spaces"},
+		{"tree .", "tree with path"},
+		{"tree /tmp", "tree with absolute path"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -155,7 +157,6 @@ func TestClassifyBareWhitelistedWithArgs(t *testing.T) {
 		cmd  string
 		name string
 	}{
-		{"tree .", "tree with path"},
 		{"env FOO=bar", "env with assignment"},
 		{"df -h", "df with flag"},
 		{"free -m", "free with flag"},

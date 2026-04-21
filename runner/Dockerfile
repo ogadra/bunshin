@@ -63,6 +63,8 @@ RUN nix shell nixpkgs#gnused --command sh -c '\
 
 RUN nix build --impure --no-link --print-out-paths -f '<nixpkgs>' fastfetch cowsay pokemonsay lolcat figlet > /tmp/prebuilt-tools-paths.txt
 
+RUN nix-env -iA nixpkgs.iproute2 nixpkgs.gawk
+
 RUN mkdir -p /app
 COPY ./app/ /app/
 WORKDIR /app
