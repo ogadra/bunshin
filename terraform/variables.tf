@@ -1,6 +1,7 @@
 variable "domain_name" {
   description = "Domain name for ALB ACM certificate lookup"
   type        = string
+  sensitive   = true
 }
 
 variable "aws_profile" {
