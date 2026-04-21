@@ -5,48 +5,74 @@ import (
 	"strings"
 )
 
-// whitelistedCommands is the set of commands that are allowed without LLM validation.
-// Only bare commands with no arguments are whitelisted, because arguments can be
-// abused to execute arbitrary code or exfiltrate data.
-var whitelistedCommands = map[string]bool{
-	"ls":     true,
-	"pwd":    true,
-	"date":   true,
-	"whoami": true,
-	"env":    true,
-	"tree":   true,
-	"uname":  true,
-}
-
-// whitelistedExactCommands is the set of full command strings including arguments
-// that are allowed without LLM validation. Unlike whitelistedCommands which matches
-// bare commands only, these match the entire trimmed command string exactly.
+// whitelistedExactCommands is the set of command strings that are allowed
+// without LLM validation when the trimmed input matches exactly.
+// This covers both bare commands (no arguments) and specific full commands.
 var whitelistedExactCommands = map[string]bool{
+	// Bare commands — no arguments allowed.
+	"pwd":      true,
+	"date":     true,
+	"whoami":   true,
+	"env":      true,
+	"tree":     true,
+	"id":       true,
+	"hostname": true,
+	"uptime":   true,
+	"df":       true,
+	"free":     true,
+	"ps":       true,
+	"history":  true,
+	// Full commands with specific arguments.
 	"home-manager switch --rollback":                                     true,
 	"home-manager generations":                                           true,
 	`nix develop --command sh -c "figlet 'Nix' | cowsay -n | lolcat -f"`: true,
+}
+
+// whitelistedPrefixCommands is the set of commands that are allowed without LLM
+// validation when invoked bare or with arguments, as long as no shell
+// metacharacters are present.
+var whitelistedPrefixCommands = map[string]bool{
+	"cd":       true,
+	"echo":     true,
+	"cat":      true,
+	"head":     true,
+	"tail":     true,
+	"grep":     true,
+	"ls":       true,
+	"uname":    true,
+	"wc":       true,
+	"file":     true,
+	"du":       true,
+	"stat":     true,
+	"realpath": true,
+	"printf":   true,
+	"which":    true,
 }
 
 // shellMetaChars matches shell operators that could be used to chain commands.
 var shellMetaChars = regexp.MustCompile(`[;|&<>\t\n\r` + "`" + `]|\$\(`)
 
 // classifyCommand returns the classification of a command for audit logging.
-// It returns "whitelisted" if the trimmed command exactly matches a bare
-// whitelisted command, or if it is a "nix run nixpkgs#..." invocation
-// without shell metacharacters. Otherwise it returns "validated".
+// It returns "whitelisted" for:
+//   - exact matches in whitelistedExactCommands,
+//   - prefix matches in whitelistedPrefixCommands (bare or with args, no shell metacharacters),
+//   - "nix run nixpkgs#..." invocations without shell metacharacters.
+//
+// Otherwise it returns "validated".
 func classifyCommand(cmd string) string {
 	trimmed := strings.TrimSpace(cmd)
-	if whitelistedCommands[trimmed] {
-		return "whitelisted"
-	}
 	if whitelistedExactCommands[trimmed] {
 		return "whitelisted"
 	}
-	if strings.HasPrefix(trimmed, "which ") && !shellMetaChars.MatchString(trimmed) {
-		return "whitelisted"
-	}
-	if strings.HasPrefix(trimmed, "nix run nixpkgs#") && !shellMetaChars.MatchString(trimmed) {
-		return "whitelisted"
+	if !shellMetaChars.MatchString(trimmed) {
+		for prefix := range whitelistedPrefixCommands {
+			if trimmed == prefix || strings.HasPrefix(trimmed, prefix+" ") {
+				return "whitelisted"
+			}
+		}
+		if strings.HasPrefix(trimmed, "nix run nixpkgs#") {
+			return "whitelisted"
+		}
 	}
 	return "validated"
 }

