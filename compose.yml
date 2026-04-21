@@ -1,0 +1,73 @@
+services:
+  nginx:
+    build:
+      context: nginx/
+      args:
+        NGINX_RESOLVER: 127.0.0.11
+        BROKER_HOST: broker
+      cache_from:
+        - type=gha,scope=nginx
+      cache_to:
+        - type=gha,scope=nginx,mode=max
+    ports:
+      - "${NGINX_PORT}:8080"
+
+  broker:
+    build:
+      context: broker/
+      cache_from:
+        - type=gha,scope=broker
+      cache_to:
+        - type=gha,scope=broker,mode=max
+    ports:
+      - "${BROKER_PORT}:8080"
+    env_file:
+      - broker/.env.example
+    depends_on:
+      dynamodb-init:
+        condition: service_completed_successfully
+
+  broker-test:
+    build:
+      context: broker/
+      target: test-integration
+      cache_from:
+        - type=gha,scope=broker
+      cache_to:
+        - type=gha,scope=broker,mode=max
+    env_file:
+      - broker/.env.example
+    depends_on:
+      dynamodb-init:
+        condition: service_completed_successfully
+    profiles:
+      - test
+
+  runner-1:
+    build:
+      context: runner/
+      cache_from:
+        - type=gha,scope=runner
+      cache_to:
+        - type=gha,scope=runner,mode=max
+    env_file:
+      - runner/.env.example
+
+  dynamodb-init:
+    image: amazon/aws-cli:2.34.33@sha256:6170110532c8a7a0988a75e54ae2856a28cee5fb7fcb8b5916e36d4cf2001baa
+    entrypoint: ["sh", "/init/create-table.sh"]
+    volumes:
+      - ./init/create-table.sh:/init/create-table.sh:ro
+    env_file:
+      - broker/.env.example
+    depends_on:
+      dynamodb-local:
+        condition: service_healthy
+
+  dynamodb-local:
+    image: amazon/dynamodb-local:3.3.0@sha256:d89f8fcc6b1a39cb35976c248ed42a28c66ae00dc043099210f5571e42648ab4
+    healthcheck:
+      test: ["CMD", "/bin/bash", "-c", "echo > /dev/tcp/localhost/8000"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
