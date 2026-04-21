@@ -38,7 +38,6 @@ var whitelistedPrefixCommands = map[string]bool{
 	"head":     true,
 	"tail":     true,
 	"grep":     true,
-	"find":     true,
 	"ls":       true,
 	"uname":    true,
 	"wc":       true,
@@ -54,21 +53,26 @@ var whitelistedPrefixCommands = map[string]bool{
 var shellMetaChars = regexp.MustCompile(`[;|&<>\t\n\r` + "`" + `]|\$\(`)
 
 // classifyCommand returns the classification of a command for audit logging.
-// It returns "whitelisted" if the trimmed command exactly matches a bare
-// whitelisted command, or if it is a "nix run nixpkgs#..." invocation
-// without shell metacharacters. Otherwise it returns "validated".
+// It returns "whitelisted" for:
+//   - exact matches in whitelistedExactCommands,
+//   - prefix matches in whitelistedPrefixCommands (bare or with args, no shell metacharacters),
+//   - "nix run nixpkgs#..." invocations without shell metacharacters.
+//
+// Otherwise it returns "validated".
 func classifyCommand(cmd string) string {
 	trimmed := strings.TrimSpace(cmd)
 	if whitelistedExactCommands[trimmed] {
 		return "whitelisted"
 	}
-	for prefix := range whitelistedPrefixCommands {
-		if (trimmed == prefix || strings.HasPrefix(trimmed, prefix+" ")) && !shellMetaChars.MatchString(trimmed) {
+	if !shellMetaChars.MatchString(trimmed) {
+		for prefix := range whitelistedPrefixCommands {
+			if trimmed == prefix || strings.HasPrefix(trimmed, prefix+" ") {
+				return "whitelisted"
+			}
+		}
+		if strings.HasPrefix(trimmed, "nix run nixpkgs#") {
 			return "whitelisted"
 		}
-	}
-	if strings.HasPrefix(trimmed, "nix run nixpkgs#") && !shellMetaChars.MatchString(trimmed) {
-		return "whitelisted"
 	}
 	return "validated"
 }

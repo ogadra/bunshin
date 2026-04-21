@@ -156,7 +156,7 @@ func TestIntegrationRejectedCommand(t *testing.T) {
 
 	sid := createSession(t, ts)
 
-	body := marshalCommand(t, "rm -rf /tmp")
+	body := marshalCommand(t, "rm --version")
 	req, err := http.NewRequest(http.MethodPost, ts.URL+"/api/execute", strings.NewReader(body))
 	if err != nil {
 		t.Fatalf("new request: %v", err)

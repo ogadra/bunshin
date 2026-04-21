@@ -195,7 +195,7 @@ func TestExecuteRejected(t *testing.T) {
 		t.Fatalf("Create() error: %v", err)
 	}
 
-	body := strings.NewReader(`{"command":"rm -rf /tmp"}`)
+	body := strings.NewReader(`{"command":"rm --version"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
 	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
 	w := httptest.NewRecorder()
