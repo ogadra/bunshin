@@ -13,6 +13,11 @@ variable "proxy_secret" {
   description = "Secret header value for Cloudflare Workers proxy verification via WAF"
   type        = string
   sensitive   = true
+
+  validation {
+    condition     = length(var.proxy_secret) >= 16 && length(var.proxy_secret) <= 50
+    error_message = "proxy_secret must be between 16 and 50 characters."
+  }
 }
 
 variable "runner_desired_count" {

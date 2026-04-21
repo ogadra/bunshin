@@ -38,14 +38,14 @@ resource "aws_wafv2_web_acl" "alb" {
     }
 
     visibility_config {
-      sampled_requests_enabled   = true
+      sampled_requests_enabled   = false
       cloudwatch_metrics_enabled = true
       metric_name                = "bunshin-allow-proxy-secret"
     }
   }
 
   visibility_config {
-    sampled_requests_enabled   = true
+    sampled_requests_enabled   = false
     cloudwatch_metrics_enabled = true
     metric_name                = "bunshin-alb-waf"
   }

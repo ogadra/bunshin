@@ -18,8 +18,9 @@ resource "aws_lb" "main" {
 
 # ACM certificate for ALB HTTPS listener
 data "aws_acm_certificate" "alb" {
-  domain   = var.domain_name
-  statuses = ["ISSUED"]
+  domain      = var.domain_name
+  statuses    = ["ISSUED"]
+  most_recent = true
 }
 
 # trivy:ignore:AVD-AWS-0053 -- target group uses HTTP, HTTPS terminates at ALB
