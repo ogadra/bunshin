@@ -505,7 +505,7 @@ func TestExecuteValidatedSafe(t *testing.T) {
 		t.Fatalf("Create() error: %v", err)
 	}
 
-	body := strings.NewReader(`{"command":"python3 -c 'print(1)'"}`)
+	body := strings.NewReader(`{"command":"curl https://example.com"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
 	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
 	w := httptest.NewRecorder()
@@ -566,7 +566,7 @@ func TestExecuteValidatorError(t *testing.T) {
 		t.Fatalf("Create() error: %v", err)
 	}
 
-	body := strings.NewReader(`{"command":"python3 -c 'print(1)'"}`)
+	body := strings.NewReader(`{"command":"curl https://example.com"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
 	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
 	w := httptest.NewRecorder()
@@ -594,7 +594,7 @@ func TestExecuteValidatorUnavailableSkipsValidation(t *testing.T) {
 		t.Fatalf("Create() error: %v", err)
 	}
 
-	body := strings.NewReader(`{"command":"python3 -c 'print(1)'"}`)
+	body := strings.NewReader(`{"command":"curl https://example.com"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
 	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
 	w := httptest.NewRecorder()
