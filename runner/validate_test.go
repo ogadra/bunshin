@@ -16,7 +16,7 @@ func TestClassifyExactWhitelisted(t *testing.T) {
 		{"whoami", "bare whoami"},
 		{"env", "bare env"},
 		{"id", "bare id"},
-		{"ip -4 -o addr show eth0 | awk '{print $4}'", "ip addr with awk"},
+		{"ip -4 -o addr show eth1 | awk '{print $4}'", "ip addr with awk"},
 		{"uptime", "bare uptime"},
 		{"df", "bare df"},
 		{"free", "bare free"},
