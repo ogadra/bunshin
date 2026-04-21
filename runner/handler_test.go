@@ -195,7 +195,7 @@ func TestExecuteRejected(t *testing.T) {
 		t.Fatalf("Create() error: %v", err)
 	}
 
-	body := strings.NewReader(`{"command":"echo hello"}`)
+	body := strings.NewReader(`{"command":"rm -rf /tmp"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
 	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
 	w := httptest.NewRecorder()
@@ -214,8 +214,8 @@ func TestExecuteRejected(t *testing.T) {
 	}
 }
 
-// TestExecuteRejectedWithArgs verifies that a whitelisted command name with arguments
-// is rejected with 403 because it does not exactly match the whitelist.
+// TestExecuteRejectedWithArgs verifies that a non-whitelisted command with arguments
+// is rejected with 403 when no validator is configured.
 func TestExecuteRejectedWithArgs(t *testing.T) {
 	sm := NewSessionManager()
 	defer sm.CloseAll()
@@ -226,7 +226,7 @@ func TestExecuteRejectedWithArgs(t *testing.T) {
 		t.Fatalf("Create() error: %v", err)
 	}
 
-	body := strings.NewReader(`{"command":"ls -la"}`)
+	body := strings.NewReader(`{"command":"curl https://example.com"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
 	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
 	w := httptest.NewRecorder()
@@ -505,7 +505,7 @@ func TestExecuteValidatedSafe(t *testing.T) {
 		t.Fatalf("Create() error: %v", err)
 	}
 
-	body := strings.NewReader(`{"command":"echo hello"}`)
+	body := strings.NewReader(`{"command":"python3 -c 'print(1)'"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
 	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
 	w := httptest.NewRecorder()
@@ -566,7 +566,7 @@ func TestExecuteValidatorError(t *testing.T) {
 		t.Fatalf("Create() error: %v", err)
 	}
 
-	body := strings.NewReader(`{"command":"echo hello"}`)
+	body := strings.NewReader(`{"command":"python3 -c 'print(1)'"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
 	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
 	w := httptest.NewRecorder()
@@ -594,7 +594,7 @@ func TestExecuteValidatorUnavailableSkipsValidation(t *testing.T) {
 		t.Fatalf("Create() error: %v", err)
 	}
 
-	body := strings.NewReader(`{"command":"echo hello"}`)
+	body := strings.NewReader(`{"command":"python3 -c 'print(1)'"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
 	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
 	w := httptest.NewRecorder()

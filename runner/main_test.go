@@ -348,7 +348,7 @@ func TestIntegrationCreateExecuteDelete(t *testing.T) {
 
 	// Execute validated command; validator should be called.
 	v.called = false
-	body2 := strings.NewReader(`{"command":"echo hello"}`)
+	body2 := strings.NewReader(`{"command":"python3 -c 'print(1)'"}`)
 	req2, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/execute", body2)
 	req2.AddCookie(&http.Cookie{Name: "session_id", Value: sessionID})
 	resp4, err := http.DefaultClient.Do(req2)
