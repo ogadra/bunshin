@@ -5,9 +5,11 @@ import (
 	"strings"
 )
 
-// whitelistedBareCommands is the set of commands that are allowed without LLM
-// validation only when invoked with no arguments.
-var whitelistedBareCommands = map[string]bool{
+// whitelistedExactCommands is the set of command strings that are allowed
+// without LLM validation when the trimmed input matches exactly.
+// This covers both bare commands (no arguments) and specific full commands.
+var whitelistedExactCommands = map[string]bool{
+	// Bare commands — no arguments allowed.
 	"pwd":      true,
 	"date":     true,
 	"whoami":   true,
@@ -20,11 +22,15 @@ var whitelistedBareCommands = map[string]bool{
 	"free":     true,
 	"ps":       true,
 	"history":  true,
+	// Full commands with specific arguments.
+	"home-manager switch --rollback":                                     true,
+	"home-manager generations":                                           true,
+	`nix develop --command sh -c "figlet 'Nix' | cowsay -n | lolcat -f"`: true,
 }
 
 // whitelistedPrefixCommands is the set of commands that are allowed without LLM
 // validation when invoked bare or with arguments, as long as no shell
-// metacharacters are present. This is the same pattern used for "which".
+// metacharacters are present.
 var whitelistedPrefixCommands = map[string]bool{
 	"cd":       true,
 	"echo":     true,
@@ -43,15 +49,6 @@ var whitelistedPrefixCommands = map[string]bool{
 	"printf":   true,
 }
 
-// whitelistedExactCommands is the set of full command strings including arguments
-// that are allowed without LLM validation. Unlike whitelistedBareCommands which
-// matches bare commands only, these match the entire trimmed command string exactly.
-var whitelistedExactCommands = map[string]bool{
-	"home-manager switch --rollback":                                     true,
-	"home-manager generations":                                           true,
-	`nix develop --command sh -c "figlet 'Nix' | cowsay -n | lolcat -f"`: true,
-}
-
 // shellMetaChars matches shell operators that could be used to chain commands.
 var shellMetaChars = regexp.MustCompile(`[;|&<>\t\n\r` + "`" + `]|\$\(`)
 
@@ -61,9 +58,6 @@ var shellMetaChars = regexp.MustCompile(`[;|&<>\t\n\r` + "`" + `]|\$\(`)
 // without shell metacharacters. Otherwise it returns "validated".
 func classifyCommand(cmd string) string {
 	trimmed := strings.TrimSpace(cmd)
-	if whitelistedBareCommands[trimmed] {
-		return "whitelisted"
-	}
 	if whitelistedExactCommands[trimmed] {
 		return "whitelisted"
 	}
