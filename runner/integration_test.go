@@ -374,7 +374,7 @@ func TestIntegrationValidationUnavailableFailOpen(t *testing.T) {
 
 	sid := createSession(t, ts)
 
-	body := marshalCommand(t, "python3 -c 'print(1)'")
+	body := marshalCommand(t, "bash -c true")
 	req, err := http.NewRequest(http.MethodPost, ts.URL+"/api/execute", strings.NewReader(body))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
