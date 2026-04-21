@@ -2,13 +2,15 @@ package main
 
 import "testing"
 
-// TestClassifyWhitelisted verifies that bare whitelisted commands with no arguments
-// are classified as "whitelisted".
-func TestClassifyWhitelisted(t *testing.T) {
+// TestClassifyExactWhitelisted verifies that exact-match whitelisted commands
+// (both bare commands and full commands with specific arguments) are classified
+// as "whitelisted".
+func TestClassifyExactWhitelisted(t *testing.T) {
 	cases := []struct {
 		cmd  string
 		name string
 	}{
+		// Bare commands.
 		{"pwd", "bare pwd"},
 		{"date", "bare date"},
 		{"whoami", "bare whoami"},
@@ -21,24 +23,7 @@ func TestClassifyWhitelisted(t *testing.T) {
 		{"free", "bare free"},
 		{"ps", "bare ps"},
 		{"history", "bare history"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := classifyCommand(tc.cmd)
-			if got != "whitelisted" {
-				t.Errorf("classifyCommand(%q) = %q, want %q", tc.cmd, got, "whitelisted")
-			}
-		})
-	}
-}
-
-// TestClassifyExactWhitelisted verifies that exact command strings including arguments
-// are classified as "whitelisted".
-func TestClassifyExactWhitelisted(t *testing.T) {
-	cases := []struct {
-		cmd  string
-		name string
-	}{
+		// Full commands with specific arguments.
 		{"home-manager switch --rollback", "home-manager rollback"},
 		{"home-manager generations", "home-manager generations"},
 		{`nix develop --command sh -c "figlet 'Nix' | cowsay -n | lolcat -f"`, "nix develop figlet cowsay lolcat"},
