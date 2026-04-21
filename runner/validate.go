@@ -10,18 +10,17 @@ import (
 // This covers both bare commands (no arguments) and specific full commands.
 var whitelistedExactCommands = map[string]bool{
 	// Bare commands — no arguments allowed.
-	"pwd":      true,
-	"date":     true,
-	"whoami":   true,
-	"env":      true,
-	"tree":     true,
-	"id":       true,
-	"hostname": true,
-	"uptime":   true,
-	"df":       true,
-	"free":     true,
-	"ps":       true,
-	"history":  true,
+	"pwd":    true,
+	"date":   true,
+	"whoami": true,
+	"env":    true,
+	"id":     true,
+	"ip -4 -o addr show eth0 | awk '{print $4}'": true,
+	"uptime":  true,
+	"df":      true,
+	"free":    true,
+	"ps":      true,
+	"history": true,
 	// Full commands with specific arguments.
 	"home-manager switch --rollback":                                     true,
 	"home-manager generations":                                           true,
@@ -47,6 +46,7 @@ var whitelistedPrefixCommands = map[string]bool{
 	"realpath": true,
 	"printf":   true,
 	"which":    true,
+	"tree":     true,
 }
 
 // shellMetaChars matches shell operators that could be used to chain commands.
