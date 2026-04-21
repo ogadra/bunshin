@@ -47,6 +47,7 @@ var whitelistedPrefixCommands = map[string]bool{
 	"stat":     true,
 	"realpath": true,
 	"printf":   true,
+	"which":    true,
 }
 
 // shellMetaChars matches shell operators that could be used to chain commands.
@@ -65,9 +66,6 @@ func classifyCommand(cmd string) string {
 		if (trimmed == prefix || strings.HasPrefix(trimmed, prefix+" ")) && !shellMetaChars.MatchString(trimmed) {
 			return "whitelisted"
 		}
-	}
-	if strings.HasPrefix(trimmed, "which ") && !shellMetaChars.MatchString(trimmed) {
-		return "whitelisted"
 	}
 	if strings.HasPrefix(trimmed, "nix run nixpkgs#") && !shellMetaChars.MatchString(trimmed) {
 		return "whitelisted"

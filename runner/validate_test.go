@@ -39,48 +39,6 @@ func TestClassifyExactWhitelisted(t *testing.T) {
 	}
 }
 
-// TestClassifyWhichWhitelisted verifies that which commands with safe arguments
-// are classified as "whitelisted".
-func TestClassifyWhichWhitelisted(t *testing.T) {
-	cases := []struct {
-		cmd  string
-		name string
-	}{
-		{"which pokemonsay", "which pokemonsay"},
-		{"which ls", "which ls"},
-		{"  which cowsay  ", "which cowsay with spaces"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := classifyCommand(tc.cmd)
-			if got != "whitelisted" {
-				t.Errorf("classifyCommand(%q) = %q, want %q", tc.cmd, got, "whitelisted")
-			}
-		})
-	}
-}
-
-// TestClassifyWhichWithMetachars verifies that which commands containing
-// shell metacharacters are classified as "validated".
-func TestClassifyWhichWithMetachars(t *testing.T) {
-	cases := []struct {
-		cmd  string
-		name string
-	}{
-		{"which foo; rm -rf /", "semicolon chaining"},
-		{"which foo && echo pwned", "ampersand chaining"},
-		{"which foo | cat", "pipe operator"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := classifyCommand(tc.cmd)
-			if got != "validated" {
-				t.Errorf("classifyCommand(%q) = %q, want %q", tc.cmd, got, "validated")
-			}
-		})
-	}
-}
-
 // TestClassifyPrefixWhitelisted verifies that prefix-whitelisted commands are
 // classified as "whitelisted" when invoked bare or with arguments and no shell metacharacters.
 func TestClassifyPrefixWhitelisted(t *testing.T) {
@@ -108,7 +66,10 @@ func TestClassifyPrefixWhitelisted(t *testing.T) {
 		{"stat file.txt", "stat with arg"},
 		{"realpath .", "realpath with arg"},
 		{"printf '%s\\n' hello", "printf with args"},
+		{"which pokemonsay", "which pokemonsay"},
+		{"which ls", "which ls"},
 		{"  ls -la  ", "ls with surrounding spaces"},
+		{"  which cowsay  ", "which cowsay with spaces"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -134,6 +95,9 @@ func TestClassifyPrefixWithMetachars(t *testing.T) {
 		{"find . -exec rm {} ;", "find with semicolon in exec"},
 		{"cat file `whoami`", "cat with backtick"},
 		{"echo $(id)", "echo with command substitution"},
+		{"which foo; rm -rf /", "which with semicolon chaining"},
+		{"which foo && echo pwned", "which with ampersand chaining"},
+		{"which foo | cat", "which with pipe"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
