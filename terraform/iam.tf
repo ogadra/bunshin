@@ -122,19 +122,19 @@ resource "aws_iam_role_policy" "broker_dynamodb" {
   policy = data.aws_iam_policy_document.broker_dynamodb.json
 }
 
-# runner: Bedrock InvokeModel access via JP inference profile
+# runner: Bedrock Converse access via JP inference profile
 data "aws_iam_policy_document" "runner_bedrock" {
   statement {
     sid       = "AllowInferenceProfile"
     effect    = "Allow"
-    actions   = ["bedrock:InvokeModel"]
+    actions   = ["bedrock:Converse"]
     resources = ["arn:aws:bedrock:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:inference-profile/jp.anthropic.claude-sonnet-4-6"]
   }
 
   statement {
     sid     = "AllowFoundationModel"
     effect  = "Allow"
-    actions = ["bedrock:InvokeModel"]
+    actions = ["bedrock:Converse"]
     resources = [
       for region in local.jp_cris_destination_regions :
       "arn:aws:bedrock:${region}::foundation-model/anthropic.claude-sonnet-4-6"
