@@ -27,7 +27,7 @@ FROM build AS binary
 RUN CGO_ENABLED=0 go build -o /server .
 
 # production image
-FROM debian:bookworm-20260406-slim@sha256:4724b8cc51e33e398f0e2e15e18d5ec2851ff0c2280647e1310bc1642182655d
+FROM debian:bookworm-20260518-slim@sha256:0104b334637a5f19aa9c983a91b54c89887c0984081f2068983107a6f6c21eeb
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash=5.2* \
     coreutils=9.1* \
