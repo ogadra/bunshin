@@ -411,12 +411,16 @@ func TestValidateRunnerURL(t *testing.T) {
 		wantErr bool
 	}{
 		{"valid http", "http://10.0.0.1:3000", false},
-		{"valid https", "https://runner.local:3000", false},
 		{"valid http no port", "http://runner.local", false},
+		{"trailing slash", "http://runner.local:3000/", true},
+		{"https scheme", "https://runner.local:3000", true},
 		{"no scheme", "10.0.0.1:3000", true},
 		{"ftp scheme", "ftp://10.0.0.1:3000", true},
 		{"empty host", "http://", true},
 		{"relative", "/path", true},
+		{"with path", "http://10.0.0.1:3000/base", true},
+		{"with query", "http://10.0.0.1:3000?x=1", true},
+		{"with fragment", "http://10.0.0.1:3000#frag", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -486,6 +490,9 @@ func TestGetResolve_Reassigned(t *testing.T) {
 	if got := rec.Header().Get("X-Session-Reassigned"); got != "true" {
 		t.Errorf("X-Session-Reassigned = %q, want %q", got, "true")
 	}
+	if got := rec.Header().Get("X-Runner-Url"); got != "http://10.0.0.2:8080" {
+		t.Errorf("X-Runner-Url = %q, want %q", got, "http://10.0.0.2:8080")
+	}
 }
 
 // TestGetResolve_NotReassigned はセッション再割当てなしの場合に X-Session-Reassigned ヘッダーが設定されないことを検証する。
@@ -510,5 +517,8 @@ func TestGetResolve_NotReassigned(t *testing.T) {
 
 	if got := rec.Header().Get("X-Session-Reassigned"); got != "" {
 		t.Errorf("X-Session-Reassigned = %q, want empty", got)
+	}
+	if got := rec.Header().Get("X-Runner-Url"); got != "http://10.0.0.1:8080" {
+		t.Errorf("X-Runner-Url = %q, want %q", got, "http://10.0.0.1:8080")
 	}
 }

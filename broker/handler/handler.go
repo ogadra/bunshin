@@ -53,6 +53,10 @@ func (h *Handler) DeleteSession(c *gin.Context) {
 
 // GetResolve は GET /resolve を処理し runner_id cookie からセッションを解決する。
 // cookie が無い、またはセッションが見つからない場合は新規作成して Set-Cookie を返す。
+// 成功時は runner 宛先を X-Runner-Url ヘッダーで返し、NGINX (OpenResty/Lua) が
+// その宛先へ本流 proxy_pass する。
+// /resolve は NGINX の internal な /_resolve サブリクエスト (ボディ無しの GET) からのみ
+// 呼ばれる。
 func (h *Handler) GetResolve(c *gin.Context) {
 	sessionID, _ := c.Cookie(runnerIDCookie)
 	result, err := h.svc.ResolveSession(c.Request.Context(), sessionID)
@@ -75,17 +79,20 @@ func (h *Handler) GetResolve(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
-// validateRunnerURL は runner の PrivateURL が http または https スキームの有効な URL であることを検証する。
+// runner の PrivateURL が http スキームの host[:port] 形式であることを検証する。
 func validateRunnerURL(rawURL string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return err
 	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return errors.New("scheme must be http or https")
+	if u.Scheme != "http" {
+		return errors.New("scheme must be http")
 	}
 	if u.Host == "" {
 		return errors.New("host is required")
+	}
+	if u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+		return errors.New("url must not contain path, query, or fragment")
 	}
 	return nil
 }
