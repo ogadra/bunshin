@@ -284,6 +284,27 @@ func TestPostRegister_InternalError(t *testing.T) {
 	}
 }
 
+// TestPostRegister_Conflict は同一 runnerId が別属性で登録済みの場合に 409 を返すことを検証する。
+func TestPostRegister_Conflict(t *testing.T) {
+	t.Parallel()
+	h := NewHandler(&mockService{
+		registerRunnerFn: func(_ context.Context, _, _ string) error {
+			return store.ErrConflict
+		},
+	})
+	r := newTestRouter(h)
+
+	body := strings.NewReader(`{"runnerId":"r1","privateUrl":"http://10.0.0.1:8080"}`)
+	req := httptest.NewRequest(http.MethodPost, "/internal/runners/register", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusConflict)
+	}
+}
+
 // TestDeleteRunner_Success は runner 削除の成功を検証する。
 func TestDeleteRunner_Success(t *testing.T) {
 	t.Parallel()

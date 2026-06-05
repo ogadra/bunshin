@@ -110,6 +110,10 @@ func (h *Handler) PostRegister(c *gin.Context) {
 	}
 	err := h.svc.RegisterRunner(c.Request.Context(), req.RunnerID, req.PrivateURL)
 	if err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			writeError(c, http.StatusConflict, model.CodeRunnerConflict, "runner already registered with different attributes")
+			return
+		}
 		writeError(c, http.StatusInternalServerError, model.CodeInternalError, "failed to register runner")
 		return
 	}
