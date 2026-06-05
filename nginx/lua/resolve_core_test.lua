@@ -1,5 +1,4 @@
--- resolve_core.decide の分岐テスト。openresty イメージ内で luajit で実行する:
---   luajit /usr/local/openresty/nginx/lua/resolve_core_test.lua
+-- resolve_core.decide の分岐テスト。
 package.path = "/usr/local/openresty/nginx/lua/?.lua;" .. package.path
 local core = require("resolve_core")
 
@@ -18,7 +17,7 @@ check("503 transparency", r.exit == 503 and r.runner_url == nil)
 r = core.decide({ status = 500, header = {} })
 check("500 transparency", r.exit == 500)
 
--- 200 + 不正 X-Runner-Url は 500 で遮断 (SSRF ガード)。各種不正形を網羅。
+-- 200 + 不正 X-Runner-Url は 500 で遮断
 for _, bad in ipairs({ "http://evil/path", "https://h:3000", "http://h:", "", "//h" }) do
     r = core.decide({ status = 200, header = { ["X-Runner-Url"] = bad } })
     check("ssrf guard rejects " .. bad, r.exit == 500 and r.log ~= nil)

@@ -1,5 +1,4 @@
--- runner_url.is_valid の境界値テスト。openresty イメージ内で luajit で実行する:
---   luajit /usr/local/openresty/nginx/lua/runner_url_test.lua
+-- runner_url.is_valid の境界値テスト
 package.path = "/usr/local/openresty/nginx/lua/?.lua;" .. package.path
 local runner_url = require("runner_url")
 

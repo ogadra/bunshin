@@ -58,7 +58,6 @@ services:
     env_file:
       - runner/.env.example
 
-  # 2台目の runner。integration テストの再割当て/idle 枯渇シナリオ用 (integration profile のみ)。
   runner-2:
     build:
       context: runner/

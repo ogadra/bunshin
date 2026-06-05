@@ -53,10 +53,6 @@ func (h *Handler) DeleteSession(c *gin.Context) {
 
 // GetResolve は GET /resolve を処理し runner_id cookie からセッションを解決する。
 // cookie が無い、またはセッションが見つからない場合は新規作成して Set-Cookie を返す。
-// 成功時は runner 宛先を X-Runner-Url ヘッダーで返し、NGINX (OpenResty/Lua) が
-// その宛先へ本流 proxy_pass する。
-// /resolve は NGINX の internal な /_resolve サブリクエスト (ボディ無しの GET) からのみ
-// 呼ばれる。
 func (h *Handler) GetResolve(c *gin.Context) {
 	sessionID, _ := c.Cookie(runnerIDCookie)
 	result, err := h.svc.ResolveSession(c.Request.Context(), sessionID)
