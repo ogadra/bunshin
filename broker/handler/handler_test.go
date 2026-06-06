@@ -442,6 +442,12 @@ func TestValidateRunnerURL(t *testing.T) {
 		{"with path", "http://10.0.0.1:3000/base", true},
 		{"with query", "http://10.0.0.1:3000?x=1", true},
 		{"with fragment", "http://10.0.0.1:3000#frag", true},
+		{"userinfo", "http://user:pass@runner.local:3000", true},
+		{"underscore host", "http://runner_01:3000", true},
+		{"ipv6 host", "http://[::1]:3000", true},
+		{"port zero", "http://runner.local:0", true},
+		{"port too large", "http://runner.local:99999", true},
+		{"non-numeric port", "http://runner.local:abc", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

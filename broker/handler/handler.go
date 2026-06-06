@@ -5,12 +5,18 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"regexp"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/ogadra/20260327-cli-demo/broker/model"
 	"github.com/ogadra/20260327-cli-demo/broker/service"
 	"github.com/ogadra/20260327-cli-demo/broker/store"
 )
+
+// runnerHostRe は runner ホスト名に許可する文字を表す。NGINX 側 (nginx/lua/runner_url.lua) の
+// 受理パターン [%w%.%-]+ と揃え、層間でコントラクトがずれないようにする。
+var runnerHostRe = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
 
 // runnerIDCookie は runner 識別用の cookie 名。
 const runnerIDCookie = "runner_id"
@@ -76,6 +82,8 @@ func (h *Handler) GetResolve(c *gin.Context) {
 }
 
 // runner の PrivateURL が http スキームの host[:port] 形式であることを検証する。
+// NGINX (nginx/lua/runner_url.lua) が受理する範囲に揃えるため、userinfo を禁止し
+// ホスト名を DNS 名形式に、ポートを 1〜65535 の数値に限定する。
 func validateRunnerURL(rawURL string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -84,11 +92,23 @@ func validateRunnerURL(rawURL string) error {
 	if u.Scheme != "http" {
 		return errors.New("scheme must be http")
 	}
+	if u.User != nil {
+		return errors.New("userinfo is not allowed")
+	}
 	if u.Host == "" {
 		return errors.New("host is required")
 	}
 	if u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
 		return errors.New("url must not contain path, query, or fragment")
+	}
+	if !runnerHostRe.MatchString(u.Hostname()) {
+		return errors.New("host must be hostname-style")
+	}
+	if port := u.Port(); port != "" {
+		n, err := strconv.Atoi(port)
+		if err != nil || n < 1 || n > 65535 {
+			return errors.New("port must be between 1 and 65535")
+		}
 	}
 	return nil
 }
