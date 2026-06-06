@@ -15,3 +15,9 @@ provider "aws" {
   region  = "ap-northeast-1"
   profile = var.aws_profile
 }
+
+provider "aws" {
+  alias   = "apne3"
+  region  = "ap-northeast-3"
+  profile = var.aws_profile
+}
