@@ -17,6 +17,24 @@ resource "aws_ecr_repository" "service" {
   })
 }
 
+resource "aws_ecr_replication_configuration" "service" {
+  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  replication_configuration {
+    rule {
+      destination {
+        region      = "ap-northeast-3"
+        registry_id = data.aws_caller_identity.current.account_id
+      }
+
+      # PREFIX_MATCH に絞るのは、同一アカウントの無関係なレジストリ全体を複製しないため
+      repository_filter {
+        filter      = "bunshin/"
+        filter_type = "PREFIX_MATCH"
+      }
+    }
+  }
+}
+
 resource "aws_ecr_lifecycle_policy" "service" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   for_each = local.ecs_services
