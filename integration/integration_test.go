@@ -196,7 +196,9 @@ func resetRunners(t *testing.T, sessionID string) {
 		}
 	}
 	for _, h := range runnerHostnames {
-		deleteFromBroker(brokerBase + "/internal/runners/" + h)
+		if err := deleteFromBroker(brokerBase + "/internal/runners/" + h); err != nil {
+			t.Errorf("delete runner %s: %v", h, err)
+		}
 		if err := registerRunnerOnBroker(h); err != nil {
 			t.Errorf("register runner %s: %v", h, err)
 		}
@@ -207,7 +209,7 @@ func resetRunners(t *testing.T, sessionID string) {
 func setupSession(t *testing.T) sessionCookies {
 	t.Helper()
 	cookies := createSession(t)
-	t.Cleanup(func() { resetRunners(t, cookies.RunnerID) })
+	t.Cleanup(func() { resetRunners(t, cookies.SessionID) })
 	return cookies
 }
 
@@ -378,7 +380,7 @@ func TestInvalidRunnerCookie(t *testing.T) {
 	cookies := createSession(t)
 	// もう1台の runner は idle のまま残る。
 	// テスト終了時に全 runner をリセットする。
-	t.Cleanup(func() { resetRunners(t, cookies.RunnerID) })
+	t.Cleanup(func() { resetRunners(t, cookies.SessionID) })
 
 	// runner_id を偽の値に差し替える。session_id は正規のまま。
 	// broker は runner_id のセッションを見つけられず、idle の別 runner を新規割り当てする。
@@ -398,7 +400,7 @@ func TestInvalidRunnerCookie(t *testing.T) {
 // session_id もその runner に存在しないため 404 が返る。
 func TestInvalidBothCookies(t *testing.T) {
 	cookies := createSession(t)
-	t.Cleanup(func() { resetRunners(t, cookies.RunnerID) })
+	t.Cleanup(func() { resetRunners(t, cookies.SessionID) })
 
 	fakeCookies := sessionCookies{RunnerID: "nonexistent-runner-id", SessionID: "nonexistent-session-id"}
 	body := `{"command":"pwd"}`
@@ -472,8 +474,8 @@ func TestNoIdleRunnerExecute(t *testing.T) {
 	cookies1 := createSession(t)
 	cookies2 := createSession(t)
 	t.Cleanup(func() {
-		resetRunners(t, cookies1.RunnerID)
-		resetRunners(t, cookies2.RunnerID)
+		resetRunners(t, cookies1.SessionID)
+		resetRunners(t, cookies2.SessionID)
 	})
 
 	// 存在しない runner_id で実行 → broker が新規割り当てを試みるが idle runner なし → 503
@@ -524,8 +526,8 @@ func TestNoIdleRunner(t *testing.T) {
 	cookies1 := createSession(t)
 	cookies2 := createSession(t)
 	t.Cleanup(func() {
-		resetRunners(t, cookies1.RunnerID)
-		resetRunners(t, cookies2.RunnerID)
+		resetRunners(t, cookies1.SessionID)
+		resetRunners(t, cookies2.SessionID)
 	})
 
 	// idle runner がない状態で新規セッション作成を試みる → 503
