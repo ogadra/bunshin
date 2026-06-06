@@ -1,102 +1,102 @@
-resource "aws_vpc" "this" {
-  cidr_block           = var.vpc_cidr
+resource "aws_vpc" "apne1" {
+  cidr_block           = local.vpc_cidr
   enable_dns_hostnames = true
   enable_dns_support   = true
 
-  tags = merge(var.tags, {
+  tags = merge(local.common_tags, {
     Name = "bunshin-apne1"
   })
 }
 
-resource "aws_subnet" "public" {
-  count = length(var.azs)
+resource "aws_subnet" "apne1_public" {
+  count = length(local.azs)
 
-  vpc_id            = aws_vpc.this.id
-  cidr_block        = var.public_subnet_cidrs[count.index]
-  availability_zone = var.azs[count.index]
+  vpc_id            = aws_vpc.apne1.id
+  cidr_block        = local.public_cidrs[count.index]
+  availability_zone = local.azs[count.index]
 
-  tags = merge(var.tags, {
-    Name = "bunshin-apne1-public-${var.azs[count.index]}"
+  tags = merge(local.common_tags, {
+    Name = "bunshin-apne1-public-${local.azs[count.index]}"
   })
 }
 
-resource "aws_subnet" "private" {
-  count = length(var.azs)
+resource "aws_subnet" "apne1_private" {
+  count = length(local.azs)
 
-  vpc_id            = aws_vpc.this.id
-  cidr_block        = var.private_subnet_cidrs[count.index]
-  availability_zone = var.azs[count.index]
+  vpc_id            = aws_vpc.apne1.id
+  cidr_block        = local.private_cidrs[count.index]
+  availability_zone = local.azs[count.index]
 
-  tags = merge(var.tags, {
-    Name = "bunshin-apne1-private-${var.azs[count.index]}"
+  tags = merge(local.common_tags, {
+    Name = "bunshin-apne1-private-${local.azs[count.index]}"
   })
 }
 
-resource "aws_internet_gateway" "this" {
-  vpc_id = aws_vpc.this.id
+resource "aws_internet_gateway" "apne1" {
+  vpc_id = aws_vpc.apne1.id
 
-  tags = merge(var.tags, {
+  tags = merge(local.common_tags, {
     Name = "bunshin-apne1"
   })
 }
 
-resource "aws_nat_gateway" "this" {
-  vpc_id            = aws_vpc.this.id
+resource "aws_nat_gateway" "apne1" {
+  vpc_id            = aws_vpc.apne1.id
   availability_mode = "regional"
 
-  tags = merge(var.tags, {
+  tags = merge(local.common_tags, {
     Name = "bunshin-apne1-nat"
   })
 
-  depends_on = [aws_internet_gateway.this]
+  depends_on = [aws_internet_gateway.apne1]
 }
 
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.this.id
+resource "aws_route_table" "apne1_public" {
+  vpc_id = aws_vpc.apne1.id
 
   route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.this.id
+    gateway_id = aws_internet_gateway.apne1.id
   }
 
-  tags = merge(var.tags, {
+  tags = merge(local.common_tags, {
     Name = "bunshin-apne1-public"
   })
 }
 
-resource "aws_route_table_association" "public" {
+resource "aws_route_table_association" "apne1_public" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  count = length(var.azs)
+  count = length(local.azs)
 
-  subnet_id      = aws_subnet.public[count.index].id
-  route_table_id = aws_route_table.public.id
+  subnet_id      = aws_subnet.apne1_public[count.index].id
+  route_table_id = aws_route_table.apne1_public.id
 }
 
-resource "aws_route_table" "private" {
-  vpc_id = aws_vpc.this.id
+resource "aws_route_table" "apne1_private" {
+  vpc_id = aws_vpc.apne1.id
 
   route {
     cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.this.id
+    nat_gateway_id = aws_nat_gateway.apne1.id
   }
 
-  tags = merge(var.tags, {
+  tags = merge(local.common_tags, {
     Name = "bunshin-apne1-private"
   })
 }
 
-resource "aws_route_table_association" "private" {
+resource "aws_route_table_association" "apne1_private" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  count = length(var.azs)
+  count = length(local.azs)
 
-  subnet_id      = aws_subnet.private[count.index].id
-  route_table_id = aws_route_table.private.id
+  subnet_id      = aws_subnet.apne1_private[count.index].id
+  route_table_id = aws_route_table.apne1_private.id
 }
 
-resource "aws_default_security_group" "this" {
-  vpc_id = aws_vpc.this.id
+resource "aws_default_security_group" "apne1" {
+  vpc_id = aws_vpc.apne1.id
 
-  tags = merge(var.tags, {
+  tags = merge(local.common_tags, {
     Name = "bunshin-apne1-default"
   })
 }
