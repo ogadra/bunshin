@@ -185,14 +185,14 @@ func registerRunnerOnBroker(hostname string) error {
 }
 
 // resetRunners は全 runner を broker から削除し再登録することで idle 状態に戻す。
-// sessionID が空でなければ先に broker セッションを閉じる。
+// runnerID は runner_id cookie の値 (broker のセッション ID)。空でなければ先に broker セッションを閉じる。
 // セッション削除は既に削除済み (404) の場合 deleteFromBroker が冪等に成功扱いとするため、
 // ここで返るエラーは予期しない失敗のみ。テストは止めずログに残す。
-func resetRunners(t *testing.T, sessionID string) {
+func resetRunners(t *testing.T, runnerID string) {
 	t.Helper()
-	if sessionID != "" {
-		if err := deleteFromBroker(brokerBase + "/sessions/" + sessionID); err != nil {
-			t.Logf("resetRunners: close session %s: %v", sessionID, err)
+	if runnerID != "" {
+		if err := deleteFromBroker(brokerBase + "/sessions/" + runnerID); err != nil {
+			t.Logf("resetRunners: close session %s: %v", runnerID, err)
 		}
 	}
 	for _, h := range runnerHostnames {
@@ -209,7 +209,7 @@ func resetRunners(t *testing.T, sessionID string) {
 func setupSession(t *testing.T) sessionCookies {
 	t.Helper()
 	cookies := createSession(t)
-	t.Cleanup(func() { resetRunners(t, cookies.SessionID) })
+	t.Cleanup(func() { resetRunners(t, cookies.RunnerID) })
 	return cookies
 }
 
@@ -380,7 +380,7 @@ func TestInvalidRunnerCookie(t *testing.T) {
 	cookies := createSession(t)
 	// もう1台の runner は idle のまま残る。
 	// テスト終了時に全 runner をリセットする。
-	t.Cleanup(func() { resetRunners(t, cookies.SessionID) })
+	t.Cleanup(func() { resetRunners(t, cookies.RunnerID) })
 
 	// runner_id を偽の値に差し替える。session_id は正規のまま。
 	// broker は runner_id のセッションを見つけられず、idle の別 runner を新規割り当てする。
@@ -400,7 +400,7 @@ func TestInvalidRunnerCookie(t *testing.T) {
 // session_id もその runner に存在しないため 404 が返る。
 func TestInvalidBothCookies(t *testing.T) {
 	cookies := createSession(t)
-	t.Cleanup(func() { resetRunners(t, cookies.SessionID) })
+	t.Cleanup(func() { resetRunners(t, cookies.RunnerID) })
 
 	fakeCookies := sessionCookies{RunnerID: "nonexistent-runner-id", SessionID: "nonexistent-session-id"}
 	body := `{"command":"pwd"}`
@@ -474,8 +474,8 @@ func TestNoIdleRunnerExecute(t *testing.T) {
 	cookies1 := createSession(t)
 	cookies2 := createSession(t)
 	t.Cleanup(func() {
-		resetRunners(t, cookies1.SessionID)
-		resetRunners(t, cookies2.SessionID)
+		resetRunners(t, cookies1.RunnerID)
+		resetRunners(t, cookies2.RunnerID)
 	})
 
 	// 存在しない runner_id で実行 → broker が新規割り当てを試みるが idle runner なし → 503
@@ -526,8 +526,8 @@ func TestNoIdleRunner(t *testing.T) {
 	cookies1 := createSession(t)
 	cookies2 := createSession(t)
 	t.Cleanup(func() {
-		resetRunners(t, cookies1.SessionID)
-		resetRunners(t, cookies2.SessionID)
+		resetRunners(t, cookies1.RunnerID)
+		resetRunners(t, cookies2.RunnerID)
 	})
 
 	// idle runner がない状態で新規セッション作成を試みる → 503
