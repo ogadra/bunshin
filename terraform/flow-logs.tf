@@ -12,6 +12,20 @@ data "aws_iam_policy_document" "flow_logs_assume_role" {
       type        = "Service"
       identifiers = ["vpc-flow-logs.amazonaws.com"]
     }
+
+    # Bind the service principal to this account's flow logs so a flow log in
+    # another account cannot assume this role (confused-deputy guard).
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:aws:ec2:*:${data.aws_caller_identity.current.account_id}:vpc-flow-log/*"]
+    }
   }
 }
 
