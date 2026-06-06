@@ -31,7 +31,7 @@ data "aws_iam_policy_document" "flow_logs" {
       "logs:DescribeLogStreams",
     ]
     resources = [
-      "${aws_cloudwatch_log_group.flow_logs.arn}:*",
+      "${aws_cloudwatch_log_group.flow_logs_apne1.arn}:*",
       "${aws_cloudwatch_log_group.flow_logs_apne3.arn}:*",
     ]
   }
@@ -45,8 +45,10 @@ resource "aws_iam_role_policy" "flow_logs" {
 }
 
 # trivy:ignore:AVD-AWS-0017 -- KMS encryption is not required for this use case
-resource "aws_cloudwatch_log_group" "flow_logs" {
+resource "aws_cloudwatch_log_group" "flow_logs_apne1" {
   # checkov:skip=CKV_AWS_158:KMS encryption is not required for this use case
+  provider = aws.apne1
+
   name                        = "/vpc/bunshin-flow-logs"
   retention_in_days           = 365
   deletion_protection_enabled = true
@@ -54,14 +56,16 @@ resource "aws_cloudwatch_log_group" "flow_logs" {
   tags = local.common_tags
 }
 
-resource "aws_flow_log" "main" {
+resource "aws_flow_log" "apne1" {
+  provider = aws.apne1
+
   iam_role_arn    = aws_iam_role.flow_logs.arn
-  log_destination = aws_cloudwatch_log_group.flow_logs.arn
+  log_destination = aws_cloudwatch_log_group.flow_logs_apne1.arn
   traffic_type    = "ALL"
-  vpc_id          = aws_vpc.main.id
+  vpc_id          = aws_vpc.apne1.id
 
   tags = merge(local.common_tags, {
-    Name = "bunshin"
+    Name = "bunshin-apne1"
   })
 }
 

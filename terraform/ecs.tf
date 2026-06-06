@@ -154,7 +154,7 @@ resource "aws_ecs_service" "nginx" {
   health_check_grace_period_seconds = 60
 
   network_configuration {
-    subnets         = aws_subnet.private[*].id
+    subnets         = aws_subnet.apne1_private[*].id
     security_groups = [aws_security_group.nginx.id]
   }
 
@@ -178,7 +178,7 @@ resource "aws_ecs_service" "broker" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets         = aws_subnet.private[*].id
+    subnets         = aws_subnet.apne1_private[*].id
     security_groups = [aws_security_group.broker.id]
   }
 
@@ -200,7 +200,7 @@ resource "aws_ecs_service" "runner" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets         = aws_subnet.private[*].id
+    subnets         = aws_subnet.apne1_private[*].id
     security_groups = [aws_security_group.runner.id]
   }
 

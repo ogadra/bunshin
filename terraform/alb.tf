@@ -9,7 +9,7 @@ resource "aws_lb" "main" {
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
-  subnets            = aws_subnet.public[*].id
+  subnets            = aws_subnet.apne1_public[*].id
 
   tags = merge(local.common_tags, {
     Service = "alb"
@@ -22,7 +22,7 @@ resource "aws_lb_target_group" "nginx" {
   name        = "bunshin-nginx"
   port        = local.ecs_services["nginx"].port
   protocol    = "HTTP"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = aws_vpc.apne1.id
   target_type = "ip"
 
   health_check {
