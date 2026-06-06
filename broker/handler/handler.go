@@ -5,12 +5,16 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"regexp"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/ogadra/20260327-cli-demo/broker/model"
 	"github.com/ogadra/20260327-cli-demo/broker/service"
 	"github.com/ogadra/20260327-cli-demo/broker/store"
 )
+
+var runnerHostRe = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
 
 // runnerIDCookie は runner 識別用の cookie 名。
 const runnerIDCookie = "runner_id"
@@ -75,17 +79,32 @@ func (h *Handler) GetResolve(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
-// validateRunnerURL は runner の PrivateURL が http または https スキームの有効な URL であることを検証する。
+// runner の PrivateURL が http スキームの host[:port] 形式であることを検証する。
 func validateRunnerURL(rawURL string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return err
 	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return errors.New("scheme must be http or https")
+	if u.Scheme != "http" {
+		return errors.New("scheme must be http")
+	}
+	if u.User != nil {
+		return errors.New("userinfo is not allowed")
 	}
 	if u.Host == "" {
 		return errors.New("host is required")
+	}
+	if u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+		return errors.New("url must not contain path, query, or fragment")
+	}
+	if !runnerHostRe.MatchString(u.Hostname()) {
+		return errors.New("host must be hostname-style")
+	}
+	if port := u.Port(); port != "" {
+		n, err := strconv.Atoi(port)
+		if err != nil || n < 1 || n > 65535 {
+			return errors.New("port must be between 1 and 65535")
+		}
 	}
 	return nil
 }
@@ -103,6 +122,10 @@ func (h *Handler) PostRegister(c *gin.Context) {
 	}
 	err := h.svc.RegisterRunner(c.Request.Context(), req.RunnerID, req.PrivateURL)
 	if err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			writeError(c, http.StatusConflict, model.CodeRunnerConflict, "runner already registered with different attributes")
+			return
+		}
 		writeError(c, http.StatusInternalServerError, model.CodeInternalError, "failed to register runner")
 		return
 	}

@@ -23,6 +23,11 @@ services:
       - "${BROKER_PORT}:8080"
     env_file:
       - broker/.env.example
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8080'"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     depends_on:
       dynamodb-init:
         condition: service_completed_successfully
@@ -52,6 +57,38 @@ services:
         - type=gha,scope=runner,mode=max
     env_file:
       - runner/.env.example
+
+  runner-2:
+    build:
+      context: runner/
+      cache_from:
+        - type=gha,scope=runner
+    env_file:
+      - runner/.env.example
+    profiles:
+      - integration
+
+  integration-test:
+    build:
+      context: integration/
+      cache_from:
+        - type=gha,scope=integration
+      cache_to:
+        - type=gha,scope=integration,mode=max
+    environment:
+      NGINX_URL: "http://nginx:8080"
+      BROKER_URL: "http://broker:8080"
+    depends_on:
+      nginx:
+        condition: service_started
+      broker:
+        condition: service_healthy
+      runner-1:
+        condition: service_started
+      runner-2:
+        condition: service_started
+    profiles:
+      - integration
 
   dynamodb-init:
     image: amazon/aws-cli:2.34.33@sha256:6170110532c8a7a0988a75e54ae2856a28cee5fb7fcb8b5916e36d4cf2001baa

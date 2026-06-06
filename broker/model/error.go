@@ -8,6 +8,8 @@ const (
 	CodeSessionNotFound = "SESSION_NOT_FOUND"
 	// CodeInvalidRequest はリクエストが不正な場合のエラーコード。
 	CodeInvalidRequest = "INVALID_REQUEST"
+	// CodeRunnerConflict は同一 runnerId が別の属性で既に登録済みの場合のエラーコード。
+	CodeRunnerConflict = "RUNNER_CONFLICT"
 	// CodeInternalError は内部エラーのエラーコード。
 	CodeInternalError = "INTERNAL_ERROR"
 )
