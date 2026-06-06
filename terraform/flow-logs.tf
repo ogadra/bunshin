@@ -1,8 +1,3 @@
-# Deliver to CloudWatch Logs rather than S3 to reuse the retention and IAM
-# conventions in logs.tf/iam.tf, instead of standing up an S3 bucket and its
-# hardening surface (encryption, public-access block, lifecycle) as a log sink.
-
-# A single role serves both regions because IAM is global.
 data "aws_iam_policy_document" "flow_logs_assume_role" {
   statement {
     effect  = "Allow"
