@@ -1,7 +1,7 @@
 resource "aws_security_group" "alb" {
   name_prefix = "bunshin-alb-"
   description = "Security group for ALB"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = module.apne1.vpc_id
 
   tags = merge(local.common_tags, {
     Name    = "bunshin-alb"
@@ -55,7 +55,7 @@ resource "aws_security_group_rule" "alb_egress_nginx" {
 resource "aws_security_group" "nginx" {
   name_prefix = "bunshin-nginx-"
   description = "Security group for nginx ECS tasks"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = module.apne1.vpc_id
 
   tags = merge(local.common_tags, {
     Name    = "bunshin-nginx"
@@ -106,7 +106,7 @@ resource "aws_security_group_rule" "nginx_egress_runner" {
 resource "aws_security_group" "broker" {
   name_prefix = "bunshin-broker-"
   description = "Security group for broker ECS tasks"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = module.apne1.vpc_id
 
   tags = merge(local.common_tags, {
     Name    = "bunshin-broker"
@@ -161,7 +161,7 @@ resource "aws_security_group_rule" "broker_egress_dynamodb" {
   from_port         = 443
   to_port           = 443
   protocol          = "tcp"
-  prefix_list_ids   = [aws_vpc_endpoint.dynamodb.prefix_list_id]
+  prefix_list_ids   = [aws_vpc_endpoint.apne1_dynamodb.prefix_list_id]
   security_group_id = aws_security_group.broker.id
   description       = "HTTPS to DynamoDB VPC endpoint"
 }
@@ -169,7 +169,7 @@ resource "aws_security_group_rule" "broker_egress_dynamodb" {
 resource "aws_security_group" "runner" {
   name_prefix = "bunshin-runner-"
   description = "Security group for runner ECS tasks"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = module.apne1.vpc_id
 
   tags = merge(local.common_tags, {
     Name    = "bunshin-runner"
@@ -242,7 +242,7 @@ resource "aws_security_group_rule" "vpc_endpoint_for_ecs_egress" {
   from_port                = 443
   to_port                  = 443
   protocol                 = "tcp"
-  source_security_group_id = aws_security_group.vpc_endpoint_for_ecs.id
+  source_security_group_id = aws_security_group.apne1_vpc_endpoint_for_ecs.id
   security_group_id        = each.value
   description              = "HTTPS to VPC endpoints for ECS"
 }
@@ -260,7 +260,7 @@ resource "aws_security_group_rule" "ecs_egress_s3" {
   from_port         = 443
   to_port           = 443
   protocol          = "tcp"
-  prefix_list_ids   = [aws_vpc_endpoint.s3.prefix_list_id]
+  prefix_list_ids   = [aws_vpc_endpoint.apne1_s3.prefix_list_id]
   security_group_id = each.value
   description       = "HTTPS to S3 VPC endpoint"
 }
@@ -272,7 +272,7 @@ resource "aws_security_group_rule" "runner_egress_bedrock" {
   from_port                = 443
   to_port                  = 443
   protocol                 = "tcp"
-  source_security_group_id = aws_security_group.bedrock_endpoint.id
+  source_security_group_id = aws_security_group.apne1_bedrock_endpoint.id
   security_group_id        = aws_security_group.runner.id
   description              = "HTTPS to Bedrock Runtime VPC endpoint"
 }
