@@ -44,6 +44,25 @@ data "aws_iam_policy_document" "flow_logs" {
       "${aws_cloudwatch_log_group.flow_logs_apne3.arn}:*",
     ]
   }
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogGroup",
+    ]
+    resources = [
+      aws_cloudwatch_log_group.flow_logs_apne1.arn,
+      aws_cloudwatch_log_group.flow_logs_apne3.arn,
+    ]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "logs:DescribeLogGroups",
+    ]
+    resources = ["*"]
+  }
 }
 
 resource "aws_iam_role_policy" "flow_logs" {
