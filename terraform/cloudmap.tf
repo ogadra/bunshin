@@ -1,6 +1,6 @@
 resource "aws_service_discovery_private_dns_namespace" "internal" {
   name = "internal"
-  vpc  = aws_vpc.apne1.id
+  vpc  = module.apne1.vpc_id
 
   tags = merge(local.common_tags, {
     Service = "cloudmap"
