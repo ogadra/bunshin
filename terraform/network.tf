@@ -1,6 +1,4 @@
-# trivy:ignore:AVD-AWS-0178 -- VPC Flow Logs are out of scope for initial deployment
 resource "aws_vpc" "main" {
-  # checkov:skip=CKV2_AWS_11:VPC Flow Logs are out of scope for initial deployment
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
   enable_dns_support   = true

@@ -1,6 +1,4 @@
-# trivy:ignore:AVD-AWS-0178 -- VPC Flow Logs are out of scope for initial deployment
 resource "aws_vpc" "apne3" {
-  # checkov:skip=CKV2_AWS_11:VPC Flow Logs are out of scope for initial deployment
   provider = aws.apne3
 
   cidr_block           = local.apne3_vpc_cidr
