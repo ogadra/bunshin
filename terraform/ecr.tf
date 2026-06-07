@@ -26,7 +26,6 @@ resource "aws_ecr_replication_configuration" "service" {
         registry_id = data.aws_caller_identity.current.account_id
       }
 
-      # PREFIX_MATCH に絞るのは、同一アカウントの無関係なレジストリ全体を複製しないため
       repository_filter {
         filter      = "bunshin/"
         filter_type = "PREFIX_MATCH"
