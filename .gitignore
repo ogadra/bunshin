@@ -1,5 +1,7 @@
 runner/server
 .direnv/
+.codex/
+__pycache__/
 .env
 terraform/.terraform/
 terraform/*.tfstate
