@@ -1,7 +1,3 @@
-# 他の apne3 リソースは bunshin-apne3-* 命名だが、このテーブルだけは apne1 と
-# 同名にする。リージョンが名前空間を分けるため衝突せず、broker をリージョン
-# 非依存に保てるため。
-#
 # trivy:ignore:AVD-AWS-0024 -- PITR is not required for ephemeral runner state
 # trivy:ignore:AVD-AWS-0025 -- AWS managed encryption is sufficient for this use case
 resource "aws_dynamodb_table" "runners_apne3" {
