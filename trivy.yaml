@@ -1,0 +1,12 @@
+exit-code: 1
+ignorefile: .trivyignore.yaml
+scan:
+  skip-dirs:
+    - .claude
+    - .worktrees
+severity:
+  - UNKNOWN
+  - LOW
+  - MEDIUM
+  - HIGH
+  - CRITICAL

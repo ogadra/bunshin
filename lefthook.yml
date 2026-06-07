@@ -53,4 +53,4 @@ pre-commit:
     004_gitleaks:
       run: gitleaks protect --staged
     005_trivy:
-      run: trivy config . --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --exit-code 1 --skip-dirs .claude --ignorefile .trivyignore.yaml
+      run: trivy config .

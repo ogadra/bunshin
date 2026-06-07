@@ -3,6 +3,11 @@ output "vpc_id" {
   value       = aws_vpc.apne3.id
 }
 
+output "vpc_cidr" {
+  description = "CIDR block of the VPC"
+  value       = local.vpc_cidr
+}
+
 output "public_subnet_ids" {
   description = "IDs of the public subnets"
   value       = aws_subnet.apne3_public[*].id
@@ -11,6 +16,11 @@ output "public_subnet_ids" {
 output "private_subnet_ids" {
   description = "IDs of the private subnets"
   value       = aws_subnet.apne3_private[*].id
+}
+
+output "private_route_table_id" {
+  description = "ID of the private route table"
+  value       = aws_route_table.apne3_private.id
 }
 
 output "runners_table_arn" {

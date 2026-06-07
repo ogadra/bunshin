@@ -32,6 +32,22 @@ resource "aws_subnet" "apne3_private" {
   })
 }
 
+resource "aws_route_table" "apne3_private" {
+  vpc_id = aws_vpc.apne3.id
+
+  tags = merge(local.common_tags, {
+    Name = "bunshin-apne3-private"
+  })
+}
+
+resource "aws_route_table_association" "apne3_private" {
+  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  count = length(local.azs)
+
+  subnet_id      = aws_subnet.apne3_private[count.index].id
+  route_table_id = aws_route_table.apne3_private.id
+}
+
 resource "aws_default_security_group" "apne3" {
   vpc_id = aws_vpc.apne3.id
 
