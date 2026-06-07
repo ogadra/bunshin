@@ -17,3 +17,8 @@ output "private_route_table_id" {
   description = "ID of the private route table, for gateway endpoint association"
   value       = aws_route_table.apne1_private.id
 }
+
+output "runners_table_arn" {
+  description = "ARN of the regional runner-state DynamoDB table"
+  value       = aws_dynamodb_table.runners_apne1.arn
+}
