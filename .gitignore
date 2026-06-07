@@ -1,6 +1,6 @@
 runner/server
 .direnv/
-.codex/
+.codex
 __pycache__/
 .env
 terraform/.terraform/
