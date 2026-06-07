@@ -1,13 +1,3 @@
-variable "peer_vpc_cidr" {
-  description = "CIDR block of the peer VPC reachable through VPC peering"
-  type        = string
-}
-
-variable "vpc_peering_connection_id" {
-  description = "ID of the accepted VPC peering connection used for private subnet routes"
-  type        = string
-}
-
 resource "aws_vpc" "apne3" {
   cidr_block           = local.vpc_cidr
   enable_dns_hostnames = true
@@ -44,11 +34,6 @@ resource "aws_subnet" "apne3_private" {
 
 resource "aws_route_table" "apne3_private" {
   vpc_id = aws_vpc.apne3.id
-
-  route {
-    cidr_block                = var.peer_vpc_cidr
-    vpc_peering_connection_id = var.vpc_peering_connection_id
-  }
 
   tags = merge(local.common_tags, {
     Name = "bunshin-apne3-private"

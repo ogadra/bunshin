@@ -1,13 +1,3 @@
-variable "peer_vpc_cidr" {
-  description = "CIDR block of the peer VPC reachable through VPC peering"
-  type        = string
-}
-
-variable "vpc_peering_connection_id" {
-  description = "ID of the accepted VPC peering connection used for private subnet routes"
-  type        = string
-}
-
 resource "aws_vpc" "apne1" {
   cidr_block           = local.vpc_cidr
   enable_dns_hostnames = true
@@ -83,17 +73,11 @@ resource "aws_route_table_association" "apne1_public" {
 }
 
 resource "aws_route_table" "apne1_private" {
-  # checkov:skip=CKV2_AWS_44:Default route uses NAT gateway; VPC peering route is limited to peer CIDR
   vpc_id = aws_vpc.apne1.id
 
   route {
     cidr_block     = "0.0.0.0/0"
     nat_gateway_id = aws_nat_gateway.apne1.id
-  }
-
-  route {
-    cidr_block                = var.peer_vpc_cidr
-    vpc_peering_connection_id = var.vpc_peering_connection_id
   }
 
   tags = merge(local.common_tags, {
