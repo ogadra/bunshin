@@ -99,7 +99,7 @@ data "aws_iam_policy_document" "broker_dynamodb" {
       "dynamodb:DeleteItem",
     ]
     resources = [
-      aws_dynamodb_table.runners_apne1.arn,
+      module.apne1.runners_table_arn,
     ]
   }
 
@@ -109,8 +109,8 @@ data "aws_iam_policy_document" "broker_dynamodb" {
       "dynamodb:Query",
     ]
     resources = [
-      "${aws_dynamodb_table.runners_apne1.arn}/index/session-index",
-      "${aws_dynamodb_table.runners_apne1.arn}/index/idle-index",
+      "${module.apne1.runners_table_arn}/index/session-index",
+      "${module.apne1.runners_table_arn}/index/idle-index",
     ]
   }
 }
