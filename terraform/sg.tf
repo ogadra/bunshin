@@ -86,7 +86,7 @@ resource "aws_security_group_rule" "nginx_egress_broker" {
   from_port                = local.ecs_services["broker"].port
   to_port                  = local.ecs_services["broker"].port
   protocol                 = "tcp"
-  source_security_group_id = aws_security_group.broker.id
+  source_security_group_id = module.apne1.broker_security_group_id
   security_group_id        = aws_security_group.nginx.id
   description              = "HTTP to broker"
 }
@@ -103,21 +103,6 @@ resource "aws_security_group_rule" "nginx_egress_runner" {
   description              = "HTTP to runner"
 }
 
-resource "aws_security_group" "broker" {
-  name_prefix = "bunshin-broker-"
-  description = "Security group for broker ECS tasks"
-  vpc_id      = module.apne1.vpc_id
-
-  tags = merge(local.common_tags, {
-    Name    = "bunshin-broker"
-    Service = "broker"
-  })
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
 # broker inbound: from nginx
 resource "aws_security_group_rule" "broker_ingress_nginx" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
@@ -126,7 +111,7 @@ resource "aws_security_group_rule" "broker_ingress_nginx" {
   to_port                  = local.ecs_services["broker"].port
   protocol                 = "tcp"
   source_security_group_id = aws_security_group.nginx.id
-  security_group_id        = aws_security_group.broker.id
+  security_group_id        = module.apne1.broker_security_group_id
   description              = "HTTP from nginx"
 }
 
@@ -138,7 +123,7 @@ resource "aws_security_group_rule" "broker_ingress_runner" {
   to_port                  = local.ecs_services["broker"].port
   protocol                 = "tcp"
   source_security_group_id = aws_security_group.runner.id
-  security_group_id        = aws_security_group.broker.id
+  security_group_id        = module.apne1.broker_security_group_id
   description              = "HTTP from runner"
 }
 
@@ -150,20 +135,8 @@ resource "aws_security_group_rule" "broker_egress_runner" {
   to_port                  = local.ecs_services["runner"].port
   protocol                 = "tcp"
   source_security_group_id = aws_security_group.runner.id
-  security_group_id        = aws_security_group.broker.id
+  security_group_id        = module.apne1.broker_security_group_id
   description              = "HTTP to runner for healthcheck"
-}
-
-# broker outbound: to DynamoDB VPC endpoint
-resource "aws_security_group_rule" "broker_egress_dynamodb" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  type              = "egress"
-  from_port         = 443
-  to_port           = 443
-  protocol          = "tcp"
-  prefix_list_ids   = [aws_vpc_endpoint.apne1_dynamodb.prefix_list_id]
-  security_group_id = aws_security_group.broker.id
-  description       = "HTTPS to DynamoDB VPC endpoint"
 }
 
 resource "aws_security_group" "runner" {
@@ -200,7 +173,7 @@ resource "aws_security_group_rule" "runner_ingress_broker" {
   from_port                = local.ecs_services["runner"].port
   to_port                  = local.ecs_services["runner"].port
   protocol                 = "tcp"
-  source_security_group_id = aws_security_group.broker.id
+  source_security_group_id = module.apne1.broker_security_group_id
   security_group_id        = aws_security_group.runner.id
   description              = "HTTP from broker for healthcheck"
 }
@@ -212,7 +185,7 @@ resource "aws_security_group_rule" "runner_egress_broker" {
   from_port                = local.ecs_services["broker"].port
   to_port                  = local.ecs_services["broker"].port
   protocol                 = "tcp"
-  source_security_group_id = aws_security_group.broker.id
+  source_security_group_id = module.apne1.broker_security_group_id
   security_group_id        = aws_security_group.runner.id
   description              = "HTTP to broker"
 }
@@ -234,7 +207,6 @@ resource "aws_security_group_rule" "vpc_endpoint_for_ecs_egress" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   for_each = {
     nginx  = aws_security_group.nginx.id
-    broker = aws_security_group.broker.id
     runner = aws_security_group.runner.id
   }
 
@@ -242,7 +214,7 @@ resource "aws_security_group_rule" "vpc_endpoint_for_ecs_egress" {
   from_port                = 443
   to_port                  = 443
   protocol                 = "tcp"
-  source_security_group_id = aws_security_group.apne1_vpc_endpoint_for_ecs.id
+  source_security_group_id = module.apne1.vpc_endpoint_for_ecs_security_group_id
   security_group_id        = each.value
   description              = "HTTPS to VPC endpoints for ECS"
 }
@@ -252,7 +224,6 @@ resource "aws_security_group_rule" "ecs_egress_s3" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   for_each = {
     nginx  = aws_security_group.nginx.id
-    broker = aws_security_group.broker.id
     runner = aws_security_group.runner.id
   }
 
@@ -260,7 +231,7 @@ resource "aws_security_group_rule" "ecs_egress_s3" {
   from_port         = 443
   to_port           = 443
   protocol          = "tcp"
-  prefix_list_ids   = [aws_vpc_endpoint.apne1_s3.prefix_list_id]
+  prefix_list_ids   = [module.apne1.s3_prefix_list_id]
   security_group_id = each.value
   description       = "HTTPS to S3 VPC endpoint"
 }
