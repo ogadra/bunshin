@@ -20,8 +20,8 @@ resource "aws_ecs_task_definition" "broker" {
   network_mode             = "awsvpc"
   cpu                      = 256
   memory                   = 512
-  execution_role_arn       = aws_iam_role.broker_task_execution.arn
-  task_role_arn            = aws_iam_role.broker_task.arn
+  execution_role_arn       = aws_iam_role.ecs_task_execution["broker"].arn
+  task_role_arn            = aws_iam_role.task["broker"].arn
 
   runtime_platform {
     cpu_architecture        = "ARM64"
@@ -35,7 +35,7 @@ resource "aws_ecs_task_definition" "broker" {
     readonlyRootFilesystem = true
 
     portMappings = [{
-      containerPort = local.broker_port
+      containerPort = local.ecs_services["broker"].port
       protocol      = "tcp"
     }]
 
@@ -46,7 +46,7 @@ resource "aws_ecs_task_definition" "broker" {
     logConfiguration = {
       logDriver = "awslogs"
       options = {
-        "awslogs-group"         = aws_cloudwatch_log_group.broker.name
+        "awslogs-group"         = aws_cloudwatch_log_group.ecs["broker"].name
         "awslogs-region"        = data.aws_region.current.id
         "awslogs-stream-prefix" = "broker"
       }
@@ -65,8 +65,8 @@ resource "aws_ecs_service" "broker" {
   desired_count   = local.broker_desired_count
   launch_type     = "FARGATE"
   depends_on = [
-    aws_iam_role_policy.broker_execution_ecr,
-    aws_iam_role_policy.broker_execution_logs,
+    aws_iam_role_policy.execution_ecr["broker"],
+    aws_iam_role_policy.execution_logs["broker"],
     aws_iam_role_policy.broker_dynamodb,
   ]
 

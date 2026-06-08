@@ -10,16 +10,20 @@ data "aws_iam_policy_document" "ecs_tasks_assume_role" {
   }
 }
 
-resource "aws_iam_role" "broker_task_execution" {
-  name               = "bunshin-apne3-broker-task-execution"
+resource "aws_iam_role" "ecs_task_execution" {
+  for_each = local.ecs_services
+
+  name               = "bunshin-apne3-${each.key}-task-execution"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
 
   tags = merge(local.common_tags, {
-    Service = "broker"
+    Service = each.key
   })
 }
 
-data "aws_iam_policy_document" "broker_execution_ecr" {
+data "aws_iam_policy_document" "execution_ecr" {
+  for_each = local.ecs_services
+
   statement {
     effect = "Allow"
     actions = [
@@ -37,37 +41,45 @@ data "aws_iam_policy_document" "broker_execution_ecr" {
   }
 }
 
-resource "aws_iam_role_policy" "broker_execution_ecr" {
+resource "aws_iam_role_policy" "execution_ecr" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  name   = "bunshin-apne3-broker-execution-ecr"
-  role   = aws_iam_role.broker_task_execution.id
-  policy = data.aws_iam_policy_document.broker_execution_ecr.json
+  for_each = local.ecs_services
+
+  name   = "bunshin-apne3-${each.key}-execution-ecr"
+  role   = aws_iam_role.ecs_task_execution[each.key].id
+  policy = data.aws_iam_policy_document.execution_ecr[each.key].json
 }
 
-data "aws_iam_policy_document" "broker_execution_logs" {
+data "aws_iam_policy_document" "execution_logs" {
+  for_each = local.ecs_services
+
   statement {
     effect = "Allow"
     actions = [
       "logs:CreateLogStream",
       "logs:PutLogEvents",
     ]
-    resources = ["${aws_cloudwatch_log_group.broker.arn}:*"]
+    resources = ["${aws_cloudwatch_log_group.ecs[each.key].arn}:*"]
   }
 }
 
-resource "aws_iam_role_policy" "broker_execution_logs" {
+resource "aws_iam_role_policy" "execution_logs" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  name   = "bunshin-apne3-broker-execution-logs"
-  role   = aws_iam_role.broker_task_execution.id
-  policy = data.aws_iam_policy_document.broker_execution_logs.json
+  for_each = local.ecs_services
+
+  name   = "bunshin-apne3-${each.key}-execution-logs"
+  role   = aws_iam_role.ecs_task_execution[each.key].id
+  policy = data.aws_iam_policy_document.execution_logs[each.key].json
 }
 
-resource "aws_iam_role" "broker_task" {
-  name               = "bunshin-apne3-broker-task"
+resource "aws_iam_role" "task" {
+  for_each = local.ecs_services
+
+  name               = "bunshin-apne3-${each.key}-task"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
 
   tags = merge(local.common_tags, {
-    Service = "broker"
+    Service = each.key
   })
 }
 
@@ -100,6 +112,6 @@ data "aws_iam_policy_document" "broker_dynamodb" {
 resource "aws_iam_role_policy" "broker_dynamodb" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   name   = "bunshin-apne3-broker-dynamodb"
-  role   = aws_iam_role.broker_task.id
+  role   = aws_iam_role.task["broker"].id
   policy = data.aws_iam_policy_document.broker_dynamodb.json
 }
