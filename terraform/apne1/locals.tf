@@ -4,6 +4,14 @@ locals {
   public_cidrs  = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
   private_cidrs = ["10.0.11.0/24", "10.0.12.0/24", "10.0.13.0/24"]
 
+  ecs_services = {
+    nginx  = { port = 8080 }
+    broker = { port = 8080 }
+    runner = { port = 3000 }
+  }
+
+  ecs_subnet_ids = slice(aws_subnet.apne1_private[*].id, 0, 2)
+
   common_tags = {
     Project   = "Bunshin"
     ManagedBy = "terraform"

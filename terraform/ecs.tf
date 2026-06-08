@@ -154,8 +154,8 @@ resource "aws_ecs_service" "nginx" {
   health_check_grace_period_seconds = 60
 
   network_configuration {
-    subnets         = local.apne1_ecs_subnet_ids
-    security_groups = [aws_security_group.nginx.id]
+    subnets         = module.apne1.ecs_subnet_ids
+    security_groups = [module.apne1.nginx_security_group_id]
   }
 
   load_balancer {
@@ -178,8 +178,8 @@ resource "aws_ecs_service" "broker" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets         = local.apne1_ecs_subnet_ids
-    security_groups = [aws_security_group.broker.id]
+    subnets         = module.apne1.ecs_subnet_ids
+    security_groups = [module.apne1.broker_security_group_id]
   }
 
   service_registries {
@@ -200,8 +200,8 @@ resource "aws_ecs_service" "runner" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets         = local.apne1_ecs_subnet_ids
-    security_groups = [aws_security_group.runner.id]
+    subnets         = module.apne1.ecs_subnet_ids
+    security_groups = [module.apne1.runner_security_group_id]
   }
 
   tags = merge(local.common_tags, {
