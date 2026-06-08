@@ -15,21 +15,40 @@ import (
 )
 
 var runnerHostRe = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
+var stackNameRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
 // runnerIDCookie は runner 識別用の cookie 名。
 const runnerIDCookie = "runner_id"
 
+const stackCookie = "stack"
+
+const defaultStackName = "apne1"
+
 // Handler は broker の HTTP ハンドラー。
 type Handler struct {
-	svc service.Service
+	svc       service.Service
+	stackName string
 }
 
 // NewHandler は Handler を生成する。svc が nil の場合は panic する。
 func NewHandler(svc service.Service) *Handler {
+	return NewHandlerWithStack(svc, defaultStackName)
+}
+
+// NewHandlerWithStack は所属スタック名を指定して Handler を生成する。
+func NewHandlerWithStack(svc service.Service, stackName string) *Handler {
 	if svc == nil {
 		panic("handler: nil service")
 	}
-	return &Handler{svc: svc}
+	if !ValidStackName(stackName) {
+		panic("handler: invalid stack name")
+	}
+	return &Handler{svc: svc, stackName: stackName}
+}
+
+// ValidStackName は cookie に保存できるスタック名かどうかを返す。
+func ValidStackName(stackName string) bool {
+	return stackNameRe.MatchString(stackName)
 }
 
 // registerRequest は POST /internal/runners/register のリクエストボディ。
@@ -59,6 +78,11 @@ func (h *Handler) DeleteSession(c *gin.Context) {
 // cookie が無い、またはセッションが見つからない場合は新規作成して Set-Cookie を返す。
 func (h *Handler) GetResolve(c *gin.Context) {
 	sessionID, _ := c.Cookie(runnerIDCookie)
+	sessionStack, _ := c.Cookie(stackCookie)
+	if sessionID != "" && sessionStack != "" && sessionStack != h.stackName {
+		writeError(c, http.StatusMisdirectedRequest, model.CodeStackMismatch, "session belongs to a different stack")
+		return
+	}
 	result, err := h.svc.ResolveSession(c.Request.Context(), sessionID)
 	if err != nil {
 		if errors.Is(err, store.ErrNoIdleRunner) {
@@ -71,6 +95,10 @@ func (h *Handler) GetResolve(c *gin.Context) {
 	if result.Created {
 		c.SetSameSite(http.SameSiteStrictMode)
 		c.SetCookie(runnerIDCookie, result.SessionID, 0, "/", "", true, true)
+		c.SetCookie(stackCookie, h.stackName, 0, "/", "", true, true)
+	} else if sessionID != "" && sessionStack == "" {
+		c.SetSameSite(http.SameSiteStrictMode)
+		c.SetCookie(stackCookie, h.stackName, 0, "/", "", true, true)
 	}
 	if result.Reassigned {
 		c.Header("X-Session-Reassigned", "true")

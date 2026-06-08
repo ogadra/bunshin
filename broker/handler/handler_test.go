@@ -144,6 +144,15 @@ func TestGetResolve_ExistingSession(t *testing.T) {
 			t.Error("should not set runner_id cookie for existing session")
 		}
 	}
+	foundStack := false
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "stack" && c.Value == "apne1" {
+			foundStack = true
+		}
+	}
+	if !foundStack {
+		t.Error("expected stack cookie for existing session without stack cookie")
+	}
 }
 
 // TestGetResolve_MissingCookie_CreatesSession は cookie がない場合にセッションを新規作成することを検証する。
@@ -170,13 +179,74 @@ func TestGetResolve_MissingCookie_CreatesSession(t *testing.T) {
 		t.Errorf("X-Runner-Url = %q, want %q", got, "http://10.0.0.2:8080")
 	}
 	found := false
+	foundStack := false
 	for _, c := range rec.Result().Cookies() {
 		if c.Name == "runner_id" && c.Value == "new-sess" {
 			found = true
 		}
+		if c.Name == "stack" && c.Value == "apne1" {
+			foundStack = true
+		}
 	}
 	if !found {
 		t.Error("expected runner_id cookie for new session")
+	}
+	if !foundStack {
+		t.Error("expected stack cookie for new session")
+	}
+}
+
+// TestGetResolve_MatchingStackCookie は stack cookie が自スタックの場合に既存セッションを解決することを検証する。
+func TestGetResolve_MatchingStackCookie(t *testing.T) {
+	t.Parallel()
+	h := NewHandlerWithStack(&mockService{
+		resolveSessionFn: func(_ context.Context, sessionID string) (*service.ResolveResult, error) {
+			if sessionID != "sess-abc" {
+				t.Errorf("sessionID = %q, want %q", sessionID, "sess-abc")
+			}
+			return &service.ResolveResult{SessionID: "sess-abc", RunnerURL: "http://10.0.0.1:8080", Created: false}, nil
+		},
+	}, "apne3")
+	r := newTestRouter(h)
+
+	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
+	req.AddCookie(&http.Cookie{Name: "runner_id", Value: "sess-abc"})
+	req.AddCookie(&http.Cookie{Name: "stack", Value: "apne3"})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "stack" || c.Name == "runner_id" {
+			t.Errorf("unexpected Set-Cookie for %s", c.Name)
+		}
+	}
+}
+
+// TestGetResolve_MismatchedStackCookie は stack cookie が別スタックの場合にローカル解決しないことを検証する。
+func TestGetResolve_MismatchedStackCookie(t *testing.T) {
+	t.Parallel()
+	h := NewHandlerWithStack(&mockService{
+		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
+			t.Fatal("service should not be called for mismatched stack")
+			return nil, nil
+		},
+	}, "apne3")
+	r := newTestRouter(h)
+
+	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
+	req.AddCookie(&http.Cookie{Name: "runner_id", Value: "sess-abc"})
+	req.AddCookie(&http.Cookie{Name: "stack", Value: "apne1"})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMisdirectedRequest {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusMisdirectedRequest)
+	}
+	if !strings.Contains(rec.Body.String(), "STACK_MISMATCH") {
+		t.Errorf("body = %q, want to contain STACK_MISMATCH", rec.Body.String())
 	}
 }
 
@@ -374,6 +444,22 @@ func TestNewHandler(t *testing.T) {
 	if h.svc != svc {
 		t.Error("svc mismatch")
 	}
+	if h.stackName != "apne1" {
+		t.Errorf("stackName = %q, want %q", h.stackName, "apne1")
+	}
+}
+
+// TestNewHandlerWithStack は所属スタック名を指定できることを検証する。
+func TestNewHandlerWithStack(t *testing.T) {
+	t.Parallel()
+	svc := &mockService{}
+	h := NewHandlerWithStack(svc, "apne3")
+	if h.svc != svc {
+		t.Error("svc mismatch")
+	}
+	if h.stackName != "apne3" {
+		t.Errorf("stackName = %q, want %q", h.stackName, "apne3")
+	}
 }
 
 // TestNewHandler_NilPanics は NewHandler に nil を渡すと panic することを検証する。
@@ -385,6 +471,42 @@ func TestNewHandler_NilPanics(t *testing.T) {
 		}
 	}()
 	NewHandler(nil)
+}
+
+// TestNewHandlerWithStack_InvalidStackPanics は不正なスタック名を拒否することを検証する。
+func TestNewHandlerWithStack_InvalidStackPanics(t *testing.T) {
+	t.Parallel()
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic for invalid stack name")
+		}
+	}()
+	NewHandlerWithStack(&mockService{}, "apne1;bad")
+}
+
+// TestValidStackName は cookie に保存するスタック名の検証を確認する。
+func TestValidStackName(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		stackName string
+		want      bool
+	}{
+		{"apne1", "apne1", true},
+		{"apne3", "apne3", true},
+		{"with hyphen", "apne-1", true},
+		{"empty", "", false},
+		{"semicolon", "apne1;bad", false},
+		{"space", "apne 1", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := ValidStackName(tt.stackName); got != tt.want {
+				t.Errorf("ValidStackName(%q) = %v, want %v", tt.stackName, got, tt.want)
+			}
+		})
+	}
 }
 
 // TestPostRegister_InvalidURL は不正な URL 形式の場合に 400 を返すことを検証する。
@@ -474,21 +596,26 @@ func TestGetResolve_CookieSecure(t *testing.T) {
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
+	found := map[string]bool{}
 	for _, c := range rec.Result().Cookies() {
-		if c.Name == "runner_id" {
+		if c.Name == "runner_id" || c.Name == "stack" {
 			if !c.Secure {
-				t.Error("expected Secure=true on runner_id cookie")
+				t.Errorf("expected Secure=true on %s cookie", c.Name)
 			}
 			if !c.HttpOnly {
-				t.Error("expected HttpOnly=true on runner_id cookie")
+				t.Errorf("expected HttpOnly=true on %s cookie", c.Name)
 			}
 			if c.SameSite != http.SameSiteStrictMode {
-				t.Errorf("expected SameSite=Strict on runner_id cookie, got %v", c.SameSite)
+				t.Errorf("expected SameSite=Strict on %s cookie, got %v", c.Name, c.SameSite)
 			}
-			return
+			found[c.Name] = true
 		}
 	}
-	t.Error("runner_id cookie not found")
+	for _, name := range []string{"runner_id", "stack"} {
+		if !found[name] {
+			t.Errorf("%s cookie not found", name)
+		}
+	}
 }
 
 // TestGetResolve_Reassigned はセッション再割当て時に X-Session-Reassigned ヘッダーが設定されることを検証する。
