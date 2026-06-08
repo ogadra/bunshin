@@ -10,7 +10,7 @@ resource "aws_vpc_endpoint" "apne3_dynamodb" {
   })
 }
 
-resource "aws_security_group" "vpc_endpoint_for_ecs" {
+resource "aws_security_group" "apne3_vpc_endpoint_for_ecs" {
   name_prefix = "bunshin-vpc-ep-ecs-"
   description = "Security group for VPC endpoints used by ECS tasks"
   vpc_id      = aws_vpc.apne3.id
@@ -25,14 +25,14 @@ resource "aws_security_group" "vpc_endpoint_for_ecs" {
   }
 }
 
-resource "aws_security_group_rule" "vpc_endpoint_for_ecs_ingress_broker" {
+resource "aws_security_group_rule" "apne3_vpc_endpoint_for_ecs_ingress_broker" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   type                     = "ingress"
   from_port                = 443
   to_port                  = 443
   protocol                 = "tcp"
   source_security_group_id = aws_security_group.broker.id
-  security_group_id        = aws_security_group.vpc_endpoint_for_ecs.id
+  security_group_id        = aws_security_group.apne3_vpc_endpoint_for_ecs.id
   description              = "HTTPS from broker"
 }
 
@@ -42,7 +42,7 @@ resource "aws_vpc_endpoint" "apne3_ecr_api" {
   vpc_endpoint_type = "Interface"
 
   subnet_ids         = local.broker_subnet_ids
-  security_group_ids = [aws_security_group.vpc_endpoint_for_ecs.id]
+  security_group_ids = [aws_security_group.apne3_vpc_endpoint_for_ecs.id]
 
   private_dns_enabled = true
 
@@ -57,7 +57,7 @@ resource "aws_vpc_endpoint" "apne3_ecr_dkr" {
   vpc_endpoint_type = "Interface"
 
   subnet_ids         = local.broker_subnet_ids
-  security_group_ids = [aws_security_group.vpc_endpoint_for_ecs.id]
+  security_group_ids = [aws_security_group.apne3_vpc_endpoint_for_ecs.id]
 
   private_dns_enabled = true
 
@@ -72,7 +72,7 @@ resource "aws_vpc_endpoint" "apne3_logs" {
   vpc_endpoint_type = "Interface"
 
   subnet_ids         = local.broker_subnet_ids
-  security_group_ids = [aws_security_group.vpc_endpoint_for_ecs.id]
+  security_group_ids = [aws_security_group.apne3_vpc_endpoint_for_ecs.id]
 
   private_dns_enabled = true
 

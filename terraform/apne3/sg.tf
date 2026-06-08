@@ -24,18 +24,18 @@ resource "aws_security_group_rule" "broker_egress_dynamodb" {
   description       = "HTTPS to DynamoDB VPC endpoint"
 }
 
-resource "aws_security_group_rule" "broker_egress_vpc_endpoint_for_ecs" {
+resource "aws_security_group_rule" "vpc_endpoint_for_ecs_egress" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   type                     = "egress"
   from_port                = 443
   to_port                  = 443
   protocol                 = "tcp"
-  source_security_group_id = aws_security_group.vpc_endpoint_for_ecs.id
+  source_security_group_id = aws_security_group.apne3_vpc_endpoint_for_ecs.id
   security_group_id        = aws_security_group.broker.id
   description              = "HTTPS to VPC endpoints for ECS"
 }
 
-resource "aws_security_group_rule" "broker_egress_s3" {
+resource "aws_security_group_rule" "ecs_egress_s3" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   type              = "egress"
   from_port         = 443
