@@ -8,7 +8,7 @@ resource "aws_lb" "main" {
   name               = "bunshin"
   internal           = false
   load_balancer_type = "application"
-  security_groups    = [module.apne1.alb_security_group_id]
+  security_groups    = [aws_security_group.alb.id]
   subnets            = module.apne1.public_subnet_ids
 
   tags = merge(local.common_tags, {

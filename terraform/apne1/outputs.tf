@@ -33,22 +33,17 @@ output "runners_table_arn" {
   value       = aws_dynamodb_table.runners_apne1.arn
 }
 
-output "alb_security_group_id" {
-  description = "ID of the ALB security group"
-  value       = aws_security_group.alb.id
-}
-
-output "nginx_security_group_id" {
-  description = "ID of the nginx ECS task security group"
-  value       = aws_security_group.nginx.id
-}
-
 output "broker_security_group_id" {
   description = "ID of the broker ECS task security group"
   value       = aws_security_group.broker.id
 }
 
-output "runner_security_group_id" {
-  description = "ID of the runner ECS task security group"
-  value       = aws_security_group.runner.id
+output "vpc_endpoint_for_ecs_security_group_id" {
+  description = "ID of the VPC endpoint security group used by ECS tasks"
+  value       = aws_security_group.apne1_vpc_endpoint_for_ecs.id
+}
+
+output "s3_prefix_list_id" {
+  description = "Prefix list ID of the S3 VPC endpoint"
+  value       = aws_vpc_endpoint.apne1_s3.prefix_list_id
 }

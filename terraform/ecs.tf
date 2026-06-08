@@ -155,7 +155,7 @@ resource "aws_ecs_service" "nginx" {
 
   network_configuration {
     subnets         = module.apne1.ecs_subnet_ids
-    security_groups = [module.apne1.nginx_security_group_id]
+    security_groups = [aws_security_group.nginx.id]
   }
 
   load_balancer {
@@ -201,7 +201,7 @@ resource "aws_ecs_service" "runner" {
 
   network_configuration {
     subnets         = module.apne1.ecs_subnet_ids
-    security_groups = [module.apne1.runner_security_group_id]
+    security_groups = [aws_security_group.runner.id]
   }
 
   tags = merge(local.common_tags, {
