@@ -41,7 +41,7 @@ resource "aws_vpc_endpoint" "apne3_ecr_api" {
   service_name      = "com.amazonaws.ap-northeast-3.ecr.api"
   vpc_endpoint_type = "Interface"
 
-  subnet_ids         = [aws_subnet.apne3_private[0].id]
+  subnet_ids         = local.broker_subnet_ids
   security_group_ids = [aws_security_group.vpc_endpoint_for_ecs.id]
 
   private_dns_enabled = true
@@ -56,7 +56,7 @@ resource "aws_vpc_endpoint" "apne3_ecr_dkr" {
   service_name      = "com.amazonaws.ap-northeast-3.ecr.dkr"
   vpc_endpoint_type = "Interface"
 
-  subnet_ids         = [aws_subnet.apne3_private[0].id]
+  subnet_ids         = local.broker_subnet_ids
   security_group_ids = [aws_security_group.vpc_endpoint_for_ecs.id]
 
   private_dns_enabled = true
@@ -71,7 +71,7 @@ resource "aws_vpc_endpoint" "apne3_logs" {
   service_name      = "com.amazonaws.ap-northeast-3.logs"
   vpc_endpoint_type = "Interface"
 
-  subnet_ids         = slice(aws_subnet.apne3_private[*].id, 1, 3)
+  subnet_ids         = local.broker_subnet_ids
   security_group_ids = [aws_security_group.vpc_endpoint_for_ecs.id]
 
   private_dns_enabled = true

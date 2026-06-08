@@ -54,7 +54,7 @@ resource "aws_vpc_endpoint" "apne1_ecr_api" {
   service_name      = "com.amazonaws.ap-northeast-1.ecr.api"
   vpc_endpoint_type = "Interface"
 
-  subnet_ids         = [module.apne1.private_subnet_ids[0]]
+  subnet_ids         = local.apne1_ecs_subnet_ids
   security_group_ids = [aws_security_group.apne1_vpc_endpoint_for_ecs.id]
 
   private_dns_enabled = true
@@ -71,7 +71,7 @@ resource "aws_vpc_endpoint" "apne1_ecr_dkr" {
   service_name      = "com.amazonaws.ap-northeast-1.ecr.dkr"
   vpc_endpoint_type = "Interface"
 
-  subnet_ids         = [module.apne1.private_subnet_ids[0]]
+  subnet_ids         = local.apne1_ecs_subnet_ids
   security_group_ids = [aws_security_group.apne1_vpc_endpoint_for_ecs.id]
 
   private_dns_enabled = true
@@ -88,7 +88,7 @@ resource "aws_vpc_endpoint" "apne1_logs" {
   service_name      = "com.amazonaws.ap-northeast-1.logs"
   vpc_endpoint_type = "Interface"
 
-  subnet_ids         = slice(module.apne1.private_subnet_ids, 1, 3)
+  subnet_ids         = local.apne1_ecs_subnet_ids
   security_group_ids = [aws_security_group.apne1_vpc_endpoint_for_ecs.id]
 
   private_dns_enabled = true
@@ -149,7 +149,7 @@ resource "aws_vpc_endpoint" "apne1_bedrock_runtime" {
   service_name      = "com.amazonaws.ap-northeast-1.bedrock-runtime"
   vpc_endpoint_type = "Interface"
 
-  subnet_ids         = module.apne1.private_subnet_ids
+  subnet_ids         = local.apne1_ecs_subnet_ids
   security_group_ids = [aws_security_group.apne1_bedrock_endpoint.id]
 
   private_dns_enabled = true

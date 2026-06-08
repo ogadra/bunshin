@@ -64,9 +64,14 @@ resource "aws_ecs_service" "broker" {
   task_definition = aws_ecs_task_definition.broker.arn
   desired_count   = local.broker_desired_count
   launch_type     = "FARGATE"
+  depends_on = [
+    aws_iam_role_policy.broker_execution_ecr,
+    aws_iam_role_policy.broker_execution_logs,
+    aws_iam_role_policy.broker_dynamodb,
+  ]
 
   network_configuration {
-    subnets         = aws_subnet.apne3_private[*].id
+    subnets         = local.broker_subnet_ids
     security_groups = [aws_security_group.broker.id]
   }
 

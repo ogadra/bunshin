@@ -6,6 +6,7 @@ locals {
 
   broker_port          = 8080
   broker_desired_count = 6
+  broker_subnet_ids    = slice(aws_subnet.apne3_private[*].id, 0, 2)
 
   ecr_registry          = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.id}.amazonaws.com"
   broker_repository_arn = "arn:aws:ecr:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:repository/bunshin/broker"
