@@ -13,17 +13,6 @@ resource "aws_security_group" "broker" {
   }
 }
 
-resource "aws_security_group_rule" "broker_ingress_local_stack" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  type              = "ingress"
-  from_port         = local.broker_port
-  to_port           = local.broker_port
-  protocol          = "tcp"
-  cidr_blocks       = [local.vpc_cidr]
-  security_group_id = aws_security_group.broker.id
-  description       = "HTTP from local stack"
-}
-
 resource "aws_security_group_rule" "broker_egress_dynamodb" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   type              = "egress"
