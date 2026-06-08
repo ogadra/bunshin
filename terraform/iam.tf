@@ -13,7 +13,7 @@ data "aws_iam_policy_document" "ecs_tasks_assume_role" {
 
 # ECS task execution roles per service
 resource "aws_iam_role" "ecs_task_execution" {
-  for_each = local.ecs_services
+  for_each = local.root_ecs_services
 
   name               = "bunshin-${each.key}-task-execution"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
@@ -25,7 +25,7 @@ resource "aws_iam_role" "ecs_task_execution" {
 
 # ECR pull permissions scoped to each service repository
 data "aws_iam_policy_document" "execution_ecr" {
-  for_each = local.ecs_services
+  for_each = local.root_ecs_services
 
   statement {
     effect = "Allow"
@@ -46,7 +46,7 @@ data "aws_iam_policy_document" "execution_ecr" {
 
 resource "aws_iam_role_policy" "execution_ecr" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  for_each = local.ecs_services
+  for_each = local.root_ecs_services
 
   name   = "bunshin-${each.key}-execution-ecr"
   role   = aws_iam_role.ecs_task_execution[each.key].id
@@ -55,7 +55,7 @@ resource "aws_iam_role_policy" "execution_ecr" {
 
 # CloudWatch Logs permissions scoped to each service log group
 data "aws_iam_policy_document" "execution_logs" {
-  for_each = local.ecs_services
+  for_each = local.root_ecs_services
 
   statement {
     effect = "Allow"
@@ -69,7 +69,7 @@ data "aws_iam_policy_document" "execution_logs" {
 
 resource "aws_iam_role_policy" "execution_logs" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  for_each = local.ecs_services
+  for_each = local.root_ecs_services
 
   name   = "bunshin-${each.key}-execution-logs"
   role   = aws_iam_role.ecs_task_execution[each.key].id
@@ -78,7 +78,7 @@ resource "aws_iam_role_policy" "execution_logs" {
 
 # Task roles per service
 resource "aws_iam_role" "task" {
-  for_each = local.ecs_services
+  for_each = local.root_ecs_services
 
   name               = "bunshin-${each.key}-task"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
@@ -86,40 +86,6 @@ resource "aws_iam_role" "task" {
   tags = merge(local.common_tags, {
     Service = each.key
   })
-}
-
-# broker: DynamoDB access
-data "aws_iam_policy_document" "broker_dynamodb" {
-  statement {
-    effect = "Allow"
-    actions = [
-      "dynamodb:GetItem",
-      "dynamodb:PutItem",
-      "dynamodb:UpdateItem",
-      "dynamodb:DeleteItem",
-    ]
-    resources = [
-      module.apne1.runners_table_arn,
-    ]
-  }
-
-  statement {
-    effect = "Allow"
-    actions = [
-      "dynamodb:Query",
-    ]
-    resources = [
-      "${module.apne1.runners_table_arn}/index/session-index",
-      "${module.apne1.runners_table_arn}/index/idle-index",
-    ]
-  }
-}
-
-resource "aws_iam_role_policy" "broker_dynamodb" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  name   = "bunshin-broker-dynamodb"
-  role   = aws_iam_role.task["broker"].id
-  policy = data.aws_iam_policy_document.broker_dynamodb.json
 }
 
 # runner: Bedrock InvokeModel access via JP inference profile
