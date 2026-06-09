@@ -67,6 +67,13 @@ func defaultInitHandler() (*handler.Handler, error) {
 	if region == "" {
 		return nil, fmt.Errorf("missing required environment variable: AWS_REGION")
 	}
+	stackName := os.Getenv("BUNSHIN_STACK")
+	if stackName == "" {
+		return nil, fmt.Errorf("missing required environment variable: BUNSHIN_STACK")
+	}
+	if !handler.ValidStackName(stackName) {
+		return nil, fmt.Errorf("invalid BUNSHIN_STACK: %s", stackName)
+	}
 
 	accessKey := os.Getenv("AWS_ACCESS_KEY_ID")
 	secretKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
@@ -98,7 +105,7 @@ func defaultInitHandler() (*handler.Handler, error) {
 	repo := store.NewDynamoRepository(client, "bunshin-runners")
 	checker := healthcheck.NewHTTPChecker(&http.Client{Timeout: 3 * time.Second})
 	svc := service.NewBrokerService(repo, service.WithChecker(checker))
-	return handler.NewHandler(svc), nil
+	return handler.NewHandlerWithStack(svc, stackName), nil
 }
 
 // run はサーバーの起動とグレースフルシャットダウンを行う。

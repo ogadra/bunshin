@@ -162,6 +162,7 @@ func TestDefaultInitHandler(t *testing.T) {
 
 	t.Setenv("DYNAMODB_ENDPOINT", "http://localhost:18000")
 	t.Setenv("AWS_REGION", "ap-northeast-1")
+	t.Setenv("BUNSHIN_STACK", "apne1")
 	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "localdev")
 
@@ -189,12 +190,45 @@ func TestDefaultInitHandler_MissingRegion(t *testing.T) {
 	}
 }
 
+// TestDefaultInitHandler_MissingStack は BUNSHIN_STACK が未設定時にエラーを返すことを検証する。
+func TestDefaultInitHandler_MissingStack(t *testing.T) {
+	saveAndRestore(t)
+
+	t.Setenv("AWS_REGION", "ap-northeast-1")
+	t.Setenv("BUNSHIN_STACK", "")
+
+	_, err := defaultInitHandler()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "BUNSHIN_STACK") {
+		t.Errorf("error = %q, want to contain %q", err.Error(), "BUNSHIN_STACK")
+	}
+}
+
+// TestDefaultInitHandler_InvalidStack は BUNSHIN_STACK が cookie に保存できない値の場合にエラーを返すことを検証する。
+func TestDefaultInitHandler_InvalidStack(t *testing.T) {
+	saveAndRestore(t)
+
+	t.Setenv("AWS_REGION", "ap-northeast-1")
+	t.Setenv("BUNSHIN_STACK", "apne1;bad")
+
+	_, err := defaultInitHandler()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "BUNSHIN_STACK") {
+		t.Errorf("error = %q, want to contain %q", err.Error(), "BUNSHIN_STACK")
+	}
+}
+
 // TestDefaultInitHandler_WithoutStaticCredentials は静的クレデンシャルなしでも Handler を返すことを検証する。
 func TestDefaultInitHandler_WithoutStaticCredentials(t *testing.T) {
 	saveAndRestore(t)
 
 	t.Setenv("DYNAMODB_ENDPOINT", "http://localhost:18000")
 	t.Setenv("AWS_REGION", "ap-northeast-1")
+	t.Setenv("BUNSHIN_STACK", "apne1")
 	t.Setenv("AWS_ACCESS_KEY_ID", "")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "")
 
@@ -213,6 +247,7 @@ func TestDefaultInitHandler_WithoutEndpoint(t *testing.T) {
 
 	t.Setenv("DYNAMODB_ENDPOINT", "")
 	t.Setenv("AWS_REGION", "ap-northeast-1")
+	t.Setenv("BUNSHIN_STACK", "apne1")
 	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "localdev")
 
@@ -230,6 +265,7 @@ func TestDefaultInitHandler_PartialCredentials(t *testing.T) {
 	saveAndRestore(t)
 
 	t.Setenv("AWS_REGION", "ap-northeast-1")
+	t.Setenv("BUNSHIN_STACK", "apne1")
 	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "")
 
@@ -248,6 +284,7 @@ func TestNewRouter_WithHandler(t *testing.T) {
 
 	t.Setenv("DYNAMODB_ENDPOINT", "http://localhost:18000")
 	t.Setenv("AWS_REGION", "ap-northeast-1")
+	t.Setenv("BUNSHIN_STACK", "apne1")
 	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "localdev")
 	h, err := defaultInitHandler()
@@ -280,6 +317,7 @@ func TestDefaultInitHandler_LoadConfigError(t *testing.T) {
 
 	t.Setenv("DYNAMODB_ENDPOINT", "http://localhost:18000")
 	t.Setenv("AWS_REGION", "ap-northeast-1")
+	t.Setenv("BUNSHIN_STACK", "apne1")
 	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "localdev")
 	loadAWSConfig = func(_ context.Context, _ ...func(*config.LoadOptions) error) (aws.Config, error) {
