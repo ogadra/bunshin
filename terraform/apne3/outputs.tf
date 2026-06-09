@@ -8,6 +8,16 @@ output "vpc_cidr" {
   value       = local.vpc_cidr
 }
 
+output "broker_ecs_service_id" {
+  description = "ID of the broker ECS service"
+  value       = aws_ecs_service.broker.id
+}
+
+output "runner_ecs_service_id" {
+  description = "ID of the runner ECS service"
+  value       = aws_ecs_service.runner.id
+}
+
 output "private_route_table_id" {
   description = "ID of the private route table"
   value       = aws_route_table.apne3_private.id
