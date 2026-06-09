@@ -19,6 +19,8 @@ var runnerHostRe = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
 // sessionIDCookie は session 識別用の cookie 名。
 const sessionIDCookie = "session_id"
 
+const delegatedResolveHeader = "X-Bunshin-Delegated-Resolve"
+
 // Handler は broker の HTTP ハンドラー。
 type Handler struct {
 	svc service.Service
