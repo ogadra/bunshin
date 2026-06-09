@@ -27,13 +27,23 @@ FROM build AS binary
 RUN CGO_ENABLED=0 go build -o /server .
 
 # production image
-FROM debian:bookworm-20260518-slim@sha256:0104b334637a5f19aa9c983a91b54c89887c0984081f2068983107a6f6c21eeb
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    bash=5.2* \
-    coreutils=9.1* \
-    && rm -rf /var/lib/apt/lists/*
-RUN useradd -r -s /usr/sbin/nologin appuser
-COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+FROM alpine:3.23@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11
+RUN adduser -D -H -s /sbin/nologin appuser
+COPY apk-checksums.sha256 /tmp/apks.sha256
+RUN set -euxo pipefail; \
+    mkdir -p /tmp/apks; \
+    apk update; \
+    apk fetch --recursive -o /tmp/apks \
+        bash=5.3.3-r1 \
+        ca-certificates=20260413-r0 \
+        curl=8.19.0-r0; \
+    apk verify /tmp/apks/*.apk; \
+    find /tmp/apks -type f -name '*.apk' -exec basename {} \; | sort > /tmp/apks.actual; \
+    awk '{print $2}' /tmp/apks.sha256 | sort > /tmp/apks.expected; \
+    diff -u /tmp/apks.expected /tmp/apks.actual; \
+    (cd /tmp/apks && sha256sum -c /tmp/apks.sha256); \
+    apk --network=no add --no-cache /tmp/apks/*.apk; \
+    rm -rf /tmp/apks /tmp/apks.actual /tmp/apks.expected /tmp/apks.sha256 /var/cache/apk/*
 COPY --from=binary /server /server
 USER appuser
 EXPOSE 8080

@@ -24,7 +24,7 @@ services:
     env_file:
       - broker/.env.example
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8080'"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
       interval: 5s
       timeout: 3s
       retries: 5
