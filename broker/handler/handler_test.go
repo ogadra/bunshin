@@ -42,6 +42,14 @@ func (m *mockService) DeregisterRunner(ctx context.Context, runnerID string) err
 	return m.deregisterRunnerFn(ctx, runnerID)
 }
 
+type mockResolveClient struct {
+	resolveFn func(ctx context.Context, target StackTarget, sessionID string, delegated bool) (*RemoteResolveResult, error)
+}
+
+func (m *mockResolveClient) Resolve(ctx context.Context, target StackTarget, sessionID string, delegated bool) (*RemoteResolveResult, error) {
+	return m.resolveFn(ctx, target, sessionID, delegated)
+}
+
 // newTestRouter はテスト用のルーターを構築する。
 func newTestRouter(h *Handler) *gin.Engine {
 	r := gin.New()
@@ -196,6 +204,83 @@ func TestGetResolve_NoIdleRunner(t *testing.T) {
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+}
+
+func TestGetResolve_FallbackOnNoIdleRunner(t *testing.T) {
+	t.Parallel()
+	h := NewHandler(&mockService{
+		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
+			return nil, store.ErrNoIdleRunner
+		},
+	}, WithStack("apne1"), WithFallbackTargets([]StackTarget{
+		{Stack: "apne1", URL: "http://broker-apne1:8080"},
+		{Stack: "apne3", URL: "http://broker-apne3:8080"},
+	}), WithResolveClient(&mockResolveClient{
+		resolveFn: func(_ context.Context, target StackTarget, sessionID string, delegated bool) (*RemoteResolveResult, error) {
+			if target.Stack != "apne3" || sessionID != "" || !delegated {
+				t.Fatalf("fallback args = %+v %q %v", target, sessionID, delegated)
+			}
+			return &RemoteResolveResult{SessionID: "apne3-remote-sess", RunnerURL: "http://10.0.3.1:8080", Reassigned: true}, nil
+		},
+	}))
+	r := newTestRouter(h)
+
+	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK || rec.Header().Get("X-Runner-Url") != "http://10.0.3.1:8080" {
+		t.Fatalf("response = %d %q", rec.Code, rec.Header().Get("X-Runner-Url"))
+	}
+	if rec.Header().Get("X-Session-Reassigned") != "true" {
+		t.Fatal("expected delegated reassigned signal to propagate")
+	}
+	if !hasCookie(rec.Result().Cookies(), sessionIDCookie, "apne3-remote-sess") {
+		t.Fatal("expected delegated session_id cookie")
+	}
+}
+
+func TestGetResolve_FallbackFailures(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		header     bool
+		resolveErr error
+		want       int
+	}{
+		{"all no idle", false, store.ErrNoIdleRunner, http.StatusServiceUnavailable},
+		{"delegate error", false, errors.New("delegate failed"), http.StatusBadGateway},
+		{"delegated header", true, nil, http.StatusServiceUnavailable},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			h := NewHandler(&mockService{
+				resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
+					return nil, store.ErrNoIdleRunner
+				},
+			}, WithStack("apne1"), WithFallbackTargets([]StackTarget{{Stack: "apne3", URL: "http://broker-apne3:8080"}}), WithResolveClient(&mockResolveClient{
+				resolveFn: func(context.Context, StackTarget, string, bool) (*RemoteResolveResult, error) {
+					if tt.header {
+						t.Fatal("fallback should not run")
+					}
+					return nil, tt.resolveErr
+				},
+			}))
+			r := newTestRouter(h)
+
+			req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
+			if tt.header {
+				req.Header.Set(delegatedResolveHeader, "true")
+			}
+			rec := httptest.NewRecorder()
+			r.ServeHTTP(rec, req)
+
+			if rec.Code != tt.want {
+				t.Fatalf("status = %d, want %d", rec.Code, tt.want)
+			}
+		})
 	}
 }
 
@@ -489,6 +574,15 @@ func TestGetResolve_CookieSecure(t *testing.T) {
 		}
 	}
 	t.Error("session_id cookie not found")
+}
+
+func hasCookie(cookies []*http.Cookie, name, value string) bool {
+	for _, c := range cookies {
+		if c.Name == name && c.Value == value {
+			return true
+		}
+	}
+	return false
 }
 
 // TestGetResolve_Reassigned はセッション再割当て時に X-Session-Reassigned ヘッダーが設定されることを検証する。

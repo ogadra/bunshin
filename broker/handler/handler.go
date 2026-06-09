@@ -23,15 +23,47 @@ const delegatedResolveHeader = "X-Bunshin-Delegated-Resolve"
 
 // Handler は broker の HTTP ハンドラー。
 type Handler struct {
-	svc service.Service
+	svc             service.Service
+	localStack      string
+	fallbackTargets []StackTarget
+	resolveClient   ResolveClient
+}
+
+type Option func(*Handler)
+
+func WithStack(stack string) Option {
+	return func(h *Handler) {
+		h.localStack = stack
+	}
+}
+
+func WithFallbackTargets(targets []StackTarget) Option {
+	return func(h *Handler) {
+		h.fallbackTargets = append([]StackTarget(nil), targets...)
+	}
+}
+
+func WithResolveClient(client ResolveClient) Option {
+	return func(h *Handler) {
+		if client != nil {
+			h.resolveClient = client
+		}
+	}
 }
 
 // NewHandler は Handler を生成する。svc が nil の場合は panic する。
-func NewHandler(svc service.Service) *Handler {
+func NewHandler(svc service.Service, opts ...Option) *Handler {
 	if svc == nil {
 		panic("handler: nil service")
 	}
-	return &Handler{svc: svc}
+	h := &Handler{
+		svc:           svc,
+		resolveClient: NewHTTPResolveClient(http.DefaultClient),
+	}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
 }
 
 // registerRequest は POST /internal/runners/register のリクエストボディ。
@@ -64,6 +96,9 @@ func (h *Handler) GetResolve(c *gin.Context) {
 	result, err := h.svc.ResolveSession(c.Request.Context(), sessionID)
 	if err != nil {
 		if errors.Is(err, store.ErrNoIdleRunner) {
+			if c.GetHeader(delegatedResolveHeader) != "true" && h.resolveFromFallbacks(c, sessionID) {
+				return
+			}
 			writeError(c, http.StatusServiceUnavailable, model.CodeNoIdleRunner, "no idle runner available")
 			return
 		}
@@ -79,6 +114,39 @@ func (h *Handler) GetResolve(c *gin.Context) {
 	}
 	c.Header("X-Runner-Url", result.RunnerURL)
 	c.Status(http.StatusOK)
+}
+
+func (h *Handler) resolveFromFallbacks(c *gin.Context, sessionID string) bool {
+	for _, target := range h.fallbackTargets {
+		if h.localStack != "" && target.Stack == h.localStack {
+			continue
+		}
+		if h.resolveFromTarget(c, target, sessionID, true) {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *Handler) resolveFromTarget(c *gin.Context, target StackTarget, sessionID string, delegated bool) bool {
+	result, err := h.resolveClient.Resolve(c.Request.Context(), target, sessionID, delegated)
+	if err != nil {
+		if errors.Is(err, store.ErrNoIdleRunner) {
+			return false
+		}
+		writeError(c, http.StatusBadGateway, model.CodeInternalError, "failed to delegate resolve")
+		return true
+	}
+	c.SetSameSite(http.SameSiteStrictMode)
+	if result.SessionID != "" && result.SessionID != sessionID {
+		c.SetCookie(sessionIDCookie, result.SessionID, 0, "/", "", true, true)
+	}
+	if result.Reassigned {
+		c.Header("X-Session-Reassigned", "true")
+	}
+	c.Header("X-Runner-Url", result.RunnerURL)
+	c.Status(http.StatusOK)
+	return true
 }
 
 // runner の PrivateURL が http スキームの host[:port] 形式であることを検証する。
