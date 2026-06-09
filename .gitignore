@@ -3,7 +3,8 @@ runner/server
 .codex
 __pycache__/
 .env
-terraform/.terraform/
+.takt/
+.terraform/
 terraform/*.tfstate
 terraform/*.tfstate.backup
 terraform/*_override.tf
