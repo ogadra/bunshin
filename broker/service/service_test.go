@@ -225,6 +225,31 @@ func TestCreateSession_Success(t *testing.T) {
 	}
 }
 
+// TestCreateSession_StackPrefix は WithStackPrefix 指定時に session ID へ <stack>-<id> 形式で発行スタックが同梱されることを検証する。
+func TestCreateSession_StackPrefix(t *testing.T) {
+	t.Parallel()
+	repo := &mockRepository{
+		acquireIdleFn: func(_ context.Context, sessionID string, _ int) (*model.Runner, error) {
+			if sessionID != "apne1-fixed-session" {
+				t.Errorf("sessionID = %q, want %q", sessionID, "apne1-fixed-session")
+			}
+			return &model.Runner{RunnerID: "r1", CurrentSessionID: sessionID, PrivateURL: "http://10.0.0.1:8080"}, nil
+		},
+	}
+	svc := NewBrokerService(repo,
+		WithSessionFn(func() (string, error) { return "fixed-session", nil }),
+		WithStackPrefix("apne1"),
+	)
+
+	result, err := svc.createSession(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.SessionID != "apne1-fixed-session" {
+		t.Errorf("SessionID = %q, want %q", result.SessionID, "apne1-fixed-session")
+	}
+}
+
 // TestCreateSession_SessionFnError はセッション ID 生成のエラーを検証する。
 func TestCreateSession_SessionFnError(t *testing.T) {
 	t.Parallel()
