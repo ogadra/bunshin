@@ -16,9 +16,17 @@ locals {
 
   # Map of service name to ECS service ID for IAM policy resource references
   ecs_service_ids = {
-    nginx  = aws_ecs_service.nginx.id
-    broker = module.apne1.broker_ecs_service_id
-    runner = aws_ecs_service.runner.id
+    nginx = [
+      aws_ecs_service.nginx.id,
+    ]
+    broker = [
+      module.apne1.broker_ecs_service_id,
+      module.apne3.broker_ecs_service_id,
+    ]
+    runner = [
+      module.apne1.runner_ecs_service_id,
+      module.apne3.runner_ecs_service_id,
+    ]
   }
 }
 

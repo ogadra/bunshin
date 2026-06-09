@@ -32,8 +32,53 @@ resource "aws_subnet" "apne3_private" {
   })
 }
 
+resource "aws_internet_gateway" "apne3" {
+  vpc_id = aws_vpc.apne3.id
+
+  tags = merge(local.common_tags, {
+    Name = "bunshin-apne3"
+  })
+}
+
+resource "aws_nat_gateway" "apne3" {
+  vpc_id            = aws_vpc.apne3.id
+  availability_mode = "regional"
+
+  tags = merge(local.common_tags, {
+    Name = "bunshin-apne3-nat"
+  })
+
+  depends_on = [aws_internet_gateway.apne3]
+}
+
+resource "aws_route_table" "apne3_public" {
+  vpc_id = aws_vpc.apne3.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.apne3.id
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "bunshin-apne3-public"
+  })
+}
+
+resource "aws_route_table_association" "apne3_public" {
+  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  count = length(local.azs)
+
+  subnet_id      = aws_subnet.apne3_public[count.index].id
+  route_table_id = aws_route_table.apne3_public.id
+}
+
 resource "aws_route_table" "apne3_private" {
   vpc_id = aws_vpc.apne3.id
+
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.apne3.id
+  }
 
   tags = merge(local.common_tags, {
     Name = "bunshin-apne3-private"

@@ -6,13 +6,23 @@ locals {
 
   ecs_services = {
     broker = { port = 8080 }
+    runner = { port = 3000 }
   }
 
   broker_desired_count = 6
-  broker_subnet_ids    = slice(aws_subnet.apne3_private[*].id, 0, 2)
+  runner_desired_count = var.runner_desired_count
+  ecs_subnet_ids       = slice(aws_subnet.apne3_private[*].id, 0, 2)
 
-  ecr_registry          = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.id}.amazonaws.com"
-  broker_repository_arn = "arn:aws:ecr:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:repository/bunshin/broker"
+  ecr_registry = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.id}.amazonaws.com"
+  ecr_repository_arns = {
+    for service in keys(local.ecs_services) :
+    service => "arn:aws:ecr:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:repository/bunshin/${service}"
+  }
+
+  jp_cris_destination_regions = [
+    "ap-northeast-1",
+    "ap-northeast-3",
+  ]
 
   common_tags = {
     Project   = "Bunshin"

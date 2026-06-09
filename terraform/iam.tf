@@ -87,35 +87,3 @@ resource "aws_iam_role" "task" {
     Service = each.key
   })
 }
-
-# runner: Bedrock InvokeModel access via JP inference profile
-data "aws_iam_policy_document" "runner_bedrock" {
-  statement {
-    sid       = "AllowInferenceProfile"
-    effect    = "Allow"
-    actions   = ["bedrock:InvokeModel"]
-    resources = ["arn:aws:bedrock:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:inference-profile/jp.anthropic.claude-sonnet-4-6"]
-  }
-
-  statement {
-    sid     = "AllowFoundationModel"
-    effect  = "Allow"
-    actions = ["bedrock:InvokeModel"]
-    resources = [
-      for region in local.jp_cris_destination_regions :
-      "arn:aws:bedrock:${region}::foundation-model/anthropic.claude-sonnet-4-6"
-    ]
-    condition {
-      test     = "StringEquals"
-      variable = "bedrock:InferenceProfileArn"
-      values   = ["arn:aws:bedrock:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:inference-profile/jp.anthropic.claude-sonnet-4-6"]
-    }
-  }
-}
-
-resource "aws_iam_role_policy" "runner_bedrock" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  name   = "bunshin-runner-bedrock"
-  role   = aws_iam_role.task["runner"].id
-  policy = data.aws_iam_policy_document.runner_bedrock.json
-}

@@ -6,8 +6,7 @@ locals {
   }
 
   root_ecs_services = {
-    nginx  = local.ecs_services["nginx"]
-    runner = local.ecs_services["runner"]
+    nginx = local.ecs_services["nginx"]
   }
 
   common_tags = {
@@ -15,9 +14,4 @@ locals {
     ManagedBy = "terraform"
   }
 
-  # Destination regions for JP cross-region inference profile from ap-northeast-1
-  jp_cris_destination_regions = [
-    "ap-northeast-1",
-    "ap-northeast-3",
-  ]
 }

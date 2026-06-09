@@ -71,7 +71,7 @@ resource "aws_ecs_service" "broker" {
   ]
 
   network_configuration {
-    subnets         = local.broker_subnet_ids
+    subnets         = local.ecs_subnet_ids
     security_groups = [aws_security_group.broker.id]
   }
 
@@ -81,5 +81,73 @@ resource "aws_ecs_service" "broker" {
 
   tags = merge(local.common_tags, {
     Service = "broker"
+  })
+}
+
+resource "aws_ecs_task_definition" "runner" {
+  # checkov:skip=CKV_AWS_336:runner executes user commands and requires writable filesystem
+  family                   = "bunshin-runner"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = 256
+  memory                   = 512
+  execution_role_arn       = aws_iam_role.ecs_task_execution["runner"].arn
+  task_role_arn            = aws_iam_role.task["runner"].arn
+
+  runtime_platform {
+    cpu_architecture        = "X86_64"
+    operating_system_family = "LINUX"
+  }
+
+  container_definitions = jsonencode([{
+    name      = "runner"
+    image     = "${local.ecr_registry}/bunshin/runner:latest"
+    essential = true
+
+    portMappings = [{
+      containerPort = local.ecs_services["runner"].port
+      protocol      = "tcp"
+    }]
+
+    environment = [
+      { name = "RUNNER_PORT", value = tostring(local.ecs_services["runner"].port) },
+      { name = "BROKER_URL", value = "http://${aws_service_discovery_service.broker.name}.${aws_service_discovery_private_dns_namespace.internal.name}:${local.ecs_services["broker"].port}" },
+      { name = "AWS_REGION", value = data.aws_region.current.id },
+    ]
+
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        "awslogs-group"         = aws_cloudwatch_log_group.ecs["runner"].name
+        "awslogs-region"        = data.aws_region.current.id
+        "awslogs-stream-prefix" = "runner"
+      }
+    }
+  }])
+
+  tags = merge(local.common_tags, {
+    Service = "runner"
+  })
+}
+
+resource "aws_ecs_service" "runner" {
+  name            = "bunshin-runner"
+  cluster         = aws_ecs_cluster.apne3.id
+  task_definition = aws_ecs_task_definition.runner.arn
+  desired_count   = local.runner_desired_count
+  launch_type     = "FARGATE"
+  depends_on = [
+    aws_iam_role_policy.execution_ecr["runner"],
+    aws_iam_role_policy.execution_logs["runner"],
+    aws_iam_role_policy.runner_bedrock,
+  ]
+
+  network_configuration {
+    subnets         = local.ecs_subnet_ids
+    security_groups = [aws_security_group.runner.id]
+  }
+
+  tags = merge(local.common_tags, {
+    Service = "runner"
   })
 }
