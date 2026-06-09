@@ -174,6 +174,51 @@ func TestDefaultInitHandler(t *testing.T) {
 	}
 }
 
+func TestParseFallbackTargets(t *testing.T) {
+	t.Parallel()
+	targets, err := parseFallbackTargets("apne3=http://broker-apne3:8080, apne1=https://broker-apne1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(targets) != 2 || targets[0].Stack != "apne3" || targets[1].URL != "https://broker-apne1" {
+		t.Fatalf("targets = %+v", targets)
+	}
+}
+
+func TestParseFallbackTargetsInvalid(t *testing.T) {
+	t.Parallel()
+	for _, raw := range []string{" ", "apne3", "=http://broker", "apne3=", "apne3=http://%zz", "apne3=ftp://broker", "apne3=http:///broker"} {
+		t.Run(raw, func(t *testing.T) {
+			t.Parallel()
+			targets, err := parseFallbackTargets(raw)
+			if strings.TrimSpace(raw) == "" {
+				if err != nil || targets != nil {
+					t.Fatalf("empty result = %+v, %v", targets, err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("expected error")
+			}
+		})
+	}
+}
+
+func TestDefaultInitHandler_InvalidFallbacks(t *testing.T) {
+	saveAndRestore(t)
+
+	t.Setenv("DYNAMODB_ENDPOINT", "http://localhost:18000")
+	t.Setenv("AWS_REGION", "ap-northeast-1")
+	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "localdev")
+	t.Setenv("BROKER_FALLBACKS", "apne3=ftp://broker")
+
+	_, err := defaultInitHandler()
+	if err == nil || !strings.Contains(err.Error(), "fallback url") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 // TestDefaultInitHandler_MissingRegion は AWS_REGION が未設定時にエラーを返すことを検証する。
 func TestDefaultInitHandler_MissingRegion(t *testing.T) {
 	saveAndRestore(t)

@@ -7,8 +7,10 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -97,8 +99,47 @@ func defaultInitHandler() (*handler.Handler, error) {
 	client := dynamodb.NewFromConfig(cfg, ddbOpts...)
 	repo := store.NewDynamoRepository(client, "bunshin-runners")
 	checker := healthcheck.NewHTTPChecker(&http.Client{Timeout: 3 * time.Second})
-	svc := service.NewBrokerService(repo, service.WithChecker(checker))
-	return handler.NewHandler(svc), nil
+	stack := os.Getenv("BROKER_STACK")
+	svc := service.NewBrokerService(repo, service.WithChecker(checker), service.WithStackPrefix(stack))
+	fallbackTargets, err := parseFallbackTargets(os.Getenv("BROKER_FALLBACKS"))
+	if err != nil {
+		return nil, err
+	}
+	return handler.NewHandler(
+		svc,
+		handler.WithStack(stack),
+		handler.WithFallbackTargets(fallbackTargets),
+		handler.WithResolveClient(handler.NewHTTPResolveClient(&http.Client{Timeout: 3 * time.Second})),
+	), nil
+}
+
+func parseFallbackTargets(raw string) ([]handler.StackTarget, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	entries := strings.Split(raw, ",")
+	targets := make([]handler.StackTarget, 0, len(entries))
+	for _, entry := range entries {
+		keyValue := strings.SplitN(strings.TrimSpace(entry), "=", 2)
+		if len(keyValue) != 2 || strings.TrimSpace(keyValue[0]) == "" || strings.TrimSpace(keyValue[1]) == "" {
+			return nil, fmt.Errorf("BROKER_FALLBACKS must be comma-separated stack=url entries")
+		}
+		stack := strings.TrimSpace(keyValue[0])
+		targetURL := strings.TrimSpace(keyValue[1])
+		u, err := url.Parse(targetURL)
+		if err != nil {
+			return nil, fmt.Errorf("parse fallback url for %s: %w", stack, err)
+		}
+		if u.Scheme != "http" && u.Scheme != "https" {
+			return nil, fmt.Errorf("fallback url for %s must use http or https", stack)
+		}
+		if u.Host == "" {
+			return nil, fmt.Errorf("fallback url for %s requires host", stack)
+		}
+		targets = append(targets, handler.StackTarget{Stack: stack, URL: targetURL})
+	}
+	return targets, nil
 }
 
 // run はサーバーの起動とグレースフルシャットダウンを行う。
