@@ -1,5 +1,5 @@
 # checkov:skip=CKV_DOCKER_2:health check is not needed for config test stage
-FROM openresty/openresty:1.27.1.2-alpine@sha256:761047d688bb91fe4eb42c42a05c794c54f274ee769ad54802b2c06247e8c38c AS config-test
+FROM openresty/openresty:1.31.1.1-alpine@sha256:23520ed7708e21bbc49229eae9bb1baf4ed915a262f84a9235ebf47fbf9cc3ac AS config-test
 RUN apk add --no-cache gettext
 COPY errors.conf /etc/nginx/errors.conf
 COPY lua/ /usr/local/openresty/nginx/lua/
@@ -13,7 +13,7 @@ RUN envsubst '${NGINX_RESOLVER} ${BROKER_HOST}' < /etc/nginx/nginx.conf.template
 USER nobody
 
 # checkov:skip=CKV_DOCKER_2:health check is managed by ECS task definition
-FROM openresty/openresty:1.27.1.2-alpine@sha256:761047d688bb91fe4eb42c42a05c794c54f274ee769ad54802b2c06247e8c38c
+FROM openresty/openresty:1.31.1.1-alpine@sha256:23520ed7708e21bbc49229eae9bb1baf4ed915a262f84a9235ebf47fbf9cc3ac
 RUN apk add --no-cache gettext \
     && adduser -D -H -s /sbin/nologin nginx \
     && chown -R nginx:nginx /usr/local/openresty/nginx /run
