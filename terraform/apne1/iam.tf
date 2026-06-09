@@ -31,7 +31,7 @@ data "aws_iam_policy_document" "execution_ecr" {
       "ecr:BatchGetImage",
       "ecr:BatchCheckLayerAvailability",
     ]
-    resources = [local.broker_repository_arn]
+    resources = [local.ecr_repository_arns[each.key]]
   }
 
   statement {
@@ -114,4 +114,35 @@ resource "aws_iam_role_policy" "broker_dynamodb" {
   name   = "bunshin-apne1-broker-dynamodb"
   role   = aws_iam_role.task["broker"].id
   policy = data.aws_iam_policy_document.broker_dynamodb.json
+}
+
+data "aws_iam_policy_document" "runner_bedrock" {
+  statement {
+    sid       = "AllowInferenceProfile"
+    effect    = "Allow"
+    actions   = ["bedrock:InvokeModel"]
+    resources = ["arn:aws:bedrock:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:inference-profile/jp.anthropic.claude-sonnet-4-6"]
+  }
+
+  statement {
+    sid     = "AllowFoundationModel"
+    effect  = "Allow"
+    actions = ["bedrock:InvokeModel"]
+    resources = [
+      for region in local.jp_cris_destination_regions :
+      "arn:aws:bedrock:${region}::foundation-model/anthropic.claude-sonnet-4-6"
+    ]
+    condition {
+      test     = "StringEquals"
+      variable = "bedrock:InferenceProfileArn"
+      values   = ["arn:aws:bedrock:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:inference-profile/jp.anthropic.claude-sonnet-4-6"]
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "runner_bedrock" {
+  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  name   = "bunshin-apne1-runner-bedrock"
+  role   = aws_iam_role.task["runner"].id
+  policy = data.aws_iam_policy_document.runner_bedrock.json
 }

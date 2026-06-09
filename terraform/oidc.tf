@@ -18,7 +18,7 @@ locals {
   ecs_service_ids = {
     nginx  = aws_ecs_service.nginx.id
     broker = module.apne1.broker_ecs_service_id
-    runner = aws_ecs_service.runner.id
+    runner = module.apne1.runner_ecs_service_id
   }
 }
 
