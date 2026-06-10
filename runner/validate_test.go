@@ -200,16 +200,16 @@ func TestClassifyValidated(t *testing.T) {
 	}
 }
 
-// TestClassifyNixRunWhitelisted verifies that nix run nixpkgs# commands
-// are classified as "whitelisted" when they contain no shell metacharacters.
+// TestClassifyNixRunWhitelisted verifies that nix run commands for prebuilt
+// safe apps are classified as "whitelisted" when they contain no shell metacharacters.
 func TestClassifyNixRunWhitelisted(t *testing.T) {
 	cases := []struct {
 		cmd  string
 		name string
 	}{
-		{"nix run nixpkgs#hello", "bare nix run nixpkgs"},
-		{"nix run nixpkgs#jq -- --help", "nix run with trailing args"},
-		{"  nix run nixpkgs#hello  ", "nix run with surrounding spaces"},
+		{"nix run nixpkgs#fastfetch", "nix run fastfetch"},
+		{"nix run nixpkgs#cowsay -- hi", "nix run cowsay with trailing args"},
+		{"  nix run nixpkgs#figlet  ", "nix run figlet with surrounding spaces"},
 		{"nix run nixpkgs#pokemonsay 'Nix'", "nix run pokemonsay with arg"},
 	}
 	for _, tc := range cases {
@@ -222,13 +222,15 @@ func TestClassifyNixRunWhitelisted(t *testing.T) {
 	}
 }
 
-// TestClassifyNixRunValidated verifies that nix run commands targeting non-nixpkgs
-// flake refs or containing shell metacharacters are classified as "validated".
+// TestClassifyNixRunValidated verifies that unavailable nixpkgs apps, non-nixpkgs
+// flake refs, and commands with shell metacharacters are classified as "validated".
 func TestClassifyNixRunValidated(t *testing.T) {
 	cases := []struct {
 		cmd  string
 		name string
 	}{
+		{"nix run nixpkgs#hello", "unavailable nixpkgs hello"},
+		{"nix run nixpkgs#jq -- --help", "unavailable nixpkgs jq"},
 		{"nix run github:user/repo#pkg", "non-nixpkgs flake ref"},
 		{"nix run nixpkgs#hello; rm -rf /", "semicolon chaining"},
 		{"nix run nixpkgs#hello && echo pwned", "ampersand chaining"},

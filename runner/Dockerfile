@@ -104,6 +104,7 @@ RUN HM_OUT="$(nix-build '<home-manager>' -A home-manager --no-out-link)" && \
 FROM alpine:3.23@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11
 
 ENV PATH="/usr/local/bin:/root/.nix-profile/bin:/nix/var/nix/profiles/default/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin" \
+    USER="root" \
     NIX_SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt" \
     SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"
 
