@@ -66,15 +66,9 @@ RUN nix build --no-link --print-out-paths --file /tmp/prebuilt-tools.nix > /tmp/
     prebuilt_tools="$(cat /tmp/prebuilt-tools-paths.txt)" && \
     mkdir -p /nix/var/nix/gcroots/prebuilt-tools /usr/local/bin && \
     nix-store --add-root /nix/var/nix/gcroots/prebuilt-tools/runner-prebuilt-tools --indirect -r "$prebuilt_tools" && \
-    for bin in fastfetch cowsay pokemonsay lolcat figlet ip awk; do \
+    for bin in ip awk; do \
       ln -sf "$prebuilt_tools/bin/$bin" "/usr/local/bin/$bin"; \
     done
-
-COPY ./nix/make-registry.sh /tmp/make-registry.sh
-RUN /root/.nix-profile/bin/bash /tmp/make-registry.sh /tmp/prebuilt-tools-paths.txt
-
-COPY ./nix/root-registry.sh /tmp/root-registry.sh
-RUN /root/.nix-profile/bin/bash /tmp/root-registry.sh
 
 RUN mkdir -p /app
 COPY ./app/ /app/
@@ -87,8 +81,28 @@ RUN HM_OUT="$(nix-build '<home-manager>' -A home-manager --no-out-link)" && \
     NIX_REAL="$(readlink -f "$(command -v nix)")" && \
     BASH_REAL="$(readlink -f /root/.nix-profile/bin/bash)" && \
     printf '%s\n' '#!/bin/sh' "exec \"$HM_REAL\" \"\$@\"" > /usr/local/bin/home-manager && \
-    ln -sf "$NIX_REAL" /usr/local/bin/nix && \
     ln -sf "$BASH_REAL" /usr/local/bin/bash && \
+    printf '%s\n' \
+      '#!/bin/sh' \
+      "NIX_REAL=\"$NIX_REAL\"" \
+      'PREBUILT_TOOLS="/nix/var/nix/gcroots/prebuilt-tools/runner-prebuilt-tools"' \
+      'if [ "$1" = "run" ]; then' \
+      '  case "${2:-}" in' \
+      '    nixpkgs#fastfetch) prog="fastfetch" ;;' \
+      '    nixpkgs#cowsay) prog="cowsay" ;;' \
+      '    nixpkgs#pokemonsay) prog="pokemonsay" ;;' \
+      '    nixpkgs#lolcat) prog="lolcat" ;;' \
+      '    nixpkgs#figlet) prog="figlet" ;;' \
+      '  esac' \
+      '  if [ -n "${prog:-}" ]; then' \
+      '    shift 2' \
+      '    [ "${1:-}" = "--" ] && shift' \
+      '    exec "$PREBUILT_TOOLS/bin/$prog" "$@"' \
+      '  fi' \
+      'fi' \
+      'exec "$NIX_REAL" "$@"' \
+      > /usr/local/bin/nix && \
+    chmod +x /usr/local/bin/nix && \
     mkdir -p /nix/var/nix/gcroots/runtime && \
     nix-store --add-root /nix/var/nix/gcroots/runtime/home-manager --indirect -r "$HM_OUT" && \
     nix-store --add-root /nix/var/nix/gcroots/runtime/nix --indirect -r "$NIX_REAL" && \
@@ -115,9 +129,8 @@ RUN addgroup -S nixbld && \
     done
 
 COPY ./nix/runtime.conf /etc/nix/nix.conf
-COPY ./nix/path.sh /etc/profile.d/nix-path.sh
+COPY ./nix/registry.json /etc/nix/registry.json
 COPY --from=nix-runtime /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=nix-runtime /etc/nix/registry.json /etc/nix/registry.json
 COPY --from=nix-runtime /nix /nix
 COPY --from=nix-runtime /root /root
 COPY --from=nix-runtime /usr/local/bin /usr/local/bin
