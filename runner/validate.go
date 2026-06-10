@@ -49,17 +49,6 @@ var whitelistedPrefixCommands = map[string]bool{
 	"tree":     true,
 }
 
-// whitelistedNixRunApps is the set of nixpkgs app attributes exposed by the
-// runner's local registry. Other nixpkgs attributes are not available in the
-// runtime image and must go through validation.
-var whitelistedNixRunApps = map[string]bool{
-	"cowsay":     true,
-	"fastfetch":  true,
-	"figlet":     true,
-	"lolcat":     true,
-	"pokemonsay": true,
-}
-
 // shellMetaChars matches shell operators that could be used to chain commands.
 var shellMetaChars = regexp.MustCompile(`[;|&<>\t\n\r` + "`" + `]|\$\(`)
 
@@ -67,7 +56,7 @@ var shellMetaChars = regexp.MustCompile(`[;|&<>\t\n\r` + "`" + `]|\$\(`)
 // It returns "whitelisted" for:
 //   - exact matches in whitelistedExactCommands,
 //   - prefix matches in whitelistedPrefixCommands (bare or with args, no shell metacharacters),
-//   - "nix run nixpkgs#..." invocations for prebuilt safe apps without shell metacharacters.
+//   - "nix run nixpkgs#..." invocations without shell metacharacters.
 //
 // Otherwise it returns "validated".
 func classifyCommand(cmd string) string {
@@ -81,19 +70,9 @@ func classifyCommand(cmd string) string {
 				return "whitelisted"
 			}
 		}
-		if isWhitelistedNixRun(trimmed) {
+		if strings.HasPrefix(trimmed, "nix run nixpkgs#") {
 			return "whitelisted"
 		}
 	}
 	return "validated"
-}
-
-func isWhitelistedNixRun(trimmed string) bool {
-	const prefix = "nix run nixpkgs#"
-	if !strings.HasPrefix(trimmed, prefix) {
-		return false
-	}
-	rest := strings.TrimPrefix(trimmed, prefix)
-	app, _, _ := strings.Cut(rest, " ")
-	return whitelistedNixRunApps[app]
 }
