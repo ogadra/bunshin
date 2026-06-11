@@ -146,6 +146,8 @@ ENV PATH="/usr/local/bin:/root/.nix-profile/bin:/nix/var/nix/profiles/default/bi
     NIX_SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt" \
     SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"
 
+RUN apk upgrade --no-cache libcrypto3 libssl3
+
 RUN addgroup -S nixbld && \
     mkdir -p /etc/nix /etc/profile.d && \
     for i in $(seq 1 32); do \
