@@ -74,14 +74,36 @@ RUN mkdir -p /app
 COPY ./app/ /app/
 WORKDIR /app
 
-RUN nix flake archive
+RUN nix flake archive --json > /tmp/app-flake-archive.json && \
+    mkdir -p /nix/var/nix/gcroots/app-flake && \
+    nix eval --raw --impure --expr 'let data = builtins.fromJSON (builtins.readFile /tmp/app-flake-archive.json); collect = value: if builtins.isAttrs value then (if value ? path then [ value.path ] else []) ++ builtins.concatLists (map collect (builtins.attrValues value)) else if builtins.isList value then builtins.concatLists (map collect value) else []; in builtins.concatStringsSep "\n" (collect data)' > /tmp/app-flake-paths.txt && \
+    path_index=0 && \
+    while IFS= read -r flake_path || [ -n "$flake_path" ]; do \
+      path_index=$((path_index + 1)); \
+      nix-store --add-root "/nix/var/nix/gcroots/app-flake/path-${path_index}" --indirect -r "$flake_path"; \
+    done < /tmp/app-flake-paths.txt && \
+    nix develop --profile /nix/var/nix/profiles/app-devshell --command true && \
+    nix-store --add-root /nix/var/nix/gcroots/app-devshell --indirect -r "$(readlink -f /nix/var/nix/profiles/app-devshell)" && \
+    mkdir -p /nix/var/nix/gcroots/app-devshell-shell && \
+    nix build --no-link --print-out-paths --impure --expr '(builtins.getFlake (toString /app)).inputs.nixpkgs.legacyPackages.${builtins.currentSystem}.bashInteractive' > /tmp/app-devshell-shell-paths.txt && \
+    shell_index=0 && \
+    while IFS= read -r shell_path || [ -n "$shell_path" ]; do \
+      shell_index=$((shell_index + 1)); \
+      nix-store --add-root "/nix/var/nix/gcroots/app-devshell-shell/path-${shell_index}" --indirect -r "$shell_path"; \
+    done < /tmp/app-devshell-shell-paths.txt
 
 RUN HM_OUT="$(nix-build '<home-manager>' -A home-manager --no-out-link)" && \
     HM_REAL="$HM_OUT/bin/home-manager" && \
     NIX_REAL="$(readlink -f "$(command -v nix)")" && \
     BASH_REAL="$(readlink -f /root/.nix-profile/bin/bash)" && \
+    LOCALE_ARCHIVE_PATH="$(awk -F'"' '/^export LOCALE_ARCHIVE="/ { print $2; exit }' /root/.nix-profile/etc/profile.d/hm-session-vars.sh)" && \
+    test -n "$LOCALE_ARCHIVE_PATH" && \
+    LOCALE_STORE="${LOCALE_ARCHIVE_PATH#/nix/store/}" && \
+    LOCALE_STORE="/nix/store/${LOCALE_STORE%%/*}" && \
     printf '%s\n' '#!/bin/sh' "exec \"$HM_REAL\" \"\$@\"" > /usr/local/bin/home-manager && \
     ln -sf "$BASH_REAL" /usr/local/bin/bash && \
+    mkdir -p /usr/local/share && \
+    ln -sf "$LOCALE_ARCHIVE_PATH" /usr/local/share/locale-archive && \
     printf '%s\n' \
       '#!/bin/sh' \
       "NIX_REAL=\"$NIX_REAL\"" \
@@ -107,6 +129,7 @@ RUN HM_OUT="$(nix-build '<home-manager>' -A home-manager --no-out-link)" && \
     nix-store --add-root /nix/var/nix/gcroots/runtime/home-manager --indirect -r "$HM_OUT" && \
     nix-store --add-root /nix/var/nix/gcroots/runtime/nix --indirect -r "$NIX_REAL" && \
     nix-store --add-root /nix/var/nix/gcroots/runtime/bash --indirect -r "$BASH_REAL" && \
+    nix-store --add-root /nix/var/nix/gcroots/runtime/glibc-locales --indirect -r "$LOCALE_STORE" && \
     rm -rf /root/.cache /tmp/* && \
     rm -f /root/.nix-defexpr/channels \
       /nix/var/nix/profiles/per-user/root/channels \
@@ -119,6 +142,7 @@ FROM alpine:3.23@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a50
 
 ENV PATH="/usr/local/bin:/root/.nix-profile/bin:/nix/var/nix/profiles/default/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin" \
     USER="root" \
+    LOCALE_ARCHIVE="/usr/local/share/locale-archive" \
     NIX_SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt" \
     SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"
 
@@ -134,6 +158,7 @@ COPY --from=nix-runtime /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-cer
 COPY --from=nix-runtime /nix /nix
 COPY --from=nix-runtime /root /root
 COPY --from=nix-runtime /usr/local/bin /usr/local/bin
+COPY --from=nix-runtime /usr/local/share /usr/local/share
 COPY ./app/ /app/
 WORKDIR /app
 
