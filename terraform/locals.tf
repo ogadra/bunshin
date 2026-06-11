@@ -5,13 +5,8 @@ locals {
     runner = { port = 3000 }
   }
 
-  root_ecs_services = {
-    nginx = local.ecs_services["nginx"]
-  }
-
   common_tags = {
     Project   = "Bunshin"
     ManagedBy = "terraform"
   }
-
 }

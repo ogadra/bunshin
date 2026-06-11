@@ -57,3 +57,18 @@ output "s3_prefix_list_id" {
   description = "Prefix list ID of the S3 VPC endpoint"
   value       = aws_vpc_endpoint.apne1_s3.prefix_list_id
 }
+
+output "nginx_task_execution_role_arn" {
+  description = "ARN of the nginx ECS task execution role"
+  value       = aws_iam_role.ecs_task_execution["nginx"].arn
+}
+
+output "nginx_task_role_arn" {
+  description = "ARN of the nginx ECS task role"
+  value       = aws_iam_role.task["nginx"].arn
+}
+
+output "nginx_log_group_name" {
+  description = "Name of the nginx ECS log group"
+  value       = aws_cloudwatch_log_group.ecs["nginx"].name
+}
