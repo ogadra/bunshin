@@ -51,7 +51,7 @@ resource "aws_ecs_service" "nginx" {
 
   network_configuration {
     subnets         = module.apne1.ecs_subnet_ids
-    security_groups = [aws_security_group.nginx.id]
+    security_groups = [module.apne1.nginx_security_group_id]
   }
 
   load_balancer {
