@@ -18,6 +18,11 @@ output "runner_ecs_service_id" {
   value       = aws_ecs_service.runner.id
 }
 
+output "nginx_ecs_service_id" {
+  description = "ID of the nginx ECS service"
+  value       = aws_ecs_service.nginx.id
+}
+
 output "private_route_table_id" {
   description = "ID of the private route table"
   value       = aws_route_table.apne3_private.id

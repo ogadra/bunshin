@@ -10,6 +10,7 @@ locals {
     runner = { port = 3000 }
   }
 
+  nginx_desired_count  = 6
   broker_desired_count = 6
   runner_desired_count = var.runner_desired_count
   ecs_subnet_ids       = slice(aws_subnet.apne1_private[*].id, 0, 2)

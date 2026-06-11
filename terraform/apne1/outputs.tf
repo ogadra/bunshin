@@ -13,16 +13,6 @@ output "public_subnet_ids" {
   value       = aws_subnet.apne1_public[*].id
 }
 
-output "ecs_subnet_ids" {
-  description = "IDs of the private subnets used by ECS services and interface endpoints"
-  value       = local.ecs_subnet_ids
-}
-
-output "ecs_cluster_id" {
-  description = "ID of the ECS cluster"
-  value       = aws_ecs_cluster.apne1.id
-}
-
 output "broker_ecs_service_id" {
   description = "ID of the broker ECS service"
   value       = aws_ecs_service.broker.id
@@ -33,24 +23,14 @@ output "runner_ecs_service_id" {
   value       = aws_ecs_service.runner.id
 }
 
+output "nginx_ecs_service_id" {
+  description = "ID of the nginx ECS service"
+  value       = aws_ecs_service.nginx.id
+}
+
 output "private_route_table_id" {
-  description = "ID of the private route table, for gateway endpoint association"
+  description = "ID of the private route table"
   value       = aws_route_table.apne1_private.id
-}
-
-output "nginx_task_execution_role_arn" {
-  description = "ARN of the nginx ECS task execution role"
-  value       = aws_iam_role.ecs_task_execution["nginx"].arn
-}
-
-output "nginx_task_role_arn" {
-  description = "ARN of the nginx ECS task role"
-  value       = aws_iam_role.task["nginx"].arn
-}
-
-output "nginx_log_group_name" {
-  description = "Name of the nginx ECS log group"
-  value       = aws_cloudwatch_log_group.ecs["nginx"].name
 }
 
 output "nginx_security_group_id" {
