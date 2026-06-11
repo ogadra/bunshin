@@ -57,3 +57,8 @@ output "nginx_security_group_id" {
   description = "ID of the nginx ECS task security group"
   value       = aws_security_group.nginx.id
 }
+
+output "nginx_target_group_arn" {
+  description = "ARN of the nginx ALB target group"
+  value       = aws_lb_target_group.nginx.arn
+}

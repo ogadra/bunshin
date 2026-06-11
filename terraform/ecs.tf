@@ -55,7 +55,7 @@ resource "aws_ecs_service" "nginx" {
   }
 
   load_balancer {
-    target_group_arn = aws_lb_target_group.nginx.arn
+    target_group_arn = module.apne1.nginx_target_group_arn
     container_name   = "nginx"
     container_port   = local.ecs_services["nginx"].port
   }
