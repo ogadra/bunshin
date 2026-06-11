@@ -14,6 +14,46 @@ resource "aws_ecs_cluster" "apne3" {
   })
 }
 
+resource "aws_ecs_task_definition" "nginx" {
+  # checkov:skip=CKV_AWS_336:nginx requires writable tmp directories
+  family                   = "bunshin-nginx"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = 256
+  memory                   = 512
+  execution_role_arn       = aws_iam_role.ecs_task_execution["nginx"].arn
+  task_role_arn            = aws_iam_role.task["nginx"].arn
+
+  runtime_platform {
+    cpu_architecture        = "ARM64"
+    operating_system_family = "LINUX"
+  }
+
+  container_definitions = jsonencode([{
+    name      = "nginx"
+    image     = "${local.ecr_registry}/bunshin/nginx:latest"
+    essential = true
+
+    portMappings = [{
+      containerPort = local.ecs_services["nginx"].port
+      protocol      = "tcp"
+    }]
+
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        "awslogs-group"         = aws_cloudwatch_log_group.ecs["nginx"].name
+        "awslogs-region"        = data.aws_region.current.id
+        "awslogs-stream-prefix" = "nginx"
+      }
+    }
+  }])
+
+  tags = merge(local.common_tags, {
+    Service = "nginx"
+  })
+}
+
 resource "aws_ecs_task_definition" "broker" {
   family                   = "bunshin-broker"
   requires_compatibilities = ["FARGATE"]
