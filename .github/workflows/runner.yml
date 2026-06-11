@@ -54,6 +54,6 @@ jobs:
         with:
           scan-type: image
           image-ref: sandbox-server
-          scanners: vuln
+          scanners: vuln,secret
           vuln-type: os
-          skip-dirs: nix/store/*-channel-nixos,nix/store/*-nixpkgs,nix/store/*-source
+          skip-dirs: /nix/store/*-channel-nixos,/nix/store/*-nixpkgs,/nix/store/*-source,nix/store/*-channel-nixos,nix/store/*-nixpkgs,nix/store/*-source
