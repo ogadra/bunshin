@@ -46,9 +46,21 @@ resource "aws_security_group_rule" "broker_egress_runner" {
   description              = "HTTP to runner for healthcheck"
 }
 
+resource "aws_security_group_rule" "broker_ingress_nginx" {
+  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  type                     = "ingress"
+  from_port                = local.ecs_services["broker"].port
+  to_port                  = local.ecs_services["broker"].port
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.nginx.id
+  security_group_id        = aws_security_group.broker.id
+  description              = "HTTP from nginx"
+}
+
 resource "aws_security_group_rule" "vpc_endpoint_for_ecs_egress" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   for_each = {
+    nginx  = aws_security_group.nginx.id
     broker = aws_security_group.broker.id
     runner = aws_security_group.runner.id
   }
@@ -65,6 +77,7 @@ resource "aws_security_group_rule" "vpc_endpoint_for_ecs_egress" {
 resource "aws_security_group_rule" "ecs_egress_s3" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   for_each = {
+    nginx  = aws_security_group.nginx.id
     broker = aws_security_group.broker.id
     runner = aws_security_group.runner.id
   }
@@ -76,6 +89,44 @@ resource "aws_security_group_rule" "ecs_egress_s3" {
   prefix_list_ids   = [aws_vpc_endpoint.apne1_s3.prefix_list_id]
   security_group_id = each.value
   description       = "HTTPS to S3 VPC endpoint"
+}
+
+resource "aws_security_group" "nginx" {
+  # checkov:skip=CKV2_AWS_5:nginx ECS service attachment is added in the stacked service change
+  name_prefix = "bunshin-nginx-"
+  description = "Security group for nginx ECS tasks"
+  vpc_id      = aws_vpc.apne1.id
+
+  tags = merge(local.common_tags, {
+    Name    = "bunshin-apne1-nginx"
+    Service = "nginx"
+  })
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_security_group_rule" "nginx_egress_broker" {
+  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  type                     = "egress"
+  from_port                = local.ecs_services["broker"].port
+  to_port                  = local.ecs_services["broker"].port
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.broker.id
+  security_group_id        = aws_security_group.nginx.id
+  description              = "HTTP to broker"
+}
+
+resource "aws_security_group_rule" "nginx_egress_runner" {
+  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  type                     = "egress"
+  from_port                = local.ecs_services["runner"].port
+  to_port                  = local.ecs_services["runner"].port
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.runner.id
+  security_group_id        = aws_security_group.nginx.id
+  description              = "HTTP to runner"
 }
 
 resource "aws_security_group" "runner" {
@@ -102,6 +153,17 @@ resource "aws_security_group_rule" "runner_ingress_broker" {
   source_security_group_id = aws_security_group.broker.id
   security_group_id        = aws_security_group.runner.id
   description              = "HTTP from broker for healthcheck"
+}
+
+resource "aws_security_group_rule" "runner_ingress_nginx" {
+  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  type                     = "ingress"
+  from_port                = local.ecs_services["runner"].port
+  to_port                  = local.ecs_services["runner"].port
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.nginx.id
+  security_group_id        = aws_security_group.runner.id
+  description              = "HTTP from nginx"
 }
 
 resource "aws_security_group_rule" "runner_egress_broker" {
