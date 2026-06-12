@@ -1,6 +1,6 @@
 {
   description = "Nix Hands-on DevShell";
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/cd3cab093d1d5b523e9c7efbb970f4f016cd35a9";
 
   outputs = { self, nixpkgs }:
     let
