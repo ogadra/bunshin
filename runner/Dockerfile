@@ -34,13 +34,27 @@ COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certifica
 RUN mkdir -p /etc/nix
 COPY ./nix/build.conf /etc/nix/nix.conf
 
-RUN nix-channel --add https://nixos.org/channels/nixpkgs-unstable nixpkgs && \
-    nix-channel --add https://github.com/nix-community/home-manager/archive/release-25.11.tar.gz home-manager && \
-    nix-channel --update
+COPY ./nix/nixpkgs-pin.nix /tmp/nixpkgs-pin.nix
+
+# Resolve <nixpkgs> through the pinned source rather than a floating channel.
+# The home-manager generation has to be built from the same nixpkgs the runtime
+# evaluates; if they diverge a runtime `home-manager switch` re-derives every
+# dependency and fails with no network. The pin lives in nix.conf's nix-path,
+# which only takes effect when NIX_PATH is unset — the base image exports
+# NIX_PATH pointing at its channels, so the build steps below unset it to fall
+# through to the pin, matching the runtime where NIX_PATH is absent.
+RUN nix-channel --add https://github.com/nix-community/home-manager/archive/release-25.11.tar.gz home-manager && \
+    nix-channel --update && \
+    nixpkgs_src="$(nix eval --raw --impure --file /tmp/nixpkgs-pin.nix)" && \
+    hm_src="$(nix-instantiate --find-file home-manager)" && \
+    printf 'nix-path = nixpkgs=%s home-manager=%s\n' "$nixpkgs_src" "$hm_src" > /etc/nix/nix-path.conf && \
+    cat /etc/nix/nix-path.conf >> /etc/nix/nix.conf && \
+    mkdir -p /nix/var/nix/gcroots && \
+    nix-store --add-root /nix/var/nix/gcroots/home-manager-source --indirect -r "$hm_src"
 
 RUN nix-env -e man man-db || true
 
-RUN nix-shell '<home-manager>' -A install
+RUN unset NIX_PATH && nix-shell '<home-manager>' -A install
 
 RUN command -v home-manager && \
     HM_REAL="$(readlink -f "$(command -v home-manager)")" && \
@@ -53,15 +67,14 @@ RUN nix-env -e bash-interactive bash || true
 RUN mkdir -p /root/.config/home-manager
 COPY ./nix/home.nix /root/.config/home-manager/home.nix
 
-RUN home-manager switch
+RUN unset NIX_PATH && home-manager switch
 
-RUN nix shell nixpkgs#gnused --command sh -c '\
+RUN unset NIX_PATH && nix shell nixpkgs#gnused --command sh -c '\
     sed -i '\''s|TZ = "Asia/Tokyo";|TZ = "Pacific/Honolulu";|g'\'' /root/.config/home-manager/home.nix && \
     sed -i '\''s|LANG = "ja_JP.UTF-8";|LANG = "en_US.UTF-8";|g'\'' /root/.config/home-manager/home.nix && \
     sed -i '\''s|LC_ALL = "ja_JP.UTF-8";|LC_ALL = "en_US.UTF-8";|g'\'' /root/.config/home-manager/home.nix && \
     home-manager switch'
 
-COPY ./nix/nixpkgs-pin.nix /tmp/nixpkgs-pin.nix
 COPY ./nix/prebuilt-tools.nix /tmp/prebuilt-tools.nix
 RUN nix build --no-link --print-out-paths --file /tmp/prebuilt-tools.nix > /tmp/prebuilt-tools-paths.txt && \
     prebuilt_tools="$(cat /tmp/prebuilt-tools-paths.txt)" && \
@@ -89,7 +102,6 @@ RUN nix flake archive --json > /tmp/app-flake-archive.json && \
       nix-store --add-root "/nix/var/nix/gcroots/app-flake/path-${path_index}" --indirect -r "$flake_path"; \
     done < /tmp/app-flake-paths.txt && \
     nix develop --profile /nix/var/nix/profiles/app-devshell --command true && \
-    nix-store --add-root /nix/var/nix/gcroots/app-devshell --indirect -r "$(readlink -f /nix/var/nix/profiles/app-devshell)" && \
     mkdir -p /nix/var/nix/gcroots/app-devshell-shell && \
     nix build --no-link --print-out-paths --impure --expr '(builtins.getFlake (toString /app)).inputs.nixpkgs.legacyPackages.${builtins.currentSystem}.bashInteractive' > /tmp/app-devshell-shell-paths.txt && \
     shell_index=0 && \
@@ -98,7 +110,11 @@ RUN nix flake archive --json > /tmp/app-flake-archive.json && \
       nix-store --add-root "/nix/var/nix/gcroots/app-devshell-shell/path-${shell_index}" --indirect -r "$shell_path"; \
     done < /tmp/app-devshell-shell-paths.txt
 
-RUN HM_OUT="$(nix-build '<home-manager>' -A home-manager --no-out-link)" && \
+# `home-manager switch` realises the news file (config.news.json.output)
+# separately from the activation package, so rooting only the generation leaves
+# that derivation to rebuild from source — which fails offline. Root it here too
+# so a runtime switch finds it already built.
+RUN unset NIX_PATH && HM_OUT="$(nix-build '<home-manager>' -A home-manager --no-out-link)" && \
     HM_REAL="$HM_OUT/bin/home-manager" && \
     NIX_REAL="$(readlink -f "$(command -v nix)")" && \
     BASH_REAL="$(readlink -f /root/.nix-profile/bin/bash)" && \
@@ -106,6 +122,9 @@ RUN HM_OUT="$(nix-build '<home-manager>' -A home-manager --no-out-link)" && \
     test -n "$LOCALE_ARCHIVE_PATH" && \
     LOCALE_STORE="${LOCALE_ARCHIVE_PATH#/nix/store/}" && \
     LOCALE_STORE="/nix/store/${LOCALE_STORE%%/*}" && \
+    NEWS_OUT="$(nix-build '<home-manager/home-manager/home-manager.nix>' --no-out-link \
+      --arg check false -A config.news.json.output \
+      --argstr confPath /root/.config/home-manager/home.nix --argstr confAttr '')" && \
     printf '%s\n' '#!/bin/sh' "exec \"$HM_REAL\" \"\$@\"" > /usr/local/bin/home-manager && \
     chmod +x /usr/local/bin/home-manager && \
     ln -sf "$BASH_REAL" /usr/local/bin/bash && \
@@ -117,12 +136,18 @@ RUN HM_OUT="$(nix-build '<home-manager>' -A home-manager --no-out-link)" && \
     nix-store --add-root /nix/var/nix/gcroots/runtime/nix --indirect -r "$NIX_REAL" && \
     nix-store --add-root /nix/var/nix/gcroots/runtime/bash --indirect -r "$BASH_REAL" && \
     nix-store --add-root /nix/var/nix/gcroots/runtime/glibc-locales --indirect -r "$LOCALE_STORE" && \
+    nix-store --add-root /nix/var/nix/gcroots/runtime/hm-news --indirect -r "$NEWS_OUT" && \
     rm -rf /root/.cache /tmp/* && \
     rm -f /root/.nix-defexpr/channels \
       /nix/var/nix/profiles/per-user/root/channels \
       /nix/var/nix/profiles/per-user/root/channels-*-link \
       /nix/var/nix/gcroots/docker/* && \
-    nix-collect-garbage -d
+    nix-env --delete-generations old && \
+    nix-collect-garbage
+# Not `nix-collect-garbage -d`: that drops every profile's older generations,
+# including the home-manager ones, which leaves `home-manager switch --rollback`
+# with no prior generation to return to. Only the root nix-env profile history
+# is pruned; the home-manager generations stay so rollback works offline.
 
 # production image
 FROM alpine:3.23@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11
@@ -145,6 +170,7 @@ RUN addgroup -S nixbld && \
     done
 
 COPY ./nix/runtime.conf /etc/nix/nix.conf
+COPY --from=nix-runtime /etc/nix/nix-path.conf /etc/nix/nix-path.conf
 COPY --from=nix-runtime /etc/nix/registry.json /etc/nix/registry.json
 COPY --from=nix-runtime /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=nix-runtime /nix /nix
