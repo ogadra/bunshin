@@ -42,3 +42,8 @@ output "nginx_target_group_arn" {
   description = "ARN of the nginx ALB target group"
   value       = aws_lb_target_group.nginx.arn
 }
+
+output "external_waf_web_acl_arn" {
+  description = "ARN of the external ALB WAF Web ACL"
+  value       = aws_wafv2_web_acl.external_alb.arn
+}
