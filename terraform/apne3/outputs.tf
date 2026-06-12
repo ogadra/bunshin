@@ -27,3 +27,13 @@ output "private_route_table_id" {
   description = "ID of the private route table"
   value       = aws_route_table.apne3_private.id
 }
+
+output "external_alb_dns_name" {
+  description = "DNS name of the external ALB"
+  value       = aws_lb.external.dns_name
+}
+
+output "external_alb_zone_id" {
+  description = "Canonical hosted zone ID of the external ALB"
+  value       = aws_lb.external.zone_id
+}
