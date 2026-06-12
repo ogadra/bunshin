@@ -45,7 +45,7 @@ COPY ./nix/nixpkgs-pin.nix /tmp/nixpkgs-pin.nix
 # through to the pin, matching the runtime where NIX_PATH is absent.
 RUN nix-channel --add https://github.com/nix-community/home-manager/archive/release-25.11.tar.gz home-manager && \
     nix-channel --update && \
-    nixpkgs_src="$(nix eval --raw --impure --file /tmp/nixpkgs-pin.nix)" && \
+    nixpkgs_src="$(nix eval --raw --file /tmp/nixpkgs-pin.nix)" && \
     hm_src="$(nix-instantiate --find-file home-manager)" && \
     printf 'nix-path = nixpkgs=%s home-manager=%s\n' "$nixpkgs_src" "$hm_src" > /etc/nix/nix-path.conf && \
     cat /etc/nix/nix-path.conf >> /etc/nix/nix.conf && \
@@ -83,9 +83,8 @@ RUN nix build --no-link --print-out-paths --file /tmp/prebuilt-tools.nix > /tmp/
     for bin in ip awk; do \
       ln -sf "$prebuilt_tools/bin/$bin" "/usr/local/bin/$bin"; \
     done && \
-    nixpkgs_src="$(nix eval --raw --impure --file /tmp/nixpkgs-pin.nix)" && \
+    nixpkgs_src="$(nix eval --raw --file /tmp/nixpkgs-pin.nix)" && \
     nix-store --add-root /nix/var/nix/gcroots/nixpkgs-source --indirect -r "$nixpkgs_src" && \
-    mkdir -p /etc/nix && \
     printf '{"version":2,"flakes":[{"from":{"type":"indirect","id":"nixpkgs"},"to":{"type":"path","path":"%s"}}]}\n' "$nixpkgs_src" > /etc/nix/registry.json
 
 RUN mkdir -p /app
@@ -95,7 +94,7 @@ WORKDIR /app
 COPY ./nix/collect-flake-paths.nix /tmp/collect-flake-paths.nix
 RUN nix flake archive --json > /tmp/app-flake-archive.json && \
     mkdir -p /nix/var/nix/gcroots/app-flake && \
-    nix eval --raw --impure --file /tmp/collect-flake-paths.nix > /tmp/app-flake-paths.txt && \
+    nix eval --raw --file /tmp/collect-flake-paths.nix > /tmp/app-flake-paths.txt && \
     path_index=0 && \
     while IFS= read -r flake_path || [ -n "$flake_path" ]; do \
       path_index=$((path_index + 1)); \
@@ -130,7 +129,6 @@ RUN unset NIX_PATH && HM_OUT="$(nix-build '<home-manager>' -A home-manager --no-
     ln -sf "$BASH_REAL" /usr/local/bin/bash && \
     mkdir -p /usr/local/share && \
     ln -sf "$LOCALE_ARCHIVE_PATH" /usr/local/share/locale-archive && \
-    ln -sf "$NIX_REAL" /usr/local/bin/nix && \
     mkdir -p /nix/var/nix/gcroots/runtime && \
     nix-store --add-root /nix/var/nix/gcroots/runtime/home-manager --indirect -r "$HM_OUT" && \
     nix-store --add-root /nix/var/nix/gcroots/runtime/nix --indirect -r "$NIX_REAL" && \
