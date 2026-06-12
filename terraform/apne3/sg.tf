@@ -92,7 +92,7 @@ resource "aws_security_group_rule" "ecs_egress_s3" {
 }
 
 resource "aws_security_group" "nginx" {
-  # checkov:skip=CKV2_AWS_5:nginx ECS service attachment is added in the stacked service change
+  # checkov:skip=CKV2_AWS_5:apne3 keeps the nginx rules symmetric before the regional service is introduced
   name_prefix = "bunshin-nginx-"
   description = "Security group for nginx ECS tasks"
   vpc_id      = aws_vpc.apne3.id
