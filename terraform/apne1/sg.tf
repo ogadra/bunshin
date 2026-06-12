@@ -92,7 +92,6 @@ resource "aws_security_group_rule" "ecs_egress_s3" {
 }
 
 resource "aws_security_group" "nginx" {
-  # checkov:skip=CKV2_AWS_5:Checkov does not trace the ECS attachment through the root module output
   name_prefix = "bunshin-nginx-"
   description = "Security group for nginx ECS tasks"
   vpc_id      = aws_vpc.apne1.id
