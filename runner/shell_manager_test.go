@@ -8,10 +8,10 @@ import (
 	"time"
 )
 
-// TestCreateAndGet verifies that Create returns a valid session ID and shell,
+// TestCreateAndGet verifies that Create returns a valid shell ID and shell,
 // and that Get retrieves the same shell instance by ID.
 func TestCreateAndGet(t *testing.T) {
-	m := NewSessionManager()
+	m := NewShellManager()
 	defer m.CloseAll()
 
 	id, shell, err := m.Create()
@@ -34,19 +34,19 @@ func TestCreateAndGet(t *testing.T) {
 	}
 }
 
-// TestGetNotFound verifies that Get returns ErrSessionNotFound for a nonexistent session ID.
+// TestGetNotFound verifies that Get returns ErrShellNotFound for a nonexistent shell ID.
 func TestGetNotFound(t *testing.T) {
-	m := NewSessionManager()
+	m := NewShellManager()
 
 	_, err := m.Get("nonexistent")
-	if !errors.Is(err, ErrSessionNotFound) {
-		t.Fatalf("Get(nonexistent) error = %v, want ErrSessionNotFound", err)
+	if !errors.Is(err, ErrShellNotFound) {
+		t.Fatalf("Get(nonexistent) error = %v, want ErrShellNotFound", err)
 	}
 }
 
-// TestDelete verifies that Delete removes a session and that subsequent Get fails.
+// TestDelete verifies that Delete removes a shell and that subsequent Get fails.
 func TestDelete(t *testing.T) {
-	m := NewSessionManager()
+	m := NewShellManager()
 
 	id, _, err := m.Create()
 	if err != nil {
@@ -63,19 +63,19 @@ func TestDelete(t *testing.T) {
 	}
 }
 
-// TestDeleteNotFound verifies that Delete returns ErrSessionNotFound for a nonexistent session ID.
+// TestDeleteNotFound verifies that Delete returns ErrShellNotFound for a nonexistent shell ID.
 func TestDeleteNotFound(t *testing.T) {
-	m := NewSessionManager()
+	m := NewShellManager()
 
 	err := m.Delete("nonexistent")
-	if !errors.Is(err, ErrSessionNotFound) {
-		t.Fatalf("Delete(nonexistent) error = %v, want ErrSessionNotFound", err)
+	if !errors.Is(err, ErrShellNotFound) {
+		t.Fatalf("Delete(nonexistent) error = %v, want ErrShellNotFound", err)
 	}
 }
 
-// TestCloseAll verifies that CloseAll closes all sessions and clears the map.
+// TestCloseAll verifies that CloseAll closes all shells and clears the map.
 func TestCloseAll(t *testing.T) {
-	m := NewSessionManager()
+	m := NewShellManager()
 
 	ids := make([]string, 3)
 	for i := range ids {
@@ -98,10 +98,10 @@ func TestCloseAll(t *testing.T) {
 	}
 }
 
-// TestSessionExecute verifies that a command can be executed through a session-managed shell
+// TestShellExecute verifies that a command can be executed through a shell-managed shell
 // and that stdout and exit code are returned correctly.
-func TestSessionExecute(t *testing.T) {
-	m := NewSessionManager()
+func TestShellExecute(t *testing.T) {
+	m := NewShellManager()
 	defer m.CloseAll()
 
 	_, shell, err := m.Create()
@@ -136,10 +136,10 @@ func TestSessionExecute(t *testing.T) {
 	}
 }
 
-// TestSessionIsolation verifies that environment variables set in one session
-// are not visible in another session.
-func TestSessionIsolation(t *testing.T) {
-	m := NewSessionManager()
+// TestShellIsolation verifies that environment variables set in one shell
+// are not visible in another shell.
+func TestShellIsolation(t *testing.T) {
+	m := NewShellManager()
 	defer m.CloseAll()
 
 	_, shell1, err := m.Create()
@@ -154,7 +154,7 @@ func TestSessionIsolation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Set variable in session 1
+	// Set variable in shell 1
 	ch1 := make(chan string, 100)
 	done1 := make(chan struct{})
 	go func() {
@@ -162,13 +162,13 @@ func TestSessionIsolation(t *testing.T) {
 		for range ch1 {
 		}
 	}()
-	_, _, err = shell1.ExecuteStream(ctx, "export TESTVAR=session1", ch1)
+	_, _, err = shell1.ExecuteStream(ctx, "export TESTVAR=shell1", ch1)
 	if err != nil {
 		t.Fatalf("ExecuteStream error: %v", err)
 	}
 	<-done1
 
-	// Session 2 should not see it
+	// Shell 2 should not see it
 	ch2 := make(chan string, 100)
 	var lines2 []string
 	done2 := make(chan struct{})
@@ -188,14 +188,14 @@ func TestSessionIsolation(t *testing.T) {
 		t.Fatalf("exitCode = %d, want 0", exitCode)
 	}
 	if len(lines2) != 1 || lines2[0] != "unset\n" {
-		t.Fatalf("session2 saw TESTVAR: lines = %v, want [unset\\n]", lines2)
+		t.Fatalf("shell2 saw TESTVAR: lines = %v, want [unset\\n]", lines2)
 	}
 }
 
-// TestConcurrentCreate verifies that concurrent Create calls produce unique session IDs
+// TestConcurrentCreate verifies that concurrent Create calls produce unique shell IDs
 // without data races.
 func TestConcurrentCreate(t *testing.T) {
-	m := NewSessionManager()
+	m := NewShellManager()
 	defer m.CloseAll()
 
 	const n = 10
@@ -220,7 +220,7 @@ func TestConcurrentCreate(t *testing.T) {
 			t.Fatalf("Create() [%d] error: %v", i, errs[i])
 		}
 		if seen[ids[i]] {
-			t.Fatalf("duplicate session id: %s", ids[i])
+			t.Fatalf("duplicate shell id: %s", ids[i])
 		}
 		seen[ids[i]] = true
 	}
@@ -228,7 +228,7 @@ func TestConcurrentCreate(t *testing.T) {
 
 // TestCreateIDGeneratorError verifies that Create propagates errors from the ID generator.
 func TestCreateIDGeneratorError(t *testing.T) {
-	m := NewSessionManager()
+	m := NewShellManager()
 	m.genID = func() (string, error) {
 		return "", errors.New("rand broken")
 	}
@@ -240,9 +240,9 @@ func TestCreateIDGeneratorError(t *testing.T) {
 }
 
 // TestCreateDuplicateID verifies that Create returns an error and closes the new shell
-// when genID returns an ID that already exists in the session map.
+// when genID returns an ID that already exists in the shell map.
 func TestCreateDuplicateID(t *testing.T) {
-	m := NewSessionManager()
+	m := NewShellManager()
 	defer m.CloseAll()
 
 	m.genID = func() (string, error) {
@@ -259,7 +259,7 @@ func TestCreateDuplicateID(t *testing.T) {
 		t.Fatal("second Create() with duplicate ID should return error")
 	}
 
-	// Original session should still be accessible.
+	// Original shell should still be accessible.
 	_, err = m.Get("fixed-id")
 	if err != nil {
 		t.Fatalf("Get() after duplicate Create() error: %v", err)
@@ -268,7 +268,7 @@ func TestCreateDuplicateID(t *testing.T) {
 
 // TestCreateNewShellError verifies that Create propagates errors from the shell factory.
 func TestCreateNewShellError(t *testing.T) {
-	m := NewSessionManager()
+	m := NewShellManager()
 	m.newShell = func() (Shell, error) {
 		return nil, errors.New("shell broken")
 	}
@@ -279,12 +279,12 @@ func TestCreateNewShellError(t *testing.T) {
 	}
 }
 
-// TestCloseAllWithError verifies that CloseAll returns an error when a session's Close fails,
+// TestCloseAllWithError verifies that CloseAll returns an error when a shell's Close fails,
 // such as when the shell has already been closed.
 func TestCloseAllWithError(t *testing.T) {
-	m := NewSessionManager()
+	m := NewShellManager()
 
-	// Create a real session so CloseAll has something to iterate
+	// Create a real shell so CloseAll has something to iterate
 	id, _, err := m.Create()
 	if err != nil {
 		t.Fatalf("Create() error: %v", err)
@@ -296,14 +296,14 @@ func TestCloseAllWithError(t *testing.T) {
 
 	err = m.CloseAll()
 	if err == nil {
-		t.Fatal("CloseAll() should return error when a session Close fails")
+		t.Fatal("CloseAll() should return error when a shell Close fails")
 	}
 }
 
-// TestDeleteThenCreate verifies that a new session can be created after deleting an existing one,
-// and that the new session receives a different ID.
+// TestDeleteThenCreate verifies that a new shell can be created after deleting an existing one,
+// and that the new shell receives a different ID.
 func TestDeleteThenCreate(t *testing.T) {
-	m := NewSessionManager()
+	m := NewShellManager()
 	defer m.CloseAll()
 
 	id1, _, err := m.Create()
@@ -321,7 +321,7 @@ func TestDeleteThenCreate(t *testing.T) {
 	}
 
 	if id1 == id2 {
-		t.Fatal("new session should have different id")
+		t.Fatal("new shell should have different id")
 	}
 
 	_, err = m.Get(id2)

@@ -66,54 +66,54 @@ function getCookie(res, name) {
 }
 
 /**
- * Create a session via POST /api/session and return cookies.
- * @returns {{runnerId: string, sessionId: string}} Session cookies.
+ * Create a session via POST /api/shell and return cookies.
+ * @returns {{sessionId: string, shellId: string}} Session cookies.
  */
 function createSession() {
-  const res = http.post(`${BASE_URL}/api/session`, null, {
+  const res = http.post(`${BASE_URL}/api/shell`, null, {
     redirects: 0,
   });
   check(res, {
-    "POST /api/session returns 204": (r) => r.status === 204,
+    "POST /api/shell returns 204": (r) => r.status === 204,
   });
-  const runnerId = getCookie(res, "runner_id");
   const sessionId = getCookie(res, "session_id");
+  const shellId = getCookie(res, "shell_id");
   check(null, {
-    "runner_id cookie present": () => runnerId !== "",
     "session_id cookie present": () => sessionId !== "",
+    "shell_id cookie present": () => shellId !== "",
   });
-  return { runnerId, sessionId };
+  return { sessionId, shellId };
 }
 
 /**
  * Build a Cookie header string from session cookies.
- * @param {{runnerId: string, sessionId: string}} cookies - Session cookies.
+ * @param {{sessionId: string, shellId: string}} cookies - Session cookies.
  * @returns {string} Cookie header value.
  */
 function cookieHeader(cookies) {
-  return `runner_id=${cookies.runnerId}; session_id=${cookies.sessionId}`;
+  return `session_id=${cookies.sessionId}; shell_id=${cookies.shellId}`;
 }
 
 /**
- * Delete a session via DELETE /api/session.
- * @param {{runnerId: string, sessionId: string}} cookies - Session cookies.
+ * Delete a session via DELETE /api/shell.
+ * @param {{sessionId: string, shellId: string}} cookies - Session cookies.
  */
 function deleteSession(cookies) {
-  const res = http.del(`${BASE_URL}/api/session`, null, {
+  const res = http.del(`${BASE_URL}/api/shell`, null, {
     headers: { Cookie: cookieHeader(cookies) },
   });
   check(res, {
-    "DELETE /api/session returns 204": (r) => r.status === 204,
+    "DELETE /api/shell returns 204": (r) => r.status === 204,
   });
 }
 
 /**
  * Scenario 1: Verify that 250 concurrent session creations yield unique runner IDs.
- * Each VU creates a session, logs its runner_id for external dedup check, then cleans up.
+ * Each VU creates a session, logs its session_id for external dedup check, then cleans up.
  */
 export function session_uniqueness() {
   const cookies = createSession();
-  console.log(`RUNNER_ID:${cookies.runnerId}`);
+  console.log(`SESSION_ID:${cookies.sessionId}`);
   deleteSession(cookies);
 }
 
@@ -178,7 +178,7 @@ export function concurrent_execute() {
  */
 export function capacity_overflow() {
   const iterIndex = exec.scenario.iterationInTest;
-  const res = http.post(`${BASE_URL}/api/session`, null, {
+  const res = http.post(`${BASE_URL}/api/shell`, null, {
     redirects: 0,
   });
 
@@ -186,10 +186,10 @@ export function capacity_overflow() {
     check(res, {
       "overflow: session within capacity returns 204": (r) => r.status === 204,
     });
-    const runnerId = getCookie(res, "runner_id");
     const sessionId = getCookie(res, "session_id");
-    if (runnerId && sessionId) {
-      console.log(`CLEANUP:${runnerId}:${sessionId}`);
+    const shellId = getCookie(res, "shell_id");
+    if (sessionId && shellId) {
+      console.log(`CLEANUP:${sessionId}:${shellId}`);
     }
   } else {
     check(res, {

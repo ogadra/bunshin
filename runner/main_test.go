@@ -120,7 +120,7 @@ func TestRunGracefulShutdown(t *testing.T) {
 
 	sigCh := make(chan os.Signal, 1)
 	cfg := serverConfig{
-		sm:              NewSessionManager(),
+		sm:              NewShellManager(),
 		shutdownTimeout: 10 * time.Second,
 	}
 
@@ -155,7 +155,7 @@ func TestRunServeError(t *testing.T) {
 
 	sigCh := make(chan os.Signal, 1)
 	cfg := serverConfig{
-		sm:              NewSessionManager(),
+		sm:              NewShellManager(),
 		shutdownTimeout: 10 * time.Second,
 	}
 
@@ -166,7 +166,7 @@ func TestRunServeError(t *testing.T) {
 }
 
 // TestRunCloseAllError verifies that run returns the CloseAll error
-// when a session was manually closed before shutdown.
+// when a shell was manually closed before shutdown.
 func TestRunCloseAllError(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -174,7 +174,7 @@ func TestRunCloseAllError(t *testing.T) {
 	}
 	addr := ln.Addr().String()
 
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	cfg := serverConfig{
 		sm:              sm,
 		shutdownTimeout: 10 * time.Second,
@@ -188,7 +188,7 @@ func TestRunCloseAllError(t *testing.T) {
 
 	waitForServer(t, addr)
 
-	// Create a session and close it manually so CloseAll will fail.
+	// Create a shell and close it manually so CloseAll will fail.
 	id, _, err := sm.Create()
 	if err != nil {
 		t.Fatalf("Create error: %v", err)
@@ -230,7 +230,7 @@ func TestRunDeregisterOnShutdown(t *testing.T) {
 
 	sigCh := make(chan os.Signal, 1)
 	cfg := serverConfig{
-		sm:              NewSessionManager(),
+		sm:              NewShellManager(),
 		shutdownTimeout: 10 * time.Second,
 		brokerURL:       "http://broker:8080",
 		runnerID:        "test-runner",
@@ -278,7 +278,7 @@ func TestRunDeregisterFailureNonFatal(t *testing.T) {
 
 	sigCh := make(chan os.Signal, 1)
 	cfg := serverConfig{
-		sm:              NewSessionManager(),
+		sm:              NewShellManager(),
 		shutdownTimeout: 10 * time.Second,
 		brokerURL:       "http://broker:8080",
 		runnerID:        "test-runner",
@@ -302,37 +302,37 @@ func TestRunDeregisterFailureNonFatal(t *testing.T) {
 	}
 }
 
-// TestIntegrationCreateExecuteDelete verifies the full lifecycle of creating a session,
-// executing a command, and deleting the session through the HTTP API using httptest.
+// TestIntegrationCreateExecuteDelete verifies the full lifecycle of creating a shell,
+// executing a command, and deleting the shell through the HTTP API using httptest.
 func TestIntegrationCreateExecuteDelete(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	defer sm.CloseAll()
 
 	v := &mockValidator{result: ValidationResult{Safe: true, Reason: "ok"}}
 	ts := httptest.NewServer(newHandler(sm, v))
 	defer ts.Close()
 
-	// Create session.
-	resp, err := http.Post(ts.URL+"/api/session", "application/json", nil)
+	// Create shell.
+	resp, err := http.Post(ts.URL+"/api/shell", "application/json", nil)
 	if err != nil {
-		t.Fatalf("POST /api/session error: %v", err)
+		t.Fatalf("POST /api/shell error: %v", err)
 	}
 	defer resp.Body.Close()
 
-	var sessionID string
+	var shellID string
 	for _, c := range resp.Cookies() {
-		if c.Name == "session_id" {
-			sessionID = c.Value
+		if c.Name == "shell_id" {
+			shellID = c.Value
 		}
 	}
-	if sessionID == "" {
-		t.Fatal("session_id cookie not found in response")
+	if shellID == "" {
+		t.Fatal("shell_id cookie not found in response")
 	}
 
 	// Execute whitelisted command; validator should not be called.
 	body := strings.NewReader(`{"command":"pwd"}`)
 	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/execute", body)
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: sessionID})
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: shellID})
 	resp2, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("POST /api/execute error: %v", err)
@@ -350,7 +350,7 @@ func TestIntegrationCreateExecuteDelete(t *testing.T) {
 	v.called = false
 	body2 := strings.NewReader(`{"command":"curl -s http://localhost"}`)
 	req2, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/execute", body2)
-	req2.AddCookie(&http.Cookie{Name: "session_id", Value: sessionID})
+	req2.AddCookie(&http.Cookie{Name: "shell_id", Value: shellID})
 	resp4, err := http.DefaultClient.Do(req2)
 	if err != nil {
 		t.Fatalf("POST /api/execute validated error: %v", err)
@@ -364,12 +364,12 @@ func TestIntegrationCreateExecuteDelete(t *testing.T) {
 		t.Fatal("validator should be called for non-whitelisted command")
 	}
 
-	// Delete session.
-	req3, _ := http.NewRequest(http.MethodDelete, ts.URL+"/api/session", nil)
-	req3.AddCookie(&http.Cookie{Name: "session_id", Value: sessionID})
+	// Delete shell.
+	req3, _ := http.NewRequest(http.MethodDelete, ts.URL+"/api/shell", nil)
+	req3.AddCookie(&http.Cookie{Name: "shell_id", Value: shellID})
 	resp3, err := http.DefaultClient.Do(req3)
 	if err != nil {
-		t.Fatalf("DELETE /api/session error: %v", err)
+		t.Fatalf("DELETE /api/shell error: %v", err)
 	}
 	defer resp3.Body.Close()
 
@@ -396,7 +396,7 @@ func TestRunShutdownTimeout(t *testing.T) {
 		<-blockCh
 	})
 
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	cfg := serverConfig{
 		sm:              sm,
 		shutdownTimeout: 1 * time.Nanosecond,
@@ -787,7 +787,7 @@ func stubValidator(t *testing.T) {
 }
 
 // waitForServer polls the given address with a TCP dial until it accepts a connection or times out.
-// It uses a raw TCP connection instead of an HTTP request to avoid side effects such as creating sessions.
+// It uses a raw TCP connection instead of an HTTP request to avoid side effects such as creating shells.
 func waitForServer(t *testing.T, addr string) {
 	t.Helper()
 	for i := 0; i < 50; i++ {

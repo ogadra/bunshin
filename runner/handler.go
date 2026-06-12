@@ -11,18 +11,18 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Shell abstracts command execution and lifecycle for handler and session manager.
+// Shell abstracts command execution and lifecycle for handler and shell manager.
 // In production, *bashShell implements this interface.
 type Shell interface {
 	ExecuteStream(ctx context.Context, command string, stdoutCh chan<- string) (int, string, error)
 	Close() error
 }
 
-// sessionIDCookie is the cookie name used to pass the session ID.
-const sessionIDCookie = "session_id"
+// shellIDCookie is the cookie name used to pass the shell ID.
+const shellIDCookie = "shell_id"
 
-// errMissingSessionCookie is the error message returned when the session_id cookie is absent.
-const errMissingSessionCookie = "missing session_id cookie"
+// errMissingShellCookie is the error message returned when the shell_id cookie is absent.
+const errMissingShellCookie = "missing shell_id cookie"
 
 // executeRequest is the JSON body for POST /api/execute.
 type executeRequest struct {
@@ -42,17 +42,17 @@ type sseEvent struct {
 }
 
 // newHandler creates a gin.Engine with all API routes registered.
-// The returned engine handles GET /health, POST /api/session, DELETE /api/session, and POST /api/execute.
+// The returned engine handles GET /health, POST /api/shell, DELETE /api/shell, and POST /api/execute.
 // The Validator v is used to judge non-whitelisted commands via LLM; it may be nil
 // in which case all non-whitelisted commands are rejected with 403.
-func newHandler(sm *SessionManager, v Validator) *gin.Engine {
+func newHandler(sm *ShellManager, v Validator) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.SetTrustedProxies([]string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"})
 	r.HandleMethodNotAllowed = true
 	r.GET("/health", handleHealth())
-	r.POST("/api/session", handleCreateSession(sm))
-	r.DELETE("/api/session", handleDeleteSession(sm))
+	r.POST("/api/shell", handleCreateShell(sm))
+	r.DELETE("/api/shell", handleDeleteShell(sm))
 	r.POST("/api/execute", handleExecute(sm, v))
 	return r
 }
@@ -65,9 +65,9 @@ func handleHealth() gin.HandlerFunc {
 	}
 }
 
-// handleCreateSession returns a gin handler for POST /api/session.
-// It creates a new session and sets the session_id cookie.
-func handleCreateSession(sm *SessionManager) gin.HandlerFunc {
+// handleCreateShell returns a gin handler for POST /api/shell.
+// It creates a new shell and sets the shell_id cookie.
+func handleCreateShell(sm *ShellManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, _, err := sm.Create()
 		if err != nil {
@@ -75,22 +75,22 @@ func handleCreateSession(sm *SessionManager) gin.HandlerFunc {
 			return
 		}
 		c.SetSameSite(http.SameSiteStrictMode)
-		c.SetCookie(sessionIDCookie, id, 0, "/", "", true, true)
+		c.SetCookie(shellIDCookie, id, 0, "/", "", true, true)
 		c.Status(http.StatusNoContent)
 	}
 }
 
-// handleDeleteSession returns a gin handler for DELETE /api/session.
-// It deletes the session specified by session_id cookie.
-func handleDeleteSession(sm *SessionManager) gin.HandlerFunc {
+// handleDeleteShell returns a gin handler for DELETE /api/shell.
+// It deletes the shell specified by shell_id cookie.
+func handleDeleteShell(sm *ShellManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id, err := c.Cookie(sessionIDCookie)
+		id, err := c.Cookie(shellIDCookie)
 		if err != nil || id == "" {
-			c.JSON(http.StatusBadRequest, errorResponse{Error: errMissingSessionCookie})
+			c.JSON(http.StatusBadRequest, errorResponse{Error: errMissingShellCookie})
 			return
 		}
 		if err := sm.Delete(id); err != nil {
-			if errors.Is(err, ErrSessionNotFound) {
+			if errors.Is(err, ErrShellNotFound) {
 				c.JSON(http.StatusNotFound, errorResponse{Error: err.Error()})
 			} else {
 				c.JSON(http.StatusInternalServerError, errorResponse{Error: err.Error()})
@@ -105,15 +105,15 @@ func handleDeleteSession(sm *SessionManager) gin.HandlerFunc {
 // It classifies the command: whitelisted commands execute immediately,
 // validated commands are checked by the Validator before execution,
 // and commands that fail validation are rejected with 403.
-func handleExecute(sm *SessionManager, v Validator) gin.HandlerFunc {
+func handleExecute(sm *ShellManager, v Validator) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id, err := c.Cookie(sessionIDCookie)
+		id, err := c.Cookie(shellIDCookie)
 		if err != nil || id == "" {
-			c.JSON(http.StatusBadRequest, errorResponse{Error: errMissingSessionCookie})
+			c.JSON(http.StatusBadRequest, errorResponse{Error: errMissingShellCookie})
 			return
 		}
 
-		// Get only returns ErrSessionNotFound; no other error paths exist.
+		// Get only returns ErrShellNotFound; no other error paths exist.
 		shell, err := sm.Get(id)
 		if err != nil {
 			c.JSON(http.StatusNotFound, errorResponse{Error: err.Error()})
@@ -183,8 +183,8 @@ func handleExecute(sm *SessionManager, v Validator) gin.HandlerFunc {
 
 // auditLog writes a structured audit log line.
 // exitCode and err are optional and only appended when non-nil.
-func auditLog(session, remote, class, command string, exitCode *int, err error) {
-	msg := fmt.Sprintf("[AUDIT] session=%s remote=%s class=%s command=%q", session, remote, class, command)
+func auditLog(shell, remote, class, command string, exitCode *int, err error) {
+	msg := fmt.Sprintf("[AUDIT] shell=%s remote=%s class=%s command=%q", shell, remote, class, command)
 	if exitCode != nil {
 		msg += fmt.Sprintf(" exitCode=%d", *exitCode)
 	}

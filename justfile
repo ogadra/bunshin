@@ -24,6 +24,6 @@ destroy env: (_validate-env env)
 loadtest base_url runner_count:
     k6 run -e BASE_URL={{base_url}} -e RUNNER_COUNT={{runner_count}} loadtest/loadtest.js 2>&1 | tee k6-output.log
 
-# Check for runner_id duplicates in k6 output (empty output means no duplicates)
+# Check for session_id duplicates in k6 output (empty output means no duplicates)
 loadtest-check-dup:
-    grep 'RUNNER_ID:' k6-output.log | sed 's/.*RUNNER_ID://' | sort | uniq -d
+    grep 'SESSION_ID:' k6-output.log | sed 's/.*SESSION_ID://' | sort | uniq -d

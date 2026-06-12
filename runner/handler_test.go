@@ -14,14 +14,14 @@ import (
 	"testing"
 )
 
-// TestCreateSession verifies that POST /api/session creates a new session
-// and returns a JSON body containing a non-empty sessionId.
-func TestCreateSession(t *testing.T) {
-	sm := NewSessionManager()
+// TestCreateShell verifies that POST /api/shell creates a new shell
+// and returns a JSON body containing a non-empty shellId.
+func TestCreateShell(t *testing.T) {
+	sm := NewShellManager()
 	defer sm.CloseAll()
 	handler := newHandler(sm, nil)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/session", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/shell", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -36,7 +36,7 @@ func TestCreateSession(t *testing.T) {
 	cookies := w.Result().Cookies()
 	var found bool
 	for _, c := range cookies {
-		if c.Name == "session_id" {
+		if c.Name == "shell_id" {
 			found = true
 			if c.Value == "" {
 				t.Fatal("cookie value is empty")
@@ -57,14 +57,14 @@ func TestCreateSession(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("Set-Cookie session_id not found in response, cookies = %v", cookies)
+		t.Fatalf("Set-Cookie shell_id not found in response, cookies = %v", cookies)
 	}
 }
 
-// TestDeleteSession verifies that DELETE /api/session with a valid session_id cookie
-// deletes the session and returns 204 No Content.
-func TestDeleteSession(t *testing.T) {
-	sm := NewSessionManager()
+// TestDeleteShell verifies that DELETE /api/shell with a valid shell_id cookie
+// deletes the shell and returns 204 No Content.
+func TestDeleteShell(t *testing.T) {
+	sm := NewShellManager()
 	defer sm.CloseAll()
 	handler := newHandler(sm, nil)
 
@@ -73,8 +73,8 @@ func TestDeleteSession(t *testing.T) {
 		t.Fatalf("Create() error: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/session", nil)
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
+	req := httptest.NewRequest(http.MethodDelete, "/api/shell", nil)
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -84,17 +84,17 @@ func TestDeleteSession(t *testing.T) {
 
 	_, err = sm.Get(id)
 	if err == nil {
-		t.Fatal("session should be deleted")
+		t.Fatal("shell should be deleted")
 	}
 }
 
-// TestDeleteSessionMissingCookie verifies that DELETE /api/session without
-// session_id cookie returns 400 Bad Request.
-func TestDeleteSessionMissingCookie(t *testing.T) {
-	sm := NewSessionManager()
+// TestDeleteShellMissingCookie verifies that DELETE /api/shell without
+// shell_id cookie returns 400 Bad Request.
+func TestDeleteShellMissingCookie(t *testing.T) {
+	sm := NewShellManager()
 	handler := newHandler(sm, nil)
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/session", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/shell", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -103,14 +103,14 @@ func TestDeleteSessionMissingCookie(t *testing.T) {
 	}
 }
 
-// TestDeleteSessionNotFound verifies that DELETE /api/session with a nonexistent
-// session ID returns 404 Not Found.
-func TestDeleteSessionNotFound(t *testing.T) {
-	sm := NewSessionManager()
+// TestDeleteShellNotFound verifies that DELETE /api/shell with a nonexistent
+// shell ID returns 404 Not Found.
+func TestDeleteShellNotFound(t *testing.T) {
+	sm := NewShellManager()
 	handler := newHandler(sm, nil)
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/session", nil)
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: "nonexistent"})
+	req := httptest.NewRequest(http.MethodDelete, "/api/shell", nil)
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: "nonexistent"})
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -119,10 +119,10 @@ func TestDeleteSessionNotFound(t *testing.T) {
 	}
 }
 
-// TestDeleteSessionCloseError verifies that DELETE /api/session returns 500
-// when the session exists but Close fails.
-func TestDeleteSessionCloseError(t *testing.T) {
-	sm := NewSessionManager()
+// TestDeleteShellCloseError verifies that DELETE /api/shell returns 500
+// when the shell exists but Close fails.
+func TestDeleteShellCloseError(t *testing.T) {
+	sm := NewShellManager()
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{closeErr: errors.New("close failed")}, nil
 	}
@@ -133,8 +133,8 @@ func TestDeleteSessionCloseError(t *testing.T) {
 		t.Fatalf("Create() error: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/session", nil)
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
+	req := httptest.NewRequest(http.MethodDelete, "/api/shell", nil)
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -146,7 +146,7 @@ func TestDeleteSessionCloseError(t *testing.T) {
 // TestExecuteWhitelisted verifies that POST /api/execute with a whitelisted command
 // streams SSE events for stdout and complete with exit code 0.
 func TestExecuteWhitelisted(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	defer sm.CloseAll()
 	handler := newHandler(sm, nil)
 
@@ -157,7 +157,7 @@ func TestExecuteWhitelisted(t *testing.T) {
 
 	body := strings.NewReader(`{"command":"ls"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -186,7 +186,7 @@ func TestExecuteWhitelisted(t *testing.T) {
 // TestExecuteRejected verifies that POST /api/execute with a non-whitelisted command
 // returns 403 Forbidden without executing the command.
 func TestExecuteRejected(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	defer sm.CloseAll()
 	handler := newHandler(sm, nil)
 
@@ -197,7 +197,7 @@ func TestExecuteRejected(t *testing.T) {
 
 	body := strings.NewReader(`{"command":"rm --version"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -217,7 +217,7 @@ func TestExecuteRejected(t *testing.T) {
 // TestExecuteRejectedWithArgs verifies that a non-whitelisted command with arguments
 // is rejected with 403 when no validator is configured.
 func TestExecuteRejectedWithArgs(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	defer sm.CloseAll()
 	handler := newHandler(sm, nil)
 
@@ -228,7 +228,7 @@ func TestExecuteRejectedWithArgs(t *testing.T) {
 
 	body := strings.NewReader(`{"command":"curl https://example.com"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -237,10 +237,10 @@ func TestExecuteRejectedWithArgs(t *testing.T) {
 	}
 }
 
-// TestExecuteMissingSessionCookie verifies that POST /api/execute without
-// session_id cookie returns 400 Bad Request.
-func TestExecuteMissingSessionCookie(t *testing.T) {
-	sm := NewSessionManager()
+// TestExecuteMissingShellCookie verifies that POST /api/execute without
+// shell_id cookie returns 400 Bad Request.
+func TestExecuteMissingShellCookie(t *testing.T) {
+	sm := NewShellManager()
 	handler := newHandler(sm, nil)
 
 	body := strings.NewReader(`{"command":"ls"}`)
@@ -253,15 +253,15 @@ func TestExecuteMissingSessionCookie(t *testing.T) {
 	}
 }
 
-// TestExecuteSessionNotFound verifies that POST /api/execute with a nonexistent
-// session ID returns 404 Not Found.
-func TestExecuteSessionNotFound(t *testing.T) {
-	sm := NewSessionManager()
+// TestExecuteShellNotFound verifies that POST /api/execute with a nonexistent
+// shell ID returns 404 Not Found.
+func TestExecuteShellNotFound(t *testing.T) {
+	sm := NewShellManager()
 	handler := newHandler(sm, nil)
 
 	body := strings.NewReader(`{"command":"ls"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: "nonexistent"})
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: "nonexistent"})
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -273,7 +273,7 @@ func TestExecuteSessionNotFound(t *testing.T) {
 // TestExecuteInvalidJSON verifies that POST /api/execute with invalid JSON body
 // returns 400 Bad Request.
 func TestExecuteInvalidJSON(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	defer sm.CloseAll()
 	handler := newHandler(sm, nil)
 
@@ -284,7 +284,7 @@ func TestExecuteInvalidJSON(t *testing.T) {
 
 	body := strings.NewReader(`{invalid`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -296,7 +296,7 @@ func TestExecuteInvalidJSON(t *testing.T) {
 // TestExecuteEmptyCommand verifies that POST /api/execute with an empty command
 // returns 400 Bad Request.
 func TestExecuteEmptyCommand(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	defer sm.CloseAll()
 	handler := newHandler(sm, nil)
 
@@ -307,7 +307,7 @@ func TestExecuteEmptyCommand(t *testing.T) {
 
 	body := strings.NewReader(`{"command":""}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -316,13 +316,13 @@ func TestExecuteEmptyCommand(t *testing.T) {
 	}
 }
 
-// TestSessionMethodNotAllowed verifies that unsupported HTTP methods on
-// /api/session return 405 Method Not Allowed.
-func TestSessionMethodNotAllowed(t *testing.T) {
-	sm := NewSessionManager()
+// TestShellMethodNotAllowed verifies that unsupported HTTP methods on
+// /api/shell return 405 Method Not Allowed.
+func TestShellMethodNotAllowed(t *testing.T) {
+	sm := NewShellManager()
 	handler := newHandler(sm, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/session", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/shell", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -334,7 +334,7 @@ func TestSessionMethodNotAllowed(t *testing.T) {
 // TestExecuteMethodNotAllowed verifies that unsupported HTTP methods on
 // /api/execute return 405 Method Not Allowed.
 func TestExecuteMethodNotAllowed(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	handler := newHandler(sm, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/execute", nil)
@@ -346,16 +346,16 @@ func TestExecuteMethodNotAllowed(t *testing.T) {
 	}
 }
 
-// TestCreateSessionError verifies that POST /api/session returns 500
-// when the session manager fails to create a new shell.
-func TestCreateSessionError(t *testing.T) {
-	sm := NewSessionManager()
+// TestCreateShellError verifies that POST /api/shell returns 500
+// when the shell manager fails to create a new shell.
+func TestCreateShellError(t *testing.T) {
+	sm := NewShellManager()
 	sm.newShell = func() (Shell, error) {
 		return nil, errors.New("shell broken")
 	}
 	handler := newHandler(sm, nil)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/session", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/shell", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -387,7 +387,7 @@ func (m *mockShell) Close() error {
 // TestExecuteWhitelistedWithStderr verifies that stderr output from a whitelisted command
 // is sent as an SSE event of type "stderr" before the complete event.
 func TestExecuteWhitelistedWithStderr(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	defer sm.CloseAll()
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{exitCode: 0, stderr: "warning: something"}, nil
@@ -401,7 +401,7 @@ func TestExecuteWhitelistedWithStderr(t *testing.T) {
 
 	body := strings.NewReader(`{"command":"ls"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -424,7 +424,7 @@ func TestExecuteWhitelistedWithStderr(t *testing.T) {
 // TestExecuteWhitelistedNonZeroExit verifies that a whitelisted command returning
 // a non-zero exit code sends the correct exit code in the complete event.
 func TestExecuteWhitelistedNonZeroExit(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	defer sm.CloseAll()
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{exitCode: 2}, nil
@@ -438,7 +438,7 @@ func TestExecuteWhitelistedNonZeroExit(t *testing.T) {
 
 	body := strings.NewReader(`{"command":"ls"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -452,7 +452,7 @@ func TestExecuteWhitelistedNonZeroExit(t *testing.T) {
 // TestExecuteWhitelistedWithExecError verifies that when ExecuteStream returns an error
 // on a whitelisted command, the audit log records the error via auditLog.
 func TestExecuteWhitelistedWithExecError(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	defer sm.CloseAll()
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{exitCode: -1, err: errors.New("broken")}, nil
@@ -466,7 +466,7 @@ func TestExecuteWhitelistedWithExecError(t *testing.T) {
 
 	body := strings.NewReader(`{"command":"ls"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -492,7 +492,7 @@ func (m *mockValidator) Validate(_ context.Context, _ string) (ValidationResult,
 // TestExecuteValidatedSafe verifies that a non-whitelisted command judged safe
 // by the validator is executed and returns SSE events.
 func TestExecuteValidatedSafe(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	defer sm.CloseAll()
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{exitCode: 0}, nil
@@ -507,7 +507,7 @@ func TestExecuteValidatedSafe(t *testing.T) {
 
 	body := strings.NewReader(`{"command":"curl https://example.com"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -525,7 +525,7 @@ func TestExecuteValidatedSafe(t *testing.T) {
 // TestExecuteValidatedUnsafe verifies that a non-whitelisted command judged unsafe
 // by the validator returns 403 with the reason.
 func TestExecuteValidatedUnsafe(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	defer sm.CloseAll()
 	v := &mockValidator{result: ValidationResult{Safe: false, Reason: "destructive"}}
 	handler := newHandler(sm, v)
@@ -537,7 +537,7 @@ func TestExecuteValidatedUnsafe(t *testing.T) {
 
 	body := strings.NewReader(`{"command":"rm -rf /"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -556,7 +556,7 @@ func TestExecuteValidatedUnsafe(t *testing.T) {
 // TestExecuteValidatorError verifies that a non-API validator error such as
 // a parse failure results in 403 fail-closed behavior.
 func TestExecuteValidatorError(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	defer sm.CloseAll()
 	v := &mockValidator{err: errors.New("retries exhausted: no expected tool use block in response")}
 	handler := newHandler(sm, v)
@@ -568,7 +568,7 @@ func TestExecuteValidatorError(t *testing.T) {
 
 	body := strings.NewReader(`{"command":"curl https://example.com"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -581,7 +581,7 @@ func TestExecuteValidatorError(t *testing.T) {
 // validator returns a ValidationUnavailableError the command executes
 // instead of being rejected with 403.
 func TestExecuteValidatorUnavailableSkipsValidation(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	defer sm.CloseAll()
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{exitCode: 0}, nil
@@ -596,7 +596,7 @@ func TestExecuteValidatorUnavailableSkipsValidation(t *testing.T) {
 
 	body := strings.NewReader(`{"command":"curl https://example.com"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -617,7 +617,7 @@ func TestExecuteValidatorUnavailableSkipsValidation(t *testing.T) {
 // TestExecuteWhitelistedSkipsValidator verifies that whitelisted commands
 // bypass the validator entirely and execute directly.
 func TestExecuteWhitelistedSkipsValidator(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	defer sm.CloseAll()
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{exitCode: 0}, nil
@@ -633,7 +633,7 @@ func TestExecuteWhitelistedSkipsValidator(t *testing.T) {
 
 	body := strings.NewReader(`{"command":"ls"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -647,7 +647,7 @@ func TestExecuteWhitelistedSkipsValidator(t *testing.T) {
 
 // TestHealth verifies that GET /health returns 200 OK with body "ok\n".
 func TestHealth(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	handler := newHandler(sm, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
@@ -670,7 +670,7 @@ func TestExecuteCloudFrontViewerAddress(t *testing.T) {
 	log.SetOutput(&buf)
 	defer log.SetOutput(os.Stderr)
 
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	defer sm.CloseAll()
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{exitCode: 0}, nil
@@ -684,7 +684,7 @@ func TestExecuteCloudFrontViewerAddress(t *testing.T) {
 
 	body := strings.NewReader(`{"command":"ls"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
 	req.Header.Set("CloudFront-Viewer-Address", "203.0.113.50:12345")
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
@@ -706,7 +706,7 @@ func TestExecuteFallbackClientIP(t *testing.T) {
 	log.SetOutput(&buf)
 	defer log.SetOutput(os.Stderr)
 
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	defer sm.CloseAll()
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{exitCode: 0}, nil
@@ -720,7 +720,7 @@ func TestExecuteFallbackClientIP(t *testing.T) {
 
 	body := strings.NewReader(`{"command":"ls"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: id})
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
