@@ -163,9 +163,7 @@ RUN apk add --no-cache libcrypto3=3.5.7-r0 libssl3=3.5.7-r0
 
 RUN addgroup -S nixbld && \
     mkdir -p /etc/nix && \
-    for i in $(seq 1 32); do \
-      adduser -S -D -H -h /var/empty -s /sbin/nologin -G nixbld "nixbld$i"; \
-    done
+    adduser -S -D -H -h /var/empty -s /sbin/nologin -G nixbld nixbld1
 
 COPY ./nix/runtime.conf /etc/nix/nix.conf
 COPY --from=nix-runtime /etc/nix/nix-path.conf /etc/nix/nix-path.conf
