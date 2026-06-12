@@ -47,7 +47,7 @@ vulnerabilities:
   # fastfetch closure drags in. Same sandbox trust-boundary reasoning as above.
   - id: CVE-2026-24049
     paths:
-      - "**/*setuptools*/**"
+      - "**/*python3*setuptools*/**"
     statement: vendored wheel in the fastfetch toolchain's python setuptools
 misconfigurations:
   - id: DS-0026

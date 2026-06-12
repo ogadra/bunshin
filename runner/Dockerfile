@@ -61,6 +61,7 @@ RUN nix shell nixpkgs#gnused --command sh -c '\
     sed -i '\''s|LC_ALL = "ja_JP.UTF-8";|LC_ALL = "en_US.UTF-8";|g'\'' /root/.config/home-manager/home.nix && \
     home-manager switch'
 
+COPY ./nix/nixpkgs-pin.nix /tmp/nixpkgs-pin.nix
 COPY ./nix/prebuilt-tools.nix /tmp/prebuilt-tools.nix
 RUN nix build --no-link --print-out-paths --file /tmp/prebuilt-tools.nix > /tmp/prebuilt-tools-paths.txt && \
     prebuilt_tools="$(cat /tmp/prebuilt-tools-paths.txt)" && \
@@ -69,7 +70,7 @@ RUN nix build --no-link --print-out-paths --file /tmp/prebuilt-tools.nix > /tmp/
     for bin in ip awk; do \
       ln -sf "$prebuilt_tools/bin/$bin" "/usr/local/bin/$bin"; \
     done && \
-    nixpkgs_src="$(nix eval --raw --impure --expr 'builtins.fetchTarball { url = "https://github.com/NixOS/nixpkgs/archive/cd3cab093d1d5b523e9c7efbb970f4f016cd35a9.tar.gz"; sha256 = "sha256-RLuUREj5j5Y0nNJYYoFiH6JNV7FzXx6fOyd9Eq3gf8k="; }')" && \
+    nixpkgs_src="$(nix eval --raw --impure --file /tmp/nixpkgs-pin.nix)" && \
     nix-store --add-root /nix/var/nix/gcroots/nixpkgs-source --indirect -r "$nixpkgs_src" && \
     mkdir -p /etc/nix && \
     printf '{"version":2,"flakes":[{"from":{"type":"indirect","id":"nixpkgs"},"to":{"type":"path","path":"%s"}}]}\n' "$nixpkgs_src" > /etc/nix/registry.json
@@ -132,10 +133,13 @@ ENV PATH="/usr/local/bin:/root/.nix-profile/bin:/nix/var/nix/profiles/default/bi
     NIX_SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt" \
     SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"
 
-RUN apk upgrade --no-cache libcrypto3 libssl3
+# Pin the exact versions instead of a floating `apk upgrade` so the image stays
+# reproducible; a version dropped from the repo fails the build loudly and
+# forces a base image bump rather than silently changing what ships.
+RUN apk add --no-cache libcrypto3=3.5.7-r0 libssl3=3.5.7-r0
 
 RUN addgroup -S nixbld && \
-    mkdir -p /etc/nix /etc/profile.d && \
+    mkdir -p /etc/nix && \
     for i in $(seq 1 32); do \
       adduser -S -D -H -h /var/empty -s /sbin/nologin -G nixbld "nixbld$i"; \
     done
