@@ -47,27 +47,11 @@ resource "aws_security_group_rule" "alb_egress_nginx" {
   from_port                = local.ecs_services["nginx"].port
   to_port                  = local.ecs_services["nginx"].port
   protocol                 = "tcp"
-  source_security_group_id = aws_security_group.nginx.id
+  source_security_group_id = module.apne1.nginx_security_group_id
   security_group_id        = aws_security_group.alb.id
   description              = "HTTP to nginx"
 }
 
-resource "aws_security_group" "nginx" {
-  name_prefix = "bunshin-nginx-"
-  description = "Security group for nginx ECS tasks"
-  vpc_id      = module.apne1.vpc_id
-
-  tags = merge(local.common_tags, {
-    Name    = "bunshin-nginx"
-    Service = "nginx"
-  })
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-# nginx inbound: from ALB
 resource "aws_security_group_rule" "nginx_ingress_alb" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   type                     = "ingress"
@@ -75,86 +59,6 @@ resource "aws_security_group_rule" "nginx_ingress_alb" {
   to_port                  = local.ecs_services["nginx"].port
   protocol                 = "tcp"
   source_security_group_id = aws_security_group.alb.id
-  security_group_id        = aws_security_group.nginx.id
+  security_group_id        = module.apne1.nginx_security_group_id
   description              = "HTTP from ALB"
-}
-
-# nginx outbound: to broker
-resource "aws_security_group_rule" "nginx_egress_broker" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  type                     = "egress"
-  from_port                = local.ecs_services["broker"].port
-  to_port                  = local.ecs_services["broker"].port
-  protocol                 = "tcp"
-  source_security_group_id = module.apne1.broker_security_group_id
-  security_group_id        = aws_security_group.nginx.id
-  description              = "HTTP to broker"
-}
-
-# nginx outbound: to runner
-resource "aws_security_group_rule" "nginx_egress_runner" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  type                     = "egress"
-  from_port                = local.ecs_services["runner"].port
-  to_port                  = local.ecs_services["runner"].port
-  protocol                 = "tcp"
-  source_security_group_id = module.apne1.runner_security_group_id
-  security_group_id        = aws_security_group.nginx.id
-  description              = "HTTP to runner"
-}
-
-# broker inbound: from nginx
-resource "aws_security_group_rule" "broker_ingress_nginx" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  type                     = "ingress"
-  from_port                = local.ecs_services["broker"].port
-  to_port                  = local.ecs_services["broker"].port
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.nginx.id
-  security_group_id        = module.apne1.broker_security_group_id
-  description              = "HTTP from nginx"
-}
-
-# runner inbound: from nginx
-resource "aws_security_group_rule" "runner_ingress_nginx" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  type                     = "ingress"
-  from_port                = local.ecs_services["runner"].port
-  to_port                  = local.ecs_services["runner"].port
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.nginx.id
-  security_group_id        = module.apne1.runner_security_group_id
-  description              = "HTTP from nginx"
-}
-
-# ECS tasks outbound: to VPC endpoints for ECR and CloudWatch Logs
-resource "aws_security_group_rule" "vpc_endpoint_for_ecs_egress" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  for_each = {
-    nginx = aws_security_group.nginx.id
-  }
-
-  type                     = "egress"
-  from_port                = 443
-  to_port                  = 443
-  protocol                 = "tcp"
-  source_security_group_id = module.apne1.vpc_endpoint_for_ecs_security_group_id
-  security_group_id        = each.value
-  description              = "HTTPS to VPC endpoints for ECS"
-}
-
-# ECS tasks outbound: to S3 Gateway Endpoint for ECR image layers
-resource "aws_security_group_rule" "ecs_egress_s3" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  for_each = {
-    nginx = aws_security_group.nginx.id
-  }
-
-  type              = "egress"
-  from_port         = 443
-  to_port           = 443
-  protocol          = "tcp"
-  prefix_list_ids   = [module.apne1.s3_prefix_list_id]
-  security_group_id = each.value
-  description       = "HTTPS to S3 VPC endpoint"
 }

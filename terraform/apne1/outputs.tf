@@ -72,3 +72,8 @@ output "nginx_log_group_name" {
   description = "Name of the nginx ECS log group"
   value       = aws_cloudwatch_log_group.ecs["nginx"].name
 }
+
+output "nginx_security_group_id" {
+  description = "ID of the nginx ECS task security group"
+  value       = aws_security_group.nginx.id
+}
