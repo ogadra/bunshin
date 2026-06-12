@@ -8,11 +8,6 @@ output "vpc_cidr" {
   value       = local.vpc_cidr
 }
 
-output "public_subnet_ids" {
-  description = "IDs of the public subnets"
-  value       = aws_subnet.apne1_public[*].id
-}
-
 output "broker_ecs_service_id" {
   description = "ID of the broker ECS service"
   value       = aws_ecs_service.broker.id
@@ -33,12 +28,12 @@ output "private_route_table_id" {
   value       = aws_route_table.apne1_private.id
 }
 
-output "nginx_security_group_id" {
-  description = "ID of the nginx ECS task security group"
-  value       = aws_security_group.nginx.id
+output "external_alb_dns_name" {
+  description = "DNS name of the external ALB"
+  value       = aws_lb.external.dns_name
 }
 
-output "nginx_target_group_arn" {
-  description = "ARN of the nginx ALB target group"
-  value       = aws_lb_target_group.nginx.arn
+output "external_alb_zone_id" {
+  description = "Canonical hosted zone ID of the external ALB"
+  value       = aws_lb.external.zone_id
 }
