@@ -38,26 +38,6 @@ output "private_route_table_id" {
   value       = aws_route_table.apne1_private.id
 }
 
-output "broker_security_group_id" {
-  description = "ID of the broker ECS task security group"
-  value       = aws_security_group.broker.id
-}
-
-output "runner_security_group_id" {
-  description = "ID of the runner ECS task security group"
-  value       = aws_security_group.runner.id
-}
-
-output "vpc_endpoint_for_ecs_security_group_id" {
-  description = "ID of the VPC endpoint security group used by ECS tasks"
-  value       = aws_security_group.apne1_vpc_endpoint_for_ecs.id
-}
-
-output "s3_prefix_list_id" {
-  description = "Prefix list ID of the S3 VPC endpoint"
-  value       = aws_vpc_endpoint.apne1_s3.prefix_list_id
-}
-
 output "nginx_task_execution_role_arn" {
   description = "ARN of the nginx ECS task execution role"
   value       = aws_iam_role.ecs_task_execution["nginx"].arn
@@ -71,4 +51,9 @@ output "nginx_task_role_arn" {
 output "nginx_log_group_name" {
   description = "Name of the nginx ECS log group"
   value       = aws_cloudwatch_log_group.ecs["nginx"].name
+}
+
+output "nginx_security_group_id" {
+  description = "ID of the nginx ECS task security group"
+  value       = aws_security_group.nginx.id
 }

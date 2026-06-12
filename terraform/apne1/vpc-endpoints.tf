@@ -28,6 +28,7 @@ resource "aws_security_group" "apne1_vpc_endpoint_for_ecs" {
 resource "aws_security_group_rule" "apne1_vpc_endpoint_for_ecs_ingress" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   for_each = {
+    nginx  = aws_security_group.nginx.id
     broker = aws_security_group.broker.id
     runner = aws_security_group.runner.id
   }
