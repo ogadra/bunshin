@@ -55,11 +55,12 @@ resource "aws_ecs_task_definition" "nginx" {
 }
 
 resource "aws_ecs_service" "nginx" {
-  name            = "bunshin-nginx"
-  cluster         = aws_ecs_cluster.apne3.id
-  task_definition = aws_ecs_task_definition.nginx.arn
-  desired_count   = local.nginx_desired_count
-  launch_type     = "FARGATE"
+  name                              = "bunshin-nginx"
+  cluster                           = aws_ecs_cluster.apne3.id
+  task_definition                   = aws_ecs_task_definition.nginx.arn
+  desired_count                     = local.nginx_desired_count
+  launch_type                       = "FARGATE"
+  health_check_grace_period_seconds = 60
   depends_on = [
     aws_iam_role_policy.execution_ecr["nginx"],
     aws_iam_role_policy.execution_logs["nginx"],
@@ -68,6 +69,12 @@ resource "aws_ecs_service" "nginx" {
   network_configuration {
     subnets         = local.ecs_subnet_ids
     security_groups = [aws_security_group.nginx.id]
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.nginx.arn
+    container_name   = "nginx"
+    container_port   = local.ecs_services["nginx"].port
   }
 
   tags = merge(local.common_tags, {
