@@ -35,18 +35,18 @@ RUN mkdir -p /etc/nix
 COPY ./nix/build.conf /etc/nix/nix.conf
 
 COPY ./nix/nixpkgs-pin.nix /tmp/nixpkgs-pin.nix
+COPY ./nix/home-manager-pin.nix /tmp/home-manager-pin.nix
 
-# Resolve <nixpkgs> through the pinned source rather than a floating channel.
-# The home-manager generation has to be built from the same nixpkgs the runtime
-# evaluates; if they diverge a runtime `home-manager switch` re-derives every
-# dependency and fails with no network. The pin lives in nix.conf's nix-path,
-# which only takes effect when NIX_PATH is unset — the base image exports
-# NIX_PATH pointing at its channels, so the build steps below unset it to fall
-# through to the pin, matching the runtime where NIX_PATH is absent.
-RUN nix-channel --add https://github.com/nix-community/home-manager/archive/release-25.11.tar.gz home-manager && \
-    nix-channel --update && \
-    nixpkgs_src="$(nix eval --raw --file /tmp/nixpkgs-pin.nix)" && \
-    hm_src="$(nix-instantiate --find-file home-manager)" && \
+# Resolve <nixpkgs> and <home-manager> through pinned sources rather than
+# floating channels. The home-manager generation has to be built from the same
+# nixpkgs the runtime evaluates; if they diverge a runtime `home-manager switch`
+# re-derives every dependency and fails with no network. The pins live in
+# nix.conf's nix-path, which only takes effect when NIX_PATH is unset — the base
+# image exports NIX_PATH pointing at its channels, so the build steps below
+# unset it to fall through to the pins, matching the runtime where NIX_PATH is
+# absent.
+RUN nixpkgs_src="$(nix eval --raw --file /tmp/nixpkgs-pin.nix)" && \
+    hm_src="$(nix eval --raw --file /tmp/home-manager-pin.nix)" && \
     printf 'nix-path = nixpkgs=%s home-manager=%s\n' "$nixpkgs_src" "$hm_src" > /etc/nix/nix-path.conf && \
     cat /etc/nix/nix-path.conf >> /etc/nix/nix.conf && \
     mkdir -p /nix/var/nix/gcroots && \
