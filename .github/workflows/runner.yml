@@ -54,4 +54,3 @@ jobs:
         with:
           scan-type: image
           image-ref: sandbox-server
-          skip-dirs: /nix/store/*-source,/nix/store/*-ruby-3.4.8
