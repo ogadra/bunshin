@@ -1,3 +1,14 @@
+variable "external_alb_certificate_arn" {
+  description = "ACM certificate ARN for the external ALB HTTPS listener"
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition     = can(regex("^arn:aws:acm:ap-northeast-3:[0-9]{12}:certificate/.+", var.external_alb_certificate_arn))
+    error_message = "external_alb_certificate_arn must be an ap-northeast-3 ACM certificate ARN."
+  }
+}
+
 variable "proxy_secret" {
   description = "Secret header value for Cloudflare Workers proxy verification via WAF"
   type        = string

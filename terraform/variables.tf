@@ -1,7 +1,18 @@
-variable "acm_certificate_arn" {
-  description = "ARN of the ACM certificate for the ALB HTTPS listener"
-  type        = string
-  sensitive   = true
+variable "external_alb_certificate_arns" {
+  description = "ACM certificate ARNs for external ALB HTTPS listeners"
+  type = object({
+    apne1 = string
+    apne3 = string
+  })
+  sensitive = true
+
+  validation {
+    condition = (
+      can(regex("^arn:aws:acm:ap-northeast-1:[0-9]{12}:certificate/.+", var.external_alb_certificate_arns.apne1)) &&
+      can(regex("^arn:aws:acm:ap-northeast-3:[0-9]{12}:certificate/.+", var.external_alb_certificate_arns.apne3))
+    )
+    error_message = "external_alb_certificate_arns must contain ACM certificate ARNs in their matching regions."
+  }
 }
 
 variable "domain_name" {
