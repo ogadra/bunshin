@@ -5,6 +5,7 @@ locals {
   private_cidrs = ["10.1.11.0/24", "10.1.12.0/24", "10.1.13.0/24"]
 
   ecs_services = {
+    nginx  = { port = 8080 }
     broker = { port = 8080 }
     runner = { port = 3000 }
   }
