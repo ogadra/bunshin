@@ -10,6 +10,8 @@ const (
 	CodeInvalidRequest = "INVALID_REQUEST"
 	// CodeRunnerConflict は同一 runnerId が別の属性で既に登録済みの場合のエラーコード。
 	CodeRunnerConflict = "RUNNER_CONFLICT"
+	// CodeStackMismatch はリクエストの所属スタックが現在の broker と異なる場合のエラーコード。
+	CodeStackMismatch = "STACK_MISMATCH"
 	// CodeInternalError は内部エラーのエラーコード。
 	CodeInternalError = "INTERNAL_ERROR"
 )

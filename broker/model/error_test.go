@@ -69,6 +69,8 @@ func TestErrorCodeConstants(t *testing.T) {
 		CodeNoIdleRunner,
 		CodeSessionNotFound,
 		CodeInvalidRequest,
+		CodeRunnerConflict,
+		CodeStackMismatch,
 		CodeInternalError,
 	}
 	for i, code := range codes {
