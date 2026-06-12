@@ -36,10 +36,10 @@ check("no reassigned when absent", r.reassigned == nil)
 -- Set-Cookie / X-Session-Reassigned の伝播
 r = core.decide({ status = 200, header = {
     ["X-Runner-Url"] = "http://runner-1:3000",
-    ["Set-Cookie"] = "runner_id=abc; Path=/",
+    ["Set-Cookie"] = "session_id=abc; Path=/",
     ["X-Session-Reassigned"] = "true",
 } })
-check("propagates set-cookie", r.set_cookie == "runner_id=abc; Path=/")
+check("propagates set-cookie", r.set_cookie == "session_id=abc; Path=/")
 check("propagates reassigned", r.reassigned == "true")
 
 -- 複数 Set-Cookie (capture はテーブルで返す) を文字列へ畳む
