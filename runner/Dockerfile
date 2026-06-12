@@ -68,15 +68,20 @@ RUN nix build --no-link --print-out-paths --file /tmp/prebuilt-tools.nix > /tmp/
     nix-store --add-root /nix/var/nix/gcroots/prebuilt-tools/runner-prebuilt-tools --indirect -r "$prebuilt_tools" && \
     for bin in ip awk; do \
       ln -sf "$prebuilt_tools/bin/$bin" "/usr/local/bin/$bin"; \
-    done
+    done && \
+    nixpkgs_src="$(nix eval --raw --impure --expr 'builtins.fetchTarball { url = "https://github.com/NixOS/nixpkgs/archive/cd3cab093d1d5b523e9c7efbb970f4f016cd35a9.tar.gz"; sha256 = "sha256-RLuUREj5j5Y0nNJYYoFiH6JNV7FzXx6fOyd9Eq3gf8k="; }')" && \
+    nix-store --add-root /nix/var/nix/gcroots/nixpkgs-source --indirect -r "$nixpkgs_src" && \
+    mkdir -p /etc/nix && \
+    printf '{"version":2,"flakes":[{"from":{"type":"indirect","id":"nixpkgs"},"to":{"type":"path","path":"%s"}}]}\n' "$nixpkgs_src" > /etc/nix/registry.json
 
 RUN mkdir -p /app
 COPY ./app/ /app/
 WORKDIR /app
 
+COPY ./nix/collect-flake-paths.nix /tmp/collect-flake-paths.nix
 RUN nix flake archive --json > /tmp/app-flake-archive.json && \
     mkdir -p /nix/var/nix/gcroots/app-flake && \
-    nix eval --raw --impure --expr 'let data = builtins.fromJSON (builtins.readFile /tmp/app-flake-archive.json); collect = value: if builtins.isAttrs value then (if value ? path then [ value.path ] else []) ++ builtins.concatLists (map collect (builtins.attrValues value)) else if builtins.isList value then builtins.concatLists (map collect value) else []; in builtins.concatStringsSep "\n" (collect data)' > /tmp/app-flake-paths.txt && \
+    nix eval --raw --impure --file /tmp/collect-flake-paths.nix > /tmp/app-flake-paths.txt && \
     path_index=0 && \
     while IFS= read -r flake_path || [ -n "$flake_path" ]; do \
       path_index=$((path_index + 1)); \
@@ -101,30 +106,11 @@ RUN HM_OUT="$(nix-build '<home-manager>' -A home-manager --no-out-link)" && \
     LOCALE_STORE="${LOCALE_ARCHIVE_PATH#/nix/store/}" && \
     LOCALE_STORE="/nix/store/${LOCALE_STORE%%/*}" && \
     printf '%s\n' '#!/bin/sh' "exec \"$HM_REAL\" \"\$@\"" > /usr/local/bin/home-manager && \
+    chmod +x /usr/local/bin/home-manager && \
     ln -sf "$BASH_REAL" /usr/local/bin/bash && \
     mkdir -p /usr/local/share && \
     ln -sf "$LOCALE_ARCHIVE_PATH" /usr/local/share/locale-archive && \
-    printf '%s\n' \
-      '#!/bin/sh' \
-      "NIX_REAL=\"$NIX_REAL\"" \
-      'PREBUILT_TOOLS="/nix/var/nix/gcroots/prebuilt-tools/runner-prebuilt-tools"' \
-      'if [ "$1" = "run" ]; then' \
-      '  case "${2:-}" in' \
-      '    nixpkgs#fastfetch) prog="fastfetch" ;;' \
-      '    nixpkgs#cowsay) prog="cowsay" ;;' \
-      '    nixpkgs#pokemonsay) prog="pokemonsay" ;;' \
-      '    nixpkgs#lolcat) prog="lolcat" ;;' \
-      '    nixpkgs#figlet) prog="figlet" ;;' \
-      '  esac' \
-      '  if [ -n "${prog:-}" ]; then' \
-      '    shift 2' \
-      '    [ "${1:-}" = "--" ] && shift' \
-      '    exec "$PREBUILT_TOOLS/bin/$prog" "$@"' \
-      '  fi' \
-      'fi' \
-      'exec "$NIX_REAL" "$@"' \
-      > /usr/local/bin/nix && \
-    chmod +x /usr/local/bin/nix && \
+    ln -sf "$NIX_REAL" /usr/local/bin/nix && \
     mkdir -p /nix/var/nix/gcroots/runtime && \
     nix-store --add-root /nix/var/nix/gcroots/runtime/home-manager --indirect -r "$HM_OUT" && \
     nix-store --add-root /nix/var/nix/gcroots/runtime/nix --indirect -r "$NIX_REAL" && \
@@ -155,7 +141,7 @@ RUN addgroup -S nixbld && \
     done
 
 COPY ./nix/runtime.conf /etc/nix/nix.conf
-COPY ./nix/registry.json /etc/nix/registry.json
+COPY --from=nix-runtime /etc/nix/registry.json /etc/nix/registry.json
 COPY --from=nix-runtime /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=nix-runtime /nix /nix
 COPY --from=nix-runtime /root /root
