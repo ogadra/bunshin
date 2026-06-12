@@ -16,32 +16,6 @@ resource "aws_lb" "main" {
   })
 }
 
-# trivy:ignore:AVD-AWS-0053 -- target group uses HTTP, HTTPS terminates at ALB
-resource "aws_lb_target_group" "nginx" {
-  # checkov:skip=CKV_AWS_378:HTTPS terminates at ALB, target uses HTTP
-  name        = "bunshin-nginx"
-  port        = local.ecs_services["nginx"].port
-  protocol    = "HTTP"
-  vpc_id      = module.apne1.vpc_id
-  target_type = "ip"
-
-  health_check {
-    path                = "/health"
-    protocol            = "HTTP"
-    matcher             = "200"
-    interval            = 30
-    timeout             = 5
-    healthy_threshold   = 2
-    unhealthy_threshold = 3
-  }
-
-  deregistration_delay = 30
-
-  tags = merge(local.common_tags, {
-    Service = "nginx"
-  })
-}
-
 # HTTPS listener with ACM certificate
 resource "aws_lb_listener" "https" {
   load_balancer_arn = aws_lb.main.arn
@@ -52,7 +26,7 @@ resource "aws_lb_listener" "https" {
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.nginx.arn
+    target_group_arn = module.apne1.nginx_target_group_arn
   }
 
   tags = merge(local.common_tags, {
