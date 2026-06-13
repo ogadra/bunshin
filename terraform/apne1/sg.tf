@@ -92,7 +92,7 @@ resource "aws_security_group_rule" "ecs_egress_s3" {
 }
 
 resource "aws_security_group" "external_alb" {
-  name_prefix = "bunshin-alb-"
+  name_prefix = "bunshin-external-alb-"
   description = "Security group for ALB"
   vpc_id      = aws_vpc.apne1.id
 
