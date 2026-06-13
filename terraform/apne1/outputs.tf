@@ -28,6 +28,11 @@ output "private_route_table_id" {
   value       = aws_route_table.apne1_private.id
 }
 
+output "private_subnet_cidrs" {
+  description = "CIDR blocks of private subnets"
+  value       = aws_subnet.apne1_private[*].cidr_block
+}
+
 output "external_alb_dns_name" {
   description = "DNS name of the external ALB"
   value       = aws_lb.external.dns_name
@@ -36,4 +41,24 @@ output "external_alb_dns_name" {
 output "external_alb_zone_id" {
   description = "Canonical hosted zone ID of the external ALB"
   value       = aws_lb.external.zone_id
+}
+
+output "internal_alb_dns_name" {
+  description = "DNS name of the internal ALB"
+  value       = aws_lb.internal.dns_name
+}
+
+output "internal_alb_zone_id" {
+  description = "Canonical hosted zone ID of the internal ALB"
+  value       = aws_lb.internal.zone_id
+}
+
+output "internal_alb_security_group_id" {
+  description = "ID of the internal ALB security group"
+  value       = aws_security_group.internal_alb.id
+}
+
+output "nginx_security_group_id" {
+  description = "ID of the nginx security group"
+  value       = aws_security_group.nginx.id
 }
