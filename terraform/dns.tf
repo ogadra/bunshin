@@ -3,21 +3,6 @@ data "aws_route53_zone" "main" {
   private_zone = false
 }
 
-locals {
-  external_albs = {
-    apne1 = {
-      region   = "ap-northeast-1"
-      dns_name = module.apne1.external_alb_dns_name
-      zone_id  = module.apne1.external_alb_zone_id
-    }
-    apne3 = {
-      region   = "ap-northeast-3"
-      dns_name = module.apne3.external_alb_dns_name
-      zone_id  = module.apne3.external_alb_zone_id
-    }
-  }
-}
-
 resource "aws_route53_record" "alb" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   for_each = local.external_albs
