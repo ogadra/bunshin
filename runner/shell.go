@@ -172,9 +172,9 @@ func newBashShellFromCommander(cmd commander) (*bashShell, error) {
 // It returns an error if the bash process fails to start.
 // The caller must call [bashShell.Close] to terminate the session.
 func NewBashShell() (*bashShell, error) {
-	return newBashShellFromCommander(&execCommander{
-		cmd: exec.Command("bash", "--norc", "--noprofile"),
-	})
+	cmd := exec.Command("bash", "--norc", "--noprofile")
+	cmd.Dir = "/app"
+	return newBashShellFromCommander(&execCommander{cmd: cmd})
 }
 
 // readStderr continuously reads from the stderr pipe and appends to stderrBuf.

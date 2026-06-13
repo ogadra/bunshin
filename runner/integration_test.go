@@ -229,24 +229,20 @@ func TestIntegrationShellIsolation(t *testing.T) {
 	sid1 := createShell(t, ts)
 	sid2 := createShell(t, ts)
 
-	dir1 := firstStdoutData(t, executeCommand(t, ts, sid1, "pwd"))
-	dir2 := firstStdoutData(t, executeCommand(t, ts, sid2, "pwd"))
-	if dir1 == "" || dir2 == "" {
-		t.Fatalf("expected non-empty pwd output, got %q and %q", dir1, dir2)
-	}
-	if dir1 != dir2 {
-		t.Fatalf("expected same initial pwd, got %q and %q", dir1, dir2)
+	dir1 := strings.TrimSpace(firstStdoutData(t, executeCommand(t, ts, sid1, "pwd")))
+	dir2 := strings.TrimSpace(firstStdoutData(t, executeCommand(t, ts, sid2, "pwd")))
+	if dir1 != "/app" || dir2 != "/app" {
+		t.Fatalf("expected initial pwd /app, got %q and %q", dir1, dir2)
 	}
 
 	executeCommand(t, ts, sid1, "cd /tmp")
-	newDir1 := firstStdoutData(t, executeCommand(t, ts, sid1, "pwd"))
-	dir2After := firstStdoutData(t, executeCommand(t, ts, sid2, "pwd"))
-
-	if newDir1 == dir1 {
-		t.Fatalf("shell 1 pwd did not change after cd, still %q", newDir1)
+	newDir1 := strings.TrimSpace(firstStdoutData(t, executeCommand(t, ts, sid1, "pwd")))
+	dir2After := strings.TrimSpace(firstStdoutData(t, executeCommand(t, ts, sid2, "pwd")))
+	if newDir1 != "/tmp" {
+		t.Fatalf("shell 1 pwd = %q, want /tmp", newDir1)
 	}
-	if dir2After != dir2 {
-		t.Fatalf("shell 2 pwd changed after mutating shell 1: %q -> %q", dir2, dir2After)
+	if dir2After != "/app" {
+		t.Fatalf("shell 2 pwd changed after mutating shell 1: want /app, got %q", dir2After)
 	}
 }
 
