@@ -141,7 +141,7 @@ func start(addr string) error {
 	}
 
 	cfg := serverConfig{
-		sm:              NewSessionManager(),
+		sm:              NewShellManager(),
 		validator:       validator,
 		shutdownTimeout: 10 * time.Second,
 		brokerURL:       brokerURL,
@@ -154,7 +154,7 @@ func start(addr string) error {
 // serverConfig holds all dependencies needed to start and shut down the server.
 // Fields default to production values when created via main.
 type serverConfig struct {
-	sm              *SessionManager
+	sm              *ShellManager
 	validator       Validator
 	shutdownTimeout time.Duration
 	handler         http.Handler
@@ -211,7 +211,7 @@ func run(ln net.Listener, sigCh <-chan os.Signal, cfg serverConfig) error {
 	}
 
 	if err := cfg.sm.CloseAll(); err != nil {
-		log.Printf("session cleanup error: %v", err)
+		log.Printf("shell cleanup error: %v", err)
 		if firstErr == nil {
 			firstErr = err
 		}
