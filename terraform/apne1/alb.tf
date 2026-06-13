@@ -57,7 +57,7 @@ resource "aws_lb" "external" {
   drop_invalid_header_fields = true
   # checkov:skip=CKV2_AWS_76:Log4j WAF rule is not needed, backend does not use Java
   # checkov:skip=CKV_AWS_150:Deletion protection is not needed for initial deployment
-  name               = "bunshin"
+  name               = "bunshin-external"
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.external_alb.id]

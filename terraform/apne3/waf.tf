@@ -1,7 +1,7 @@
 resource "aws_wafv2_web_acl" "external_alb" {
   # checkov:skip=CKV_AWS_192:Log4j protection is not needed, backend does not use Java
   # checkov:skip=CKV2_AWS_31:WAF logging is not needed for initial deployment
-  name  = "bunshin-alb"
+  name  = "bunshin-apne3-external-alb-waf"
   scope = "REGIONAL"
 
   default_action {
@@ -45,10 +45,10 @@ resource "aws_wafv2_web_acl" "external_alb" {
   visibility_config {
     sampled_requests_enabled   = false
     cloudwatch_metrics_enabled = true
-    metric_name                = "bunshin-alb-waf"
+    metric_name                = "bunshin-apne3-external-alb-waf"
   }
 
   tags = merge(local.common_tags, {
-    Service = "waf"
+    Service = "external-alb"
   })
 }
