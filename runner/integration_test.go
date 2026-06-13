@@ -100,6 +100,7 @@ func parseIntegrationSSEEvents(t *testing.T, body string) []sseEvent {
 func parseSSEEventsRaw(body string) ([]sseEvent, error) {
 	var events []sseEvent
 	scanner := bufio.NewScanner(strings.NewReader(body))
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !strings.HasPrefix(line, "data: ") {
@@ -111,6 +112,9 @@ func parseSSEEventsRaw(body string) ([]sseEvent, error) {
 			return nil, fmt.Errorf("unmarshal SSE event %q: %w", data, err)
 		}
 		events = append(events, event)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("scan SSE events: %w", err)
 	}
 	return events, nil
 }
@@ -214,9 +218,7 @@ func TestIntegrationExecuteAfterDelete(t *testing.T) {
 	}
 }
 
-// TestIntegrationShellIsolation verifies that two shells have independent
-// bash processes by confirming both return the same initial working directory
-// without interfering with each other.
+// 2つのshellが独立したbashプロセスであることを検証する
 func TestIntegrationShellIsolation(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
@@ -227,16 +229,24 @@ func TestIntegrationShellIsolation(t *testing.T) {
 	sid1 := createShell(t, ts)
 	sid2 := createShell(t, ts)
 
-	events1 := executeCommand(t, ts, sid1, "pwd")
-	events2 := executeCommand(t, ts, sid2, "pwd")
-
-	dir1 := firstStdoutData(t, events1)
-	dir2 := firstStdoutData(t, events2)
+	dir1 := firstStdoutData(t, executeCommand(t, ts, sid1, "pwd"))
+	dir2 := firstStdoutData(t, executeCommand(t, ts, sid2, "pwd"))
 	if dir1 == "" || dir2 == "" {
 		t.Fatalf("expected non-empty pwd output, got %q and %q", dir1, dir2)
 	}
 	if dir1 != dir2 {
 		t.Fatalf("expected same initial pwd, got %q and %q", dir1, dir2)
+	}
+
+	executeCommand(t, ts, sid1, "cd /tmp")
+	newDir1 := firstStdoutData(t, executeCommand(t, ts, sid1, "pwd"))
+	dir2After := firstStdoutData(t, executeCommand(t, ts, sid2, "pwd"))
+
+	if newDir1 == dir1 {
+		t.Fatalf("shell 1 pwd did not change after cd, still %q", newDir1)
+	}
+	if dir2After != dir2 {
+		t.Fatalf("shell 2 pwd changed after mutating shell 1: %q -> %q", dir2, dir2After)
 	}
 }
 

@@ -318,6 +318,9 @@ func TestIntegrationCreateExecuteDelete(t *testing.T) {
 		t.Fatalf("POST /api/shell error: %v", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("POST /api/shell status = %d, want %d", resp.StatusCode, http.StatusNoContent)
+	}
 
 	var shellID string
 	for _, c := range resp.Cookies() {

@@ -47,6 +47,7 @@ func TestGetNotFound(t *testing.T) {
 // TestDelete verifies that Delete removes a shell and that subsequent Get fails.
 func TestDelete(t *testing.T) {
 	m := NewShellManager()
+	t.Cleanup(func() { _ = m.CloseAll() })
 
 	id, _, err := m.Create()
 	if err != nil {
@@ -76,6 +77,7 @@ func TestDeleteNotFound(t *testing.T) {
 // TestCloseAll verifies that CloseAll closes all shells and clears the map.
 func TestCloseAll(t *testing.T) {
 	m := NewShellManager()
+	t.Cleanup(func() { _ = m.CloseAll() })
 
 	ids := make([]string, 3)
 	for i := range ids {
