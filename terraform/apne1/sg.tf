@@ -142,6 +142,32 @@ resource "aws_security_group_rule" "external_alb_egress_nginx" {
   description              = "HTTP to nginx"
 }
 
+resource "aws_security_group" "internal_alb" {
+  name_prefix = "bunshin-internal-alb-"
+  description = "Security group for internal ALB"
+  vpc_id      = aws_vpc.apne1.id
+
+  tags = merge(local.common_tags, {
+    Name    = "bunshin-apne1-internal-alb"
+    Service = "internal-alb"
+  })
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_security_group_rule" "internal_alb_egress_nginx" {
+  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  type                     = "egress"
+  from_port                = local.ecs_services["nginx"].port
+  to_port                  = local.ecs_services["nginx"].port
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.nginx.id
+  security_group_id        = aws_security_group.internal_alb.id
+  description              = "HTTP to nginx"
+}
+
 resource "aws_security_group" "nginx" {
   name_prefix = "bunshin-nginx-"
   description = "Security group for nginx ECS tasks"
@@ -188,6 +214,17 @@ resource "aws_security_group_rule" "nginx_ingress_external_alb" {
   source_security_group_id = aws_security_group.external_alb.id
   security_group_id        = aws_security_group.nginx.id
   description              = "HTTP from ALB"
+}
+
+resource "aws_security_group_rule" "nginx_ingress_internal_alb" {
+  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  type                     = "ingress"
+  from_port                = local.ecs_services["nginx"].port
+  to_port                  = local.ecs_services["nginx"].port
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.internal_alb.id
+  security_group_id        = aws_security_group.nginx.id
+  description              = "HTTP from internal ALB"
 }
 
 resource "aws_security_group" "runner" {

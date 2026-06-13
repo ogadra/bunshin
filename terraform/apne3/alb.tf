@@ -1,7 +1,33 @@
 # trivy:ignore:AVD-AWS-0053 -- target group uses HTTP, HTTPS terminates at ALB
-resource "aws_lb_target_group" "nginx" {
+resource "aws_lb_target_group" "external_nginx" {
   # checkov:skip=CKV_AWS_378:HTTPS terminates at ALB, target uses HTTP
-  name        = "bunshin-nginx"
+  name        = "bunshin-external-nginx"
+  port        = local.ecs_services["nginx"].port
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.apne3.id
+  target_type = "ip"
+
+  health_check {
+    path                = "/health"
+    protocol            = "HTTP"
+    matcher             = "200"
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+  }
+
+  deregistration_delay = 30
+
+  tags = merge(local.common_tags, {
+    Service = "nginx"
+  })
+}
+
+# trivy:ignore:AVD-AWS-0053 -- target group uses HTTP, HTTPS terminates at ALB
+resource "aws_lb_target_group" "internal_nginx" {
+  # checkov:skip=CKV_AWS_378:HTTPS terminates at ALB, target uses HTTP
+  name        = "bunshin-internal-nginx"
   port        = local.ecs_services["nginx"].port
   protocol    = "HTTP"
   vpc_id      = aws_vpc.apne3.id
@@ -42,20 +68,53 @@ resource "aws_lb" "external" {
   })
 }
 
+# trivy:ignore:AVD-AWS-0054 -- ALB access logs are optional for initial deployment
+resource "aws_lb" "internal" {
+  # checkov:skip=CKV_AWS_91:ALB access logs are optional for initial deployment
+  drop_invalid_header_fields = true
+  # checkov:skip=CKV_AWS_150:Deletion protection is not needed for initial deployment
+  name               = "bunshin-internal"
+  internal           = true
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.internal_alb.id]
+  subnets            = local.ecs_subnet_ids
+
+  tags = merge(local.common_tags, {
+    Service = "internal-alb"
+  })
+}
+
 resource "aws_lb_listener" "external_https" {
   load_balancer_arn = aws_lb.external.arn
   port              = 443
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-  certificate_arn   = var.external_alb_certificate_arn
+  certificate_arn   = var.alb_certificate_arn
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.nginx.arn
+    target_group_arn = aws_lb_target_group.external_nginx.arn
   }
 
   tags = merge(local.common_tags, {
     Service = "alb"
+  })
+}
+
+resource "aws_lb_listener" "internal_https" {
+  load_balancer_arn = aws_lb.internal.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = var.alb_certificate_arn
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.internal_nginx.arn
+  }
+
+  tags = merge(local.common_tags, {
+    Service = "internal-alb"
   })
 }
 

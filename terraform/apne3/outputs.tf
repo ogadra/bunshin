@@ -27,3 +27,28 @@ output "private_route_table_id" {
   description = "ID of the private route table"
   value       = aws_route_table.apne3_private.id
 }
+
+output "private_subnet_cidrs" {
+  description = "CIDR blocks of private subnets"
+  value       = aws_subnet.apne3_private[*].cidr_block
+}
+
+output "internal_alb_dns_name" {
+  description = "DNS name of the internal ALB"
+  value       = aws_lb.internal.dns_name
+}
+
+output "internal_alb_zone_id" {
+  description = "Canonical hosted zone ID of the internal ALB"
+  value       = aws_lb.internal.zone_id
+}
+
+output "internal_alb_security_group_id" {
+  description = "ID of the internal ALB security group"
+  value       = aws_security_group.internal_alb.id
+}
+
+output "nginx_security_group_id" {
+  description = "ID of the nginx security group"
+  value       = aws_security_group.nginx.id
+}
