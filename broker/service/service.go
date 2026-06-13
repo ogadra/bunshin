@@ -58,9 +58,9 @@ type CreateSessionResult struct {
 // BrokerService は Service の実装。
 type BrokerService struct {
 	repo        store.Repository
+	stackPrefix string
 	checker     healthcheck.Checker
 	sessionFn   func() (string, error)
-	stackPrefix string
 }
 
 // Option は BrokerService のオプション関数。
@@ -82,12 +82,12 @@ func WithChecker(c healthcheck.Checker) Option {
 	}
 }
 
-// NewBrokerService は BrokerService を生成する。stackPrefix は新規セッション ID へ同梱する発行スタック名で必須。
+// NewBrokerService は BrokerService を生成する。
 func NewBrokerService(repo store.Repository, stackPrefix string, opts ...Option) *BrokerService {
 	s := &BrokerService{
 		repo:        repo,
-		sessionFn:   defaultSessionFn,
 		stackPrefix: stackPrefix,
+		sessionFn:   defaultSessionFn,
 	}
 	for _, opt := range opts {
 		opt(s)
