@@ -1,6 +1,6 @@
 import http from "k6/http";
 import { check } from "k6";
-import exec from "k6/execution";
+import { Counter } from "k6/metrics";
 
 const BASE_URL = __ENV.BASE_URL;
 if (!BASE_URL) {
@@ -14,6 +14,9 @@ const RUNNER_COUNT = parseInt(__ENV.RUNNER_COUNT, 10);
 if (Number.isNaN(RUNNER_COUNT) || RUNNER_COUNT <= 0) {
   throw new Error(`RUNNER_COUNT must be a positive integer, got: ${__ENV.RUNNER_COUNT}`);
 }
+
+// シナリオ: capacity_overflow において、runner の割り当てに成功した session 数
+const overflowSessionsCreated = new Counter("overflow_sessions_created");
 
 export const options = {
   scenarios: {
@@ -48,6 +51,7 @@ export const options = {
     "http_req_duration{scenario:session_uniqueness}": ["p(95)<5000"],
     "http_req_duration{scenario:concurrent_execute}": ["p(95)<10000"],
     "http_req_duration{scenario:capacity_overflow}": ["p(95)<10000"],
+    overflow_sessions_created: [`count==${RUNNER_COUNT}`],
   },
 };
 
@@ -95,10 +99,10 @@ function cookieHeader(cookies) {
 }
 
 /**
- * Delete a session via DELETE /api/shell.
+ * Delete a shell via DELETE /api/shell.
  * @param {{sessionId: string, shellId: string}} cookies - Session cookies.
  */
-function deleteSession(cookies) {
+function deleteShell(cookies) {
   const res = http.del(`${BASE_URL}/api/shell`, null, {
     headers: { Cookie: cookieHeader(cookies) },
   });
@@ -114,7 +118,7 @@ function deleteSession(cookies) {
 export function session_uniqueness() {
   const cookies = createSession();
   console.log(`SESSION_ID:${cookies.sessionId}`);
-  deleteSession(cookies);
+  deleteShell(cookies);
 }
 
 /**
@@ -167,33 +171,28 @@ export function concurrent_execute() {
       r.body.includes('"exitCode":0') || r.body.includes('"exitCode": 0'),
   });
 
-  deleteSession(cookies);
+  deleteShell(cookies);
 }
 
 /**
- * Scenario 3: Verify that requests beyond runner capacity are rejected.
- * The first RUNNER_COUNT VUs occupy all runners, then the remaining VUs
- * expect 500 errors indicating no idle runner is available.
- * Sessions created within capacity are logged for external cleanup.
+ * シナリオ3: runner 容量を超えるリクエストが拒否されることを検証する。
  */
 export function capacity_overflow() {
-  const iterIndex = exec.scenario.iterationInTest;
   const res = http.post(`${BASE_URL}/api/shell`, null, {
     redirects: 0,
   });
 
-  if (iterIndex < RUNNER_COUNT) {
-    check(res, {
-      "overflow: session within capacity returns 204": (r) => r.status === 204,
-    });
+  check(res, {
+    "overflow: status is 204 (runner allocated) or 503 (no idle runner)": (r) =>
+      r.status === 204 || r.status === 503,
+  });
+
+  if (res.status === 204) {
+    overflowSessionsCreated.add(1);
     const sessionId = getCookie(res, "session_id");
     const shellId = getCookie(res, "shell_id");
     if (sessionId && shellId) {
       console.log(`CLEANUP:${sessionId}:${shellId}`);
     }
-  } else {
-    check(res, {
-      "overflow: session beyond capacity returns 500": (r) => r.status === 500,
-    });
   }
 }
