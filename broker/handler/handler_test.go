@@ -284,6 +284,80 @@ func TestGetResolve_FallbackFailures(t *testing.T) {
 	}
 }
 
+// TestGetResolve_PrefixDelegatesToTarget は session_id の prefix が別スタックのとき、そのスタックの broker へ委譲することを検証する。
+func TestGetResolve_PrefixDelegatesToTarget(t *testing.T) {
+	t.Parallel()
+	h := NewHandler(&mockService{
+		resolveSessionFn: func(context.Context, string) (*service.ResolveResult, error) {
+			t.Fatal("local service should not be called")
+			return nil, nil
+		},
+	}, WithStack("apne1"), WithFallbackTargets([]StackTarget{{Stack: "apne3", URL: "http://broker-apne3:8080"}}), WithResolveClient(&mockResolveClient{
+		resolveFn: func(_ context.Context, target StackTarget, sessionID string, delegated bool) (*RemoteResolveResult, error) {
+			if target.Stack != "apne3" || sessionID != "apne3-remote-sess" || delegated {
+				t.Fatalf("route args = %+v %q %v", target, sessionID, delegated)
+			}
+			return &RemoteResolveResult{SessionID: "apne3-remote-sess", RunnerURL: "http://10.0.3.1:8080"}, nil
+		},
+	}))
+	r := newTestRouter(h)
+
+	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
+	req.AddCookie(&http.Cookie{Name: sessionIDCookie, Value: "apne3-remote-sess"})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK || rec.Header().Get("X-Runner-Url") != "http://10.0.3.1:8080" {
+		t.Fatalf("response = %d %q", rec.Code, rec.Header().Get("X-Runner-Url"))
+	}
+}
+
+// TestGetResolve_UnknownPrefixUsesLocalService は prefix が未登録スタックのとき local service で解決することを検証する。
+func TestGetResolve_UnknownPrefixUsesLocalService(t *testing.T) {
+	t.Parallel()
+	h := NewHandler(&mockService{
+		resolveSessionFn: func(_ context.Context, sessionID string) (*service.ResolveResult, error) {
+			if sessionID != "apne2-sess" {
+				t.Fatalf("sessionID = %q", sessionID)
+			}
+			return &service.ResolveResult{SessionID: "apne2-sess", RunnerURL: "http://10.0.0.1:8080"}, nil
+		},
+	}, WithStack("apne1"), WithFallbackTargets([]StackTarget{{Stack: "apne3", URL: "http://broker-apne3:8080"}}))
+	r := newTestRouter(h)
+
+	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
+	req.AddCookie(&http.Cookie{Name: sessionIDCookie, Value: "apne2-sess"})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK || rec.Header().Get("X-Runner-Url") != "http://10.0.0.1:8080" {
+		t.Fatalf("response = %d %q", rec.Code, rec.Header().Get("X-Runner-Url"))
+	}
+}
+
+// TestGetResolve_NoPrefixUsesLocalService は prefix を含まない session_id では local service で解決することを検証する。
+func TestGetResolve_NoPrefixUsesLocalService(t *testing.T) {
+	t.Parallel()
+	h := NewHandler(&mockService{
+		resolveSessionFn: func(_ context.Context, sessionID string) (*service.ResolveResult, error) {
+			if sessionID != "plainsession" {
+				t.Fatalf("sessionID = %q", sessionID)
+			}
+			return &service.ResolveResult{SessionID: "plainsession", RunnerURL: "http://10.0.0.1:8080"}, nil
+		},
+	}, WithStack("apne1"), WithFallbackTargets([]StackTarget{{Stack: "apne3", URL: "http://broker-apne3:8080"}}))
+	r := newTestRouter(h)
+
+	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
+	req.AddCookie(&http.Cookie{Name: sessionIDCookie, Value: "plainsession"})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK || rec.Header().Get("X-Runner-Url") != "http://10.0.0.1:8080" {
+		t.Fatalf("response = %d %q", rec.Code, rec.Header().Get("X-Runner-Url"))
+	}
+}
+
 // TestGetResolve_InternalError は内部エラー時に 500 を返すことを検証する。
 func TestGetResolve_InternalError(t *testing.T) {
 	t.Parallel()

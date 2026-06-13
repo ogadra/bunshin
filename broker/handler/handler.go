@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/ogadra/20260327-cli-demo/broker/model"
@@ -93,6 +94,14 @@ func (h *Handler) DeleteSession(c *gin.Context) {
 // cookie が無い、またはセッションが見つからない場合は新規作成して Set-Cookie を返す。
 func (h *Handler) GetResolve(c *gin.Context) {
 	sessionID, _ := c.Cookie(sessionIDCookie)
+	requestStack := stackFromSessionID(sessionID)
+	if requestStack != "" && h.localStack != "" && requestStack != h.localStack {
+		if target, ok := h.targetForStack(requestStack); ok {
+			h.resolveFromTarget(c, target, sessionID, false)
+			return
+		}
+	}
+
 	result, err := h.svc.ResolveSession(c.Request.Context(), sessionID)
 	if err != nil {
 		if errors.Is(err, store.ErrNoIdleRunner) {
@@ -114,6 +123,24 @@ func (h *Handler) GetResolve(c *gin.Context) {
 	}
 	c.Header("X-Runner-Url", result.RunnerURL)
 	c.Status(http.StatusOK)
+}
+
+// stackFromSessionID は session_id に同梱された発行スタック名(prefix)を返す。区切りが無ければ空文字。
+func stackFromSessionID(sessionID string) string {
+	stack, _, found := strings.Cut(sessionID, "-")
+	if !found {
+		return ""
+	}
+	return stack
+}
+
+func (h *Handler) targetForStack(stack string) (StackTarget, bool) {
+	for _, target := range h.fallbackTargets {
+		if target.Stack == stack {
+			return target, true
+		}
+	}
+	return StackTarget{}, false
 }
 
 func (h *Handler) resolveFromFallbacks(c *gin.Context, sessionID string) bool {
