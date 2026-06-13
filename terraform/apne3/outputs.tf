@@ -33,6 +33,16 @@ output "private_subnet_cidrs" {
   value       = aws_subnet.apne3_private[*].cidr_block
 }
 
+output "external_alb_dns_name" {
+  description = "DNS name of the external ALB"
+  value       = aws_lb.external.dns_name
+}
+
+output "external_alb_zone_id" {
+  description = "Canonical hosted zone ID of the external ALB"
+  value       = aws_lb.external.zone_id
+}
+
 output "internal_alb_dns_name" {
   description = "DNS name of the internal ALB"
   value       = aws_lb.internal.dns_name
