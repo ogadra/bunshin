@@ -184,10 +184,7 @@ func registerRunnerOnBroker(hostname string) error {
 	return nil
 }
 
-// resetRunners は全 runner を broker から削除し再登録することで idle 状態に戻す。
-// sessionID は session_id cookie の値 (broker のセッション ID)。空でなければ先に broker セッションを閉じる。
-// セッション削除は既に削除済み (404) の場合 deleteFromBroker が冪等に成功扱いとするため、
-// ここで返るエラーは予期しない失敗のみ。テストは止めずログに残す。
+// resetRunners は全 runner を broker から削除し再登録することで idle 状態に戻す
 func resetRunners(t *testing.T, sessionID string) {
 	t.Helper()
 	if sessionID != "" {
