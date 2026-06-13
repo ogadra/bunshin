@@ -82,6 +82,16 @@ func TestDeleteShell(t *testing.T) {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
 	}
 
+	expired := false
+	for _, c := range w.Result().Cookies() {
+		if c.Name == "shell_id" && c.MaxAge < 0 {
+			expired = true
+		}
+	}
+	if !expired {
+		t.Errorf("expected shell_id cookie to be expired (Max-Age<0), cookies = %v", w.Result().Cookies())
+	}
+
 	_, err = sm.Get(id)
 	if err == nil {
 		t.Fatal("shell should be deleted")

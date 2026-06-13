@@ -97,6 +97,8 @@ func handleDeleteShell(sm *ShellManager) gin.HandlerFunc {
 			}
 			return
 		}
+		c.SetSameSite(http.SameSiteStrictMode)
+		c.SetCookie(shellIDCookie, "", -1, "/", "", true, true)
 		c.Status(http.StatusNoContent)
 	}
 }
