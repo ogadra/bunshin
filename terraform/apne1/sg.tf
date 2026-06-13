@@ -4,7 +4,7 @@ resource "aws_security_group" "broker" {
   vpc_id      = aws_vpc.apne1.id
 
   tags = merge(local.common_tags, {
-    Name    = "bunshin-broker"
+    Name    = "bunshin-apne1-broker"
     Service = "broker"
   })
 
@@ -97,7 +97,7 @@ resource "aws_security_group" "external_alb" {
   vpc_id      = aws_vpc.apne1.id
 
   tags = merge(local.common_tags, {
-    Name    = "bunshin-alb"
+    Name    = "bunshin-apne1-alb"
     Service = "alb"
   })
 
