@@ -15,24 +15,24 @@ import (
 
 // --- Integration test helpers ---
 
-// createSession is a test helper that creates a new session via the HTTP API
+// createShell is a test helper that creates a new shell via the HTTP API
 // and returns its ID extracted from the Set-Cookie header.
-func createSession(t *testing.T, ts *httptest.Server) string {
+func createShell(t *testing.T, ts *httptest.Server) string {
 	t.Helper()
-	resp, err := http.Post(ts.URL+"/api/session", "application/json", nil)
+	resp, err := http.Post(ts.URL+"/api/shell", "application/json", nil)
 	if err != nil {
-		t.Fatalf("POST /api/session error: %v", err)
+		t.Fatalf("POST /api/shell error: %v", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("create session status = %d, want %d", resp.StatusCode, http.StatusNoContent)
+		t.Fatalf("create shell status = %d, want %d", resp.StatusCode, http.StatusNoContent)
 	}
 	for _, c := range resp.Cookies() {
-		if c.Name == "session_id" {
+		if c.Name == "shell_id" {
 			return c.Value
 		}
 	}
-	t.Fatal("session_id cookie not found in response")
+	t.Fatal("shell_id cookie not found in response")
 	return ""
 }
 
@@ -48,14 +48,14 @@ func marshalCommand(t *testing.T, command string) string {
 
 // executeCommand is a test helper that executes a whitelisted command via the
 // HTTP API and returns the parsed SSE events.
-func executeCommand(t *testing.T, ts *httptest.Server, sessionID, command string) []sseEvent {
+func executeCommand(t *testing.T, ts *httptest.Server, shellID, command string) []sseEvent {
 	t.Helper()
 	body := marshalCommand(t, command)
 	req, err := http.NewRequest(http.MethodPost, ts.URL+"/api/execute", strings.NewReader(body))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: sessionID})
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: shellID})
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("POST /api/execute error: %v", err)
@@ -100,6 +100,7 @@ func parseIntegrationSSEEvents(t *testing.T, body string) []sseEvent {
 func parseSSEEventsRaw(body string) ([]sseEvent, error) {
 	var events []sseEvent
 	scanner := bufio.NewScanner(strings.NewReader(body))
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !strings.HasPrefix(line, "data: ") {
@@ -112,6 +113,9 @@ func parseSSEEventsRaw(body string) ([]sseEvent, error) {
 		}
 		events = append(events, event)
 	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("scan SSE events: %w", err)
+	}
 	return events, nil
 }
 
@@ -121,13 +125,13 @@ func parseSSEEventsRaw(body string) ([]sseEvent, error) {
 // through the full HTTP stack returns valid SSE events including stdout output
 // and a complete event with exitCode 0.
 func TestIntegrationExecuteSSEResponse(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	defer sm.CloseAll()
 
 	ts := httptest.NewServer(newHandler(sm, nil))
 	defer ts.Close()
 
-	sid := createSession(t, ts)
+	sid := createShell(t, ts)
 	events := executeCommand(t, ts, sid, "pwd")
 
 	if len(events) < 2 {
@@ -148,20 +152,20 @@ func TestIntegrationExecuteSSEResponse(t *testing.T) {
 // TestIntegrationRejectedCommand verifies that a non-whitelisted command
 // returns 403 Forbidden through the full HTTP stack.
 func TestIntegrationRejectedCommand(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	defer sm.CloseAll()
 
 	ts := httptest.NewServer(newHandler(sm, nil))
 	defer ts.Close()
 
-	sid := createSession(t, ts)
+	sid := createShell(t, ts)
 
 	body := marshalCommand(t, "rm --version")
 	req, err := http.NewRequest(http.MethodPost, ts.URL+"/api/execute", strings.NewReader(body))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: sid})
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: sid})
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("POST /api/execute error: %v", err)
@@ -174,35 +178,35 @@ func TestIntegrationRejectedCommand(t *testing.T) {
 }
 
 // TestIntegrationExecuteAfterDelete verifies that executing a command on a
-// deleted session returns 404 Not Found.
+// deleted shell returns 404 Not Found.
 func TestIntegrationExecuteAfterDelete(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	defer sm.CloseAll()
 
 	ts := httptest.NewServer(newHandler(sm, nil))
 	defer ts.Close()
 
-	sid := createSession(t, ts)
+	sid := createShell(t, ts)
 
-	// Delete the session.
-	delReq, err := http.NewRequest(http.MethodDelete, ts.URL+"/api/session", nil)
+	// Delete the shell.
+	delReq, err := http.NewRequest(http.MethodDelete, ts.URL+"/api/shell", nil)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
-	delReq.AddCookie(&http.Cookie{Name: "session_id", Value: sid})
+	delReq.AddCookie(&http.Cookie{Name: "shell_id", Value: sid})
 	delResp, err := http.DefaultClient.Do(delReq)
 	if err != nil {
 		t.Fatalf("DELETE error: %v", err)
 	}
 	delResp.Body.Close()
 
-	// Execute on the deleted session.
+	// Execute on the deleted shell.
 	body := marshalCommand(t, "ls")
 	execReq, err := http.NewRequest(http.MethodPost, ts.URL+"/api/execute", strings.NewReader(body))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
-	execReq.AddCookie(&http.Cookie{Name: "session_id", Value: sid})
+	execReq.AddCookie(&http.Cookie{Name: "shell_id", Value: sid})
 	execResp, err := http.DefaultClient.Do(execReq)
 	if err != nil {
 		t.Fatalf("POST /api/execute error: %v", err)
@@ -214,43 +218,49 @@ func TestIntegrationExecuteAfterDelete(t *testing.T) {
 	}
 }
 
-// TestIntegrationSessionIsolation verifies that two sessions have independent
-// bash processes by confirming both return the same initial working directory
-// without interfering with each other.
-func TestIntegrationSessionIsolation(t *testing.T) {
-	sm := NewSessionManager()
+// 2つのshellが独立したbashプロセスであることを検証する
+func TestIntegrationShellIsolation(t *testing.T) {
+	sm := NewShellManager()
 	defer sm.CloseAll()
 
 	ts := httptest.NewServer(newHandler(sm, nil))
 	defer ts.Close()
 
-	sid1 := createSession(t, ts)
-	sid2 := createSession(t, ts)
+	sid1 := createShell(t, ts)
+	sid2 := createShell(t, ts)
 
-	events1 := executeCommand(t, ts, sid1, "pwd")
-	events2 := executeCommand(t, ts, sid2, "pwd")
-
-	dir1 := firstStdoutData(t, events1)
-	dir2 := firstStdoutData(t, events2)
+	dir1 := firstStdoutData(t, executeCommand(t, ts, sid1, "pwd"))
+	dir2 := firstStdoutData(t, executeCommand(t, ts, sid2, "pwd"))
 	if dir1 == "" || dir2 == "" {
 		t.Fatalf("expected non-empty pwd output, got %q and %q", dir1, dir2)
 	}
 	if dir1 != dir2 {
 		t.Fatalf("expected same initial pwd, got %q and %q", dir1, dir2)
 	}
+
+	executeCommand(t, ts, sid1, "cd /tmp")
+	newDir1 := firstStdoutData(t, executeCommand(t, ts, sid1, "pwd"))
+	dir2After := firstStdoutData(t, executeCommand(t, ts, sid2, "pwd"))
+
+	if newDir1 == dir1 {
+		t.Fatalf("shell 1 pwd did not change after cd, still %q", newDir1)
+	}
+	if dir2After != dir2 {
+		t.Fatalf("shell 2 pwd changed after mutating shell 1: %q -> %q", dir2, dir2After)
+	}
 }
 
 // TestIntegrationCreateDeleteLifecycle verifies the full lifecycle of
-// creating a session, executing a command, and deleting the session.
+// creating a shell, executing a command, and deleting the shell.
 func TestIntegrationCreateDeleteLifecycle(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	defer sm.CloseAll()
 
 	ts := httptest.NewServer(newHandler(sm, nil))
 	defer ts.Close()
 
 	// Create.
-	sid := createSession(t, ts)
+	sid := createShell(t, ts)
 
 	// Execute.
 	events := executeCommand(t, ts, sid, "ls")
@@ -263,11 +273,11 @@ func TestIntegrationCreateDeleteLifecycle(t *testing.T) {
 	}
 
 	// Delete.
-	delReq, err := http.NewRequest(http.MethodDelete, ts.URL+"/api/session", nil)
+	delReq, err := http.NewRequest(http.MethodDelete, ts.URL+"/api/shell", nil)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
-	delReq.AddCookie(&http.Cookie{Name: "session_id", Value: sid})
+	delReq.AddCookie(&http.Cookie{Name: "shell_id", Value: sid})
 	delResp, err := http.DefaultClient.Do(delReq)
 	if err != nil {
 		t.Fatalf("DELETE error: %v", err)
@@ -277,13 +287,13 @@ func TestIntegrationCreateDeleteLifecycle(t *testing.T) {
 		t.Fatalf("status = %d, want %d", delResp.StatusCode, http.StatusNoContent)
 	}
 
-	// Verify session is gone.
+	// Verify shell is gone.
 	body := marshalCommand(t, "ls")
 	execReq, err := http.NewRequest(http.MethodPost, ts.URL+"/api/execute", strings.NewReader(body))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
-	execReq.AddCookie(&http.Cookie{Name: "session_id", Value: sid})
+	execReq.AddCookie(&http.Cookie{Name: "shell_id", Value: sid})
 	execResp, err := http.DefaultClient.Do(execReq)
 	if err != nil {
 		t.Fatalf("POST /api/execute error: %v", err)
@@ -295,16 +305,16 @@ func TestIntegrationCreateDeleteLifecycle(t *testing.T) {
 }
 
 // TestIntegrationConcurrentExecute verifies that concurrent execute requests
-// on the same session are serialized by the shell mutex and all complete
+// on the same shell are serialized by the shell mutex and all complete
 // successfully without data races or interleaved output.
 func TestIntegrationConcurrentExecute(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	defer sm.CloseAll()
 
 	ts := httptest.NewServer(newHandler(sm, nil))
 	defer ts.Close()
 
-	sid := createSession(t, ts)
+	sid := createShell(t, ts)
 	body := marshalCommand(t, "pwd")
 
 	const n = 5
@@ -321,7 +331,7 @@ func TestIntegrationConcurrentExecute(t *testing.T) {
 				errs[i] = err
 				return
 			}
-			req.AddCookie(&http.Cookie{Name: "session_id", Value: sid})
+			req.AddCookie(&http.Cookie{Name: "shell_id", Value: sid})
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				errs[i] = err
@@ -365,21 +375,21 @@ func TestIntegrationConcurrentExecute(t *testing.T) {
 // returns a ValidationUnavailableError the command executes through the full
 // HTTP stack instead of being rejected.
 func TestIntegrationValidationUnavailableFailOpen(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewShellManager()
 	defer sm.CloseAll()
 
 	v := &mockValidator{err: &ValidationUnavailableError{Cause: errors.New("throttling")}}
 	ts := httptest.NewServer(newHandler(sm, v))
 	defer ts.Close()
 
-	sid := createSession(t, ts)
+	sid := createShell(t, ts)
 
 	body := marshalCommand(t, "bash -c true")
 	req, err := http.NewRequest(http.MethodPost, ts.URL+"/api/execute", strings.NewReader(body))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: sid})
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: sid})
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("POST /api/execute error: %v", err)
