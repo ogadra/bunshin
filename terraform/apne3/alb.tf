@@ -64,7 +64,7 @@ resource "aws_lb" "external" {
   subnets            = aws_subnet.apne3_public[*].id
 
   tags = merge(local.common_tags, {
-    Service = "alb"
+    Service = "external-alb"
   })
 }
 
@@ -97,7 +97,7 @@ resource "aws_lb_listener" "external_https" {
   }
 
   tags = merge(local.common_tags, {
-    Service = "alb"
+    Service = "external-alb"
   })
 }
 
@@ -136,7 +136,7 @@ resource "aws_lb_listener" "external_http" {
   }
 
   tags = merge(local.common_tags, {
-    Service = "alb"
+    Service = "external-alb"
   })
 }
 

@@ -97,8 +97,8 @@ resource "aws_security_group" "external_alb" {
   vpc_id      = aws_vpc.apne1.id
 
   tags = merge(local.common_tags, {
-    Name    = "bunshin-apne1-alb"
-    Service = "alb"
+    Name    = "bunshin-apne1-external-alb"
+    Service = "external-alb"
   })
 
   lifecycle {
