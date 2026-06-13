@@ -89,7 +89,7 @@ resource "aws_lb_listener" "external_https" {
   port              = 443
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-  certificate_arn   = var.external_alb_certificate_arn
+  certificate_arn   = var.alb_certificate_arn
 
   default_action {
     type             = "forward"
@@ -106,7 +106,7 @@ resource "aws_lb_listener" "internal_https" {
   port              = 443
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-  certificate_arn   = var.external_alb_certificate_arn
+  certificate_arn   = var.alb_certificate_arn
 
   default_action {
     type             = "forward"
