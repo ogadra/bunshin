@@ -127,6 +127,18 @@ func TestSessionPersistenceCd(t *testing.T) {
 	}
 }
 
+// TestNewBashShellStartsInAppDir は新規 shell の初期 cwd が /app であることを検証する。
+func TestNewBashShellStartsInAppDir(t *testing.T) {
+	s := newTestShell(t)
+	lines, exitCode, _ := execStream(t, s, "pwd")
+	if exitCode != 0 {
+		t.Errorf("exitCode = %d, want 0", exitCode)
+	}
+	if len(lines) != 1 || lines[0] != "/app\n" {
+		t.Errorf("lines = %v, want [/app\\n]", lines)
+	}
+}
+
 // TestSessionPersistenceEnv verifies that exported env vars persist across commands.
 func TestSessionPersistenceEnv(t *testing.T) {
 	s := newTestShell(t)

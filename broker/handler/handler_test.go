@@ -129,7 +129,7 @@ func TestGetResolve_ExistingSession(t *testing.T) {
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
-	req.AddCookie(&http.Cookie{Name: "runner_id", Value: "sess-abc"})
+	req.AddCookie(&http.Cookie{Name: "session_id", Value: "sess-abc"})
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -140,8 +140,8 @@ func TestGetResolve_ExistingSession(t *testing.T) {
 		t.Errorf("X-Runner-Url = %q, want %q", got, "http://10.0.0.1:8080")
 	}
 	for _, c := range rec.Result().Cookies() {
-		if c.Name == "runner_id" {
-			t.Error("should not set runner_id cookie for existing session")
+		if c.Name == "session_id" {
+			t.Error("should not set session_id cookie for existing session")
 		}
 	}
 }
@@ -171,12 +171,12 @@ func TestGetResolve_MissingCookie_CreatesSession(t *testing.T) {
 	}
 	found := false
 	for _, c := range rec.Result().Cookies() {
-		if c.Name == "runner_id" && c.Value == "new-sess" {
+		if c.Name == "session_id" && c.Value == "new-sess" {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("expected runner_id cookie for new session")
+		t.Error("expected session_id cookie for new session")
 	}
 }
 
@@ -210,7 +210,7 @@ func TestGetResolve_InternalError(t *testing.T) {
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
-	req.AddCookie(&http.Cookie{Name: "runner_id", Value: "sess-abc"})
+	req.AddCookie(&http.Cookie{Name: "session_id", Value: "sess-abc"})
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -357,7 +357,7 @@ func TestWriteError_IncludesRequestID(t *testing.T) {
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
-	req.AddCookie(&http.Cookie{Name: "runner_id", Value: "sess-missing"})
+	req.AddCookie(&http.Cookie{Name: "session_id", Value: "sess-missing"})
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -460,7 +460,7 @@ func TestValidateRunnerURL(t *testing.T) {
 	}
 }
 
-// TestGetResolve_CookieSecure はセッション新規作成時の runner_id cookie が Secure=true であることを検証する。
+// TestGetResolve_CookieSecure はセッション新規作成時の session_id cookie が Secure=true であることを検証する。
 func TestGetResolve_CookieSecure(t *testing.T) {
 	t.Parallel()
 	h := NewHandler(&mockService{
@@ -475,20 +475,20 @@ func TestGetResolve_CookieSecure(t *testing.T) {
 	r.ServeHTTP(rec, req)
 
 	for _, c := range rec.Result().Cookies() {
-		if c.Name == "runner_id" {
+		if c.Name == "session_id" {
 			if !c.Secure {
-				t.Error("expected Secure=true on runner_id cookie")
+				t.Error("expected Secure=true on session_id cookie")
 			}
 			if !c.HttpOnly {
-				t.Error("expected HttpOnly=true on runner_id cookie")
+				t.Error("expected HttpOnly=true on session_id cookie")
 			}
 			if c.SameSite != http.SameSiteStrictMode {
-				t.Errorf("expected SameSite=Strict on runner_id cookie, got %v", c.SameSite)
+				t.Errorf("expected SameSite=Strict on session_id cookie, got %v", c.SameSite)
 			}
 			return
 		}
 	}
-	t.Error("runner_id cookie not found")
+	t.Error("session_id cookie not found")
 }
 
 // TestGetResolve_Reassigned はセッション再割当て時に X-Session-Reassigned ヘッダーが設定されることを検証する。
@@ -507,7 +507,7 @@ func TestGetResolve_Reassigned(t *testing.T) {
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
-	req.AddCookie(&http.Cookie{Name: "runner_id", Value: "old-sess"})
+	req.AddCookie(&http.Cookie{Name: "session_id", Value: "old-sess"})
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -538,7 +538,7 @@ func TestGetResolve_NotReassigned(t *testing.T) {
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
-	req.AddCookie(&http.Cookie{Name: "runner_id", Value: "sess-1"})
+	req.AddCookie(&http.Cookie{Name: "session_id", Value: "sess-1"})
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 

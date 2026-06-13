@@ -29,13 +29,13 @@ type sseEvent struct {
 
 // sessionCookies はセッション管理に必要な cookie を保持する。
 type sessionCookies struct {
-	RunnerID  string
 	SessionID string
+	ShellID   string
 }
 
 // cookieHeader は sessionCookies を Cookie ヘッダ文字列に変換する。
 func (c sessionCookies) cookieHeader() string {
-	return fmt.Sprintf("runner_id=%s; session_id=%s", c.RunnerID, c.SessionID)
+	return fmt.Sprintf("session_id=%s; shell_id=%s", c.SessionID, c.ShellID)
 }
 
 // nginxBase は nginx の URL。TestMain で初期化される。
@@ -184,15 +184,12 @@ func registerRunnerOnBroker(hostname string) error {
 	return nil
 }
 
-// resetRunners は全 runner を broker から削除し再登録することで idle 状態に戻す。
-// runnerID は runner_id cookie の値 (broker のセッション ID)。空でなければ先に broker セッションを閉じる。
-// セッション削除は既に削除済み (404) の場合 deleteFromBroker が冪等に成功扱いとするため、
-// ここで返るエラーは予期しない失敗のみ。テストは止めずログに残す。
-func resetRunners(t *testing.T, runnerID string) {
+// resetRunners は全 runner を broker から削除し再登録することで idle 状態に戻す
+func resetRunners(t *testing.T, sessionID string) {
 	t.Helper()
-	if runnerID != "" {
-		if err := deleteFromBroker(brokerBase + "/sessions/" + runnerID); err != nil {
-			t.Logf("resetRunners: close session %s: %v", runnerID, err)
+	if sessionID != "" {
+		if err := deleteFromBroker(brokerBase + "/sessions/" + sessionID); err != nil {
+			t.Logf("resetRunners: close session %s: %v", sessionID, err)
 		}
 	}
 	for _, h := range runnerHostnames {
@@ -209,32 +206,32 @@ func resetRunners(t *testing.T, runnerID string) {
 func setupSession(t *testing.T) sessionCookies {
 	t.Helper()
 	cookies := createSession(t)
-	t.Cleanup(func() { resetRunners(t, cookies.RunnerID) })
+	t.Cleanup(func() { resetRunners(t, cookies.SessionID) })
 	return cookies
 }
 
-// createSession は POST /api/session を nginx 経由で呼び出しセッションを作成する。
+// createSession は POST /api/shell を nginx 経由で呼び出しセッションを作成する。
 func createSession(t *testing.T) sessionCookies {
 	t.Helper()
-	resp := doRequest(t, http.MethodPost, nginxBase+"/api/session", "", "")
+	resp := doRequest(t, http.MethodPost, nginxBase+"/api/shell", "", "")
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("POST /api/session: want 204, got %d", resp.StatusCode)
+		t.Fatalf("POST /api/shell: want 204, got %d", resp.StatusCode)
 	}
 	var cookies sessionCookies
 	for _, c := range resp.Cookies() {
 		switch c.Name {
-		case "runner_id":
-			cookies.RunnerID = c.Value
 		case "session_id":
 			cookies.SessionID = c.Value
+		case "shell_id":
+			cookies.ShellID = c.Value
 		}
-	}
-	if cookies.RunnerID == "" {
-		t.Fatal("runner_id cookie not found in response")
 	}
 	if cookies.SessionID == "" {
 		t.Fatal("session_id cookie not found in response")
+	}
+	if cookies.ShellID == "" {
+		t.Fatal("shell_id cookie not found in response")
 	}
 	return cookies
 }
@@ -319,8 +316,8 @@ func TestHealthCheck(t *testing.T) {
 	}
 }
 
-// TestCreateSessionAndExecute はセッション作成からコマンド実行までの正常系フローを検証する。
-func TestCreateSessionAndExecute(t *testing.T) {
+// TestCreateShellAndExecute はセッション作成からコマンド実行までの正常系フローを検証する。
+func TestCreateShellAndExecute(t *testing.T) {
 	cookies := setupSession(t)
 
 	events := executeCommand(t, cookies, "pwd")
@@ -343,27 +340,51 @@ func TestCreateSessionAndExecute(t *testing.T) {
 	}
 }
 
-// TestDeleteSession はセッション削除が 204 を返すことを検証する。
-func TestDeleteSession(t *testing.T) {
+// TestDeleteShell はセッション削除が 204 を返すことを検証する。
+func TestDeleteShell(t *testing.T) {
 	cookies := setupSession(t)
 
-	resp := doRequest(t, http.MethodDelete, nginxBase+"/api/session", "", cookies.cookieHeader())
+	resp := doRequest(t, http.MethodDelete, nginxBase+"/api/shell", "", cookies.cookieHeader())
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
-		t.Errorf("DELETE /api/session: want 204, got %d", resp.StatusCode)
+		t.Errorf("DELETE /api/shell: want 204, got %d", resp.StatusCode)
 	}
 }
 
 // --- 異常系テスト ---
 
-// TestExpiredSessionCookie は正規の runner_id cookie と不正な session_id cookie で
+// TestExpiredShellCookie は正規の session_id cookie と不正な shell_id cookie で
 // コマンド実行した場合に runner が 404 を返すことを検証する。
-func TestExpiredSessionCookie(t *testing.T) {
+func TestExpiredShellCookie(t *testing.T) {
 	cookies := setupSession(t)
 
-	badCookies := sessionCookies{RunnerID: cookies.RunnerID, SessionID: "invalid-session-id"}
+	badCookies := sessionCookies{SessionID: cookies.SessionID, ShellID: "invalid-shell-id"}
 	body := `{"command":"pwd"}`
 	resp := doRequest(t, http.MethodPost, nginxBase+"/api/execute", body, badCookies.cookieHeader())
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected 404 for invalid shell_id, got %d", resp.StatusCode)
+	}
+}
+
+// TestInvalidSessionCookie は存在しない session_id cookie でリクエストした場合の挙動を検証する。
+// broker の resolve-or-create が session_id のセッションを見つけられず、idle runner を新規割り当てする。
+// 別の runner に転送されるため、元の shell_id はその runner に存在せず 404 が返る。
+// compose 環境では runner を2台起動して本シナリオを成立させる。
+func TestInvalidSessionCookie(t *testing.T) {
+	// nginx 経由でセッションを作成。runner-1 か runner-2 のどちらかが割り当てられる。
+	cookies := createSession(t)
+	// もう1台の runner は idle のまま残る。
+	// テスト終了時に全 runner をリセットする。
+	t.Cleanup(func() { resetRunners(t, cookies.SessionID) })
+
+	// session_id を偽の値に差し替える。shell_id は正規のまま。
+	// broker は session_id のセッションを見つけられず、idle の別 runner を新規割り当てする。
+	// 別 runner に転送されるが、shell_id はその runner に存在しないため 404。
+	fakeCookies := sessionCookies{SessionID: "nonexistent-session-id", ShellID: cookies.ShellID}
+	body := `{"command":"pwd"}`
+	resp := doRequest(t, http.MethodPost, nginxBase+"/api/execute", body, fakeCookies.cookieHeader())
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusNotFound {
@@ -371,38 +392,14 @@ func TestExpiredSessionCookie(t *testing.T) {
 	}
 }
 
-// TestInvalidRunnerCookie は存在しない runner_id cookie でリクエストした場合の挙動を検証する。
-// broker の resolve-or-create が runner_id のセッションを見つけられず、idle runner を新規割り当てする。
-// 別の runner に転送されるため、元の session_id はその runner に存在せず 404 が返る。
-// compose 環境では runner を2台起動して本シナリオを成立させる。
-func TestInvalidRunnerCookie(t *testing.T) {
-	// nginx 経由でセッションを作成。runner-1 か runner-2 のどちらかが割り当てられる。
-	cookies := createSession(t)
-	// もう1台の runner は idle のまま残る。
-	// テスト終了時に全 runner をリセットする。
-	t.Cleanup(func() { resetRunners(t, cookies.RunnerID) })
-
-	// runner_id を偽の値に差し替える。session_id は正規のまま。
-	// broker は runner_id のセッションを見つけられず、idle の別 runner を新規割り当てする。
-	// 別 runner に転送されるが、session_id はその runner に存在しないため 404。
-	fakeCookies := sessionCookies{RunnerID: "nonexistent-runner-id", SessionID: cookies.SessionID}
-	body := `{"command":"pwd"}`
-	resp := doRequest(t, http.MethodPost, nginxBase+"/api/execute", body, fakeCookies.cookieHeader())
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNotFound {
-		t.Errorf("expected 404 for invalid runner_id, got %d", resp.StatusCode)
-	}
-}
-
-// TestInvalidBothCookies は runner_id と session_id の両方が不正な場合の挙動を検証する。
+// TestInvalidBothCookies は session_id と shell_id の両方が不正な場合の挙動を検証する。
 // broker の resolve-or-create が idle runner を新規割り当てするが、
-// session_id もその runner に存在しないため 404 が返る。
+// shell_id もその runner に存在しないため 404 が返る。
 func TestInvalidBothCookies(t *testing.T) {
 	cookies := createSession(t)
-	t.Cleanup(func() { resetRunners(t, cookies.RunnerID) })
+	t.Cleanup(func() { resetRunners(t, cookies.SessionID) })
 
-	fakeCookies := sessionCookies{RunnerID: "nonexistent-runner-id", SessionID: "nonexistent-session-id"}
+	fakeCookies := sessionCookies{SessionID: "nonexistent-session-id", ShellID: "nonexistent-shell-id"}
 	body := `{"command":"pwd"}`
 	resp := doRequest(t, http.MethodPost, nginxBase+"/api/execute", body, fakeCookies.cookieHeader())
 	defer resp.Body.Close()
@@ -412,45 +409,45 @@ func TestInvalidBothCookies(t *testing.T) {
 	}
 }
 
-// TestMissingSessionCookie は正規の runner_id cookie があるが session_id cookie がない場合の挙動を検証する。
-// broker は runner_id のセッションを正常に解決し runner に転送するが、
-// runner は session_id cookie が欠落しているため 400 を返す。
-func TestMissingSessionCookie(t *testing.T) {
+// TestMissingShellCookie は正規の session_id cookie があるが shell_id cookie がない場合の挙動を検証する。
+// broker は session_id のセッションを正常に解決し runner に転送するが、
+// runner は shell_id cookie が欠落しているため 400 を返す。
+func TestMissingShellCookie(t *testing.T) {
 	cookies := setupSession(t)
 
-	// session_id を空にして runner_id のみ送信
-	cookie := fmt.Sprintf("runner_id=%s", cookies.RunnerID)
+	// shell_id を空にして session_id のみ送信
+	cookie := fmt.Sprintf("session_id=%s", cookies.SessionID)
 	body := `{"command":"pwd"}`
 	resp := doRequest(t, http.MethodPost, nginxBase+"/api/execute", body, cookie)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusBadRequest {
-		t.Errorf("expected 400 for missing session_id cookie, got %d", resp.StatusCode)
+		t.Errorf("expected 400 for missing shell_id cookie, got %d", resp.StatusCode)
 	}
 }
 
-// TestExecuteAfterSessionDelete は runner の bash セッション削除後に同じ cookie で
+// TestExecuteAfterShellDelete は runner の bash シェル削除後に同じ cookie で
 // execute した場合に runner が 404 を返すことを検証する。
-func TestExecuteAfterSessionDelete(t *testing.T) {
+func TestExecuteAfterShellDelete(t *testing.T) {
 	cookies := setupSession(t)
 
-	// runner の bash セッションを削除
-	resp := doRequest(t, http.MethodDelete, nginxBase+"/api/session", "", cookies.cookieHeader())
+	// runner の bash シェルを削除
+	resp := doRequest(t, http.MethodDelete, nginxBase+"/api/shell", "", cookies.cookieHeader())
 	resp.Body.Close()
 
-	// 同じ cookie で実行を試みる → runner が session_id を見つけられず 404
+	// 同じ cookie で実行を試みる → runner が shell_id を見つけられず 404
 	body := `{"command":"pwd"}`
 	resp = doRequest(t, http.MethodPost, nginxBase+"/api/execute", body, cookies.cookieHeader())
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusNotFound {
-		t.Errorf("expected 404 after session deletion, got %d", resp.StatusCode)
+		t.Errorf("expected 404 after shell deletion, got %d", resp.StatusCode)
 	}
 }
 
 // TestExecuteWithoutCookies は Cookie なしで /api/execute を呼び出した場合の挙動を検証する。
 // broker の resolve-or-create が新規セッションを作成して runner に転送するが、
-// session_id cookie が欠落しているため runner が 400 を返す。
+// shell_id cookie が欠落しているため runner が 400 を返す。
 func TestExecuteWithoutCookies(t *testing.T) {
 	body := `{"command":"pwd"}`
 	resp := doRequest(t, http.MethodPost, nginxBase+"/api/execute", body, "")
@@ -474,12 +471,12 @@ func TestNoIdleRunnerExecute(t *testing.T) {
 	cookies1 := createSession(t)
 	cookies2 := createSession(t)
 	t.Cleanup(func() {
-		resetRunners(t, cookies1.RunnerID)
-		resetRunners(t, cookies2.RunnerID)
+		resetRunners(t, cookies1.SessionID)
+		resetRunners(t, cookies2.SessionID)
 	})
 
-	// 存在しない runner_id で実行 → broker が新規割り当てを試みるが idle runner なし → 503
-	fakeCookies := sessionCookies{RunnerID: "nonexistent", SessionID: "nonexistent"}
+	// 存在しない session_id で実行 → broker が新規割り当てを試みるが idle runner なし → 503
+	fakeCookies := sessionCookies{SessionID: "nonexistent", ShellID: "nonexistent"}
 	body := `{"command":"pwd"}`
 	resp := doRequest(t, http.MethodPost, nginxBase+"/api/execute", body, fakeCookies.cookieHeader())
 	defer resp.Body.Close()
@@ -489,31 +486,31 @@ func TestNoIdleRunnerExecute(t *testing.T) {
 	}
 }
 
-// TestDeleteWithExpiredSessionCookie は正規の runner_id cookie と不正な session_id cookie で
-// DELETE /api/session を呼び出した場合に runner が 404 を返すことを検証する。
-func TestDeleteWithExpiredSessionCookie(t *testing.T) {
+// TestDeleteWithExpiredShellCookie は正規の session_id cookie と不正な shell_id cookie で
+// DELETE /api/shell を呼び出した場合に runner が 404 を返すことを検証する。
+func TestDeleteWithExpiredShellCookie(t *testing.T) {
 	cookies := setupSession(t)
 
-	badCookies := sessionCookies{RunnerID: cookies.RunnerID, SessionID: "invalid-session-id"}
-	resp := doRequest(t, http.MethodDelete, nginxBase+"/api/session", "", badCookies.cookieHeader())
+	badCookies := sessionCookies{SessionID: cookies.SessionID, ShellID: "invalid-shell-id"}
+	resp := doRequest(t, http.MethodDelete, nginxBase+"/api/shell", "", badCookies.cookieHeader())
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusNotFound {
-		t.Errorf("expected 404 for delete with invalid session_id, got %d", resp.StatusCode)
+		t.Errorf("expected 404 for delete with invalid shell_id, got %d", resp.StatusCode)
 	}
 }
 
-// TestDeleteWithMissingSessionCookie は正規の runner_id cookie があるが session_id cookie がない状態で
-// DELETE /api/session を呼び出した場合に runner が 400 を返すことを検証する。
-func TestDeleteWithMissingSessionCookie(t *testing.T) {
+// TestDeleteWithMissingShellCookie は正規の session_id cookie があるが shell_id cookie がない状態で
+// DELETE /api/shell を呼び出した場合に runner が 400 を返すことを検証する。
+func TestDeleteWithMissingShellCookie(t *testing.T) {
 	cookies := setupSession(t)
 
-	cookie := fmt.Sprintf("runner_id=%s", cookies.RunnerID)
-	resp := doRequest(t, http.MethodDelete, nginxBase+"/api/session", "", cookie)
+	cookie := fmt.Sprintf("session_id=%s", cookies.SessionID)
+	resp := doRequest(t, http.MethodDelete, nginxBase+"/api/shell", "", cookie)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusBadRequest {
-		t.Errorf("expected 400 for delete without session_id cookie, got %d", resp.StatusCode)
+		t.Errorf("expected 400 for delete without shell_id cookie, got %d", resp.StatusCode)
 	}
 }
 
@@ -526,12 +523,12 @@ func TestNoIdleRunner(t *testing.T) {
 	cookies1 := createSession(t)
 	cookies2 := createSession(t)
 	t.Cleanup(func() {
-		resetRunners(t, cookies1.RunnerID)
-		resetRunners(t, cookies2.RunnerID)
+		resetRunners(t, cookies1.SessionID)
+		resetRunners(t, cookies2.SessionID)
 	})
 
 	// idle runner がない状態で新規セッション作成を試みる → 503
-	resp := doRequest(t, http.MethodPost, nginxBase+"/api/session", "", "")
+	resp := doRequest(t, http.MethodPost, nginxBase+"/api/shell", "", "")
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusServiceUnavailable {

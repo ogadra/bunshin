@@ -1,4 +1,4 @@
--- broker /resolve をサブリクエストで呼び、runner_id cookie からセッションを解決する。
+-- broker /resolve をサブリクエストで呼び、session_id cookie からセッションを解決する。
 -- brokerの実ステータスをそのままクライアントへ返す。
 local core = require("resolve_core")
 

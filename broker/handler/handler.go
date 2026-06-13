@@ -16,8 +16,8 @@ import (
 
 var runnerHostRe = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
 
-// runnerIDCookie は runner 識別用の cookie 名。
-const runnerIDCookie = "runner_id"
+// sessionIDCookie は session 識別用の cookie 名。
+const sessionIDCookie = "session_id"
 
 // Handler は broker の HTTP ハンドラー。
 type Handler struct {
@@ -55,10 +55,10 @@ func (h *Handler) DeleteSession(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// GetResolve は GET /resolve を処理し runner_id cookie からセッションを解決する。
+// GetResolve は GET /resolve を処理し session_id cookie からセッションを解決する。
 // cookie が無い、またはセッションが見つからない場合は新規作成して Set-Cookie を返す。
 func (h *Handler) GetResolve(c *gin.Context) {
-	sessionID, _ := c.Cookie(runnerIDCookie)
+	sessionID, _ := c.Cookie(sessionIDCookie)
 	result, err := h.svc.ResolveSession(c.Request.Context(), sessionID)
 	if err != nil {
 		if errors.Is(err, store.ErrNoIdleRunner) {
@@ -70,7 +70,7 @@ func (h *Handler) GetResolve(c *gin.Context) {
 	}
 	if result.Created {
 		c.SetSameSite(http.SameSiteStrictMode)
-		c.SetCookie(runnerIDCookie, result.SessionID, 0, "/", "", true, true)
+		c.SetCookie(sessionIDCookie, result.SessionID, 0, "/", "", true, true)
 	}
 	if result.Reassigned {
 		c.Header("X-Session-Reassigned", "true")

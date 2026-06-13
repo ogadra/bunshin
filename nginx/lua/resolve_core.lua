@@ -24,7 +24,7 @@ function _M.decide(res)
         }
     end
 
-    -- broker の Set-Cookie (runner_id) と再割当てシグナルをクライアントへ伝播する。
+    -- broker の Set-Cookie (session_id) と再割当てシグナルをクライアントへ伝播する。
     -- ngx.location.capture は複数 Set-Cookie をテーブルで返すため文字列へ畳む。
     local set_cookie = res.header["Set-Cookie"]
     if type(set_cookie) == "table" then
