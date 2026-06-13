@@ -82,18 +82,12 @@ func WithChecker(c healthcheck.Checker) Option {
 	}
 }
 
-// WithStackPrefix は新規セッション ID に付与する発行スタック名を設定するオプション。
-func WithStackPrefix(stack string) Option {
-	return func(s *BrokerService) {
-		s.stackPrefix = stack
-	}
-}
-
-// NewBrokerService は BrokerService を生成する。
-func NewBrokerService(repo store.Repository, opts ...Option) *BrokerService {
+// NewBrokerService は BrokerService を生成する。stackPrefix は新規セッション ID へ同梱する発行スタック名で必須。
+func NewBrokerService(repo store.Repository, stackPrefix string, opts ...Option) *BrokerService {
 	s := &BrokerService{
-		repo:      repo,
-		sessionFn: defaultSessionFn,
+		repo:        repo,
+		sessionFn:   defaultSessionFn,
+		stackPrefix: stackPrefix,
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -118,9 +112,7 @@ func (s *BrokerService) createSession(ctx context.Context) (*CreateSessionResult
 	if err != nil {
 		return nil, err
 	}
-	if s.stackPrefix != "" {
-		sessionID = s.stackPrefix + "-" + sessionID
-	}
+	sessionID = s.stackPrefix + "_" + sessionID
 	bc := s.repo.BucketCount()
 	start := mrand.IntN(bc)
 	check := s.checker != nil

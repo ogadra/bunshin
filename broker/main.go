@@ -97,7 +97,7 @@ func defaultInitHandler() (*handler.Handler, error) {
 	client := dynamodb.NewFromConfig(cfg, ddbOpts...)
 	repo := store.NewDynamoRepository(client, "bunshin-runners")
 	checker := healthcheck.NewHTTPChecker(&http.Client{Timeout: 3 * time.Second})
-	svc := service.NewBrokerService(repo, service.WithChecker(checker))
+	svc := service.NewBrokerService(repo, region, service.WithChecker(checker))
 	return handler.NewHandler(svc), nil
 }
 
