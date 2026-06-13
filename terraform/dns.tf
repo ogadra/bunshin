@@ -1,19 +1,39 @@
-# Route 53 hosted zone lookup
 data "aws_route53_zone" "main" {
   name         = join(".", slice(split(".", var.domain_name), 1, length(split(".", var.domain_name))))
   private_zone = false
 }
 
-# DNS alias record pointing to ALB
+locals {
+  external_albs = {
+    apne1 = {
+      region   = "ap-northeast-1"
+      dns_name = module.apne1.external_alb_dns_name
+      zone_id  = module.apne1.external_alb_zone_id
+    }
+    apne3 = {
+      region   = "ap-northeast-3"
+      dns_name = module.apne3.external_alb_dns_name
+      zone_id  = module.apne3.external_alb_zone_id
+    }
+  }
+}
+
 resource "aws_route53_record" "alb" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  zone_id = data.aws_route53_zone.main.zone_id
-  name    = var.domain_name
-  type    = "A"
+  for_each = local.external_albs
+
+  zone_id        = data.aws_route53_zone.main.zone_id
+  name           = var.domain_name
+  type           = "A"
+  set_identifier = each.key
+
+  latency_routing_policy {
+    region = each.value.region
+  }
 
   alias {
-    name                   = module.apne1.external_alb_dns_name
-    zone_id                = module.apne1.external_alb_zone_id
+    name                   = each.value.dns_name
+    zone_id                = each.value.zone_id
     evaluate_target_health = true
   }
 }
