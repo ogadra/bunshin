@@ -9,6 +9,11 @@ variable "alb_certificate_arn" {
   }
 }
 
+variable "domain_name" {
+  description = "FQDN for the service"
+  type        = string
+}
+
 variable "runner_desired_count" {
   description = "Desired number of runner ECS tasks"
   type        = number
