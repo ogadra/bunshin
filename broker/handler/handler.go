@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/ogadra/20260327-cli-demo/broker/model"
@@ -19,17 +20,22 @@ var runnerHostRe = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
 // sessionIDCookie は session 識別用の cookie 名。
 const sessionIDCookie = "session_id"
 
+const fallbackStackHeader = "X-Fallback-Stack"
+
+const fallbackRemainingHeader = "X-Fallback-Remaining"
+
 // Handler は broker の HTTP ハンドラー。
 type Handler struct {
-	svc service.Service
+	svc            service.Service
+	fallbackStacks []string
 }
 
 // NewHandler は Handler を生成する。svc が nil の場合は panic する。
-func NewHandler(svc service.Service) *Handler {
+func NewHandler(svc service.Service, fallbackStacks []string) *Handler {
 	if svc == nil {
 		panic("handler: nil service")
 	}
-	return &Handler{svc: svc}
+	return &Handler{svc: svc, fallbackStacks: fallbackStacks}
 }
 
 // registerRequest は POST /internal/runners/register のリクエストボディ。
@@ -62,6 +68,7 @@ func (h *Handler) GetResolve(c *gin.Context) {
 	result, err := h.svc.ResolveSession(c.Request.Context(), sessionID)
 	if err != nil {
 		if errors.Is(err, store.ErrNoIdleRunner) {
+			h.signalFallback(c)
 			writeError(c, http.StatusServiceUnavailable, model.CodeNoIdleRunner, "no idle runner available")
 			return
 		}
@@ -77,6 +84,41 @@ func (h *Handler) GetResolve(c *gin.Context) {
 	}
 	c.Header("X-Runner-Url", result.RunnerURL)
 	c.Status(http.StatusOK)
+}
+
+// X-Fallback-Stack の有無を転送済み判定に兼用し、専用のマーカーヘッダを増やさない。
+func (h *Handler) signalFallback(c *gin.Context) {
+	pool := h.fallbackStacks
+	if c.GetHeader(fallbackStackHeader) != "" {
+		pool = splitStacks(c.GetHeader(fallbackRemainingHeader))
+	}
+	if len(pool) == 0 {
+		return
+	}
+	c.Header(fallbackStackHeader, pool[0])
+	if len(pool) > 1 {
+		c.Header(fallbackRemainingHeader, strings.Join(pool[1:], ","))
+	}
+}
+
+func splitStacks(raw string) []string {
+	var stacks []string
+	for _, s := range strings.Split(raw, ",") {
+		if s = strings.TrimSpace(s); s != "" {
+			stacks = append(stacks, s)
+		}
+	}
+	return stacks
+}
+
+func ParseFallbackStacks(raw, self string) []string {
+	stacks := []string{}
+	for _, s := range splitStacks(raw) {
+		if s != self {
+			stacks = append(stacks, s)
+		}
+	}
+	return stacks
 }
 
 // runner の PrivateURL が http スキームの host[:port] 形式であることを検証する。

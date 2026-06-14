@@ -61,6 +61,10 @@ var initHandler = defaultInitHandler
 // loadAWSConfig は AWS SDK の設定をロードする関数。テスト時に差し替える。
 var loadAWSConfig = config.LoadDefaultConfig
 
+var newBrokerService = func(repo store.Repository, region string, checker healthcheck.Checker) service.Service {
+	return service.NewBrokerService(repo, region, service.WithChecker(checker))
+}
+
 // defaultInitHandler は環境変数から DynamoDB クライアントを構築し Handler を返す。
 func defaultInitHandler() (*handler.Handler, error) {
 	region := os.Getenv("AWS_REGION")
@@ -97,8 +101,12 @@ func defaultInitHandler() (*handler.Handler, error) {
 	client := dynamodb.NewFromConfig(cfg, ddbOpts...)
 	repo := store.NewDynamoRepository(client, "bunshin-runners")
 	checker := healthcheck.NewHTTPChecker(&http.Client{Timeout: 3 * time.Second})
-	svc := service.NewBrokerService(repo, region, service.WithChecker(checker))
-	return handler.NewHandler(svc), nil
+	svc := newBrokerService(repo, region, checker)
+	return handler.NewHandler(svc, fallbackStacks(region)), nil
+}
+
+func fallbackStacks(self string) []string {
+	return handler.ParseFallbackStacks(os.Getenv("BROKER_FALLBACK_STACKS"), self)
 }
 
 // run はサーバーの起動とグレースフルシャットダウンを行う。
