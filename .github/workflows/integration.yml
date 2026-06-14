@@ -29,7 +29,7 @@ jobs:
       - name: Build integration images
         run: docker compose --env-file .env.example --profile integration build nginx broker runner-1 runner-2 integration-test
       - name: Run integration tests
-        run: docker compose --env-file .env.example --profile integration run --rm --no-build integration-test
+        run: docker compose --env-file .env.example --profile integration run --rm integration-test
       - name: Cleanup
         if: always()
         run: docker compose --env-file .env.example --profile integration down -v
