@@ -215,6 +215,9 @@ func TestDefaultInitHandler_FallbackSignal(t *testing.T) {
 	if got := rec.Header().Get("X-Fallback-Stack"); got != "ap-northeast-3" {
 		t.Errorf("X-Fallback-Stack = %q, want %q", got, "ap-northeast-3")
 	}
+	if got := rec.Header().Get("X-Fallback-Remaining"); got != "" {
+		t.Errorf("X-Fallback-Remaining = %q, want empty", got)
+	}
 }
 
 // TestDefaultInitHandler_MissingRegion は AWS_REGION が未設定時にエラーを返すことを検証する。
