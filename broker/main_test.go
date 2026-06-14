@@ -190,7 +190,13 @@ func (fakeNoIdleService) DeregisterRunner(context.Context, string) error       {
 func TestDefaultInitHandler_FallbackSignal(t *testing.T) {
 	origNewBrokerService := newBrokerService
 	t.Cleanup(func() { newBrokerService = origNewBrokerService })
-	newBrokerService = func(store.Repository, string, healthcheck.Checker) service.Service {
+	newBrokerService = func(_ store.Repository, region string, checker healthcheck.Checker) service.Service {
+		if region != "ap-northeast-1" {
+			t.Errorf("region = %q, want %q", region, "ap-northeast-1")
+		}
+		if checker == nil {
+			t.Error("checker is nil")
+		}
 		return fakeNoIdleService{}
 	}
 
