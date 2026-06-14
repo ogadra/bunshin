@@ -22,7 +22,7 @@ const sessionIDCookie = "session_id"
 
 const fallbackStackHeader = "X-Fallback-Stack"
 
-const forwardedHeader = "X-Bunshin-Forwarded"
+const fallbackRemainingHeader = "X-Fallback-Remaining"
 
 // Handler は broker の HTTP ハンドラー。
 type Handler struct {
@@ -68,9 +68,7 @@ func (h *Handler) GetResolve(c *gin.Context) {
 	result, err := h.svc.ResolveSession(c.Request.Context(), sessionID)
 	if err != nil {
 		if errors.Is(err, store.ErrNoIdleRunner) {
-			if c.GetHeader(forwardedHeader) == "" && len(h.fallbackStacks) > 0 {
-				c.Header(fallbackStackHeader, strings.Join(h.fallbackStacks, ","))
-			}
+			h.signalFallback(c)
 			writeError(c, http.StatusServiceUnavailable, model.CodeNoIdleRunner, "no idle runner available")
 			return
 		}
@@ -86,6 +84,43 @@ func (h *Handler) GetResolve(c *gin.Context) {
 	}
 	c.Header("X-Runner-Url", result.RunnerURL)
 	c.Status(http.StatusOK)
+}
+
+// signalFallback は idle 枯渇時に次の転送先を nginx へ通知する。
+// X-Fallback-Stack が無ければ origin として自スタックの候補から、有れば転送済みとして残り候補から先頭を選ぶ。
+func (h *Handler) signalFallback(c *gin.Context) {
+	pool := h.fallbackStacks
+	if c.GetHeader(fallbackStackHeader) != "" {
+		pool = splitStacks(c.GetHeader(fallbackRemainingHeader))
+	}
+	if len(pool) == 0 {
+		return
+	}
+	c.Header(fallbackStackHeader, pool[0])
+	if len(pool) > 1 {
+		c.Header(fallbackRemainingHeader, strings.Join(pool[1:], ","))
+	}
+}
+
+func splitStacks(raw string) []string {
+	var stacks []string
+	for _, s := range strings.Split(raw, ",") {
+		if s = strings.TrimSpace(s); s != "" {
+			stacks = append(stacks, s)
+		}
+	}
+	return stacks
+}
+
+// FallbackStacks は共通の fallback 一覧 raw から空要素と自スタック self を除いた候補一覧を返す。
+func FallbackStacks(raw, self string) []string {
+	stacks := []string{}
+	for _, s := range splitStacks(raw) {
+		if s != self {
+			stacks = append(stacks, s)
+		}
+	}
+	return stacks
 }
 
 // runner の PrivateURL が http スキームの host[:port] 形式であることを検証する。

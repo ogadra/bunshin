@@ -174,19 +174,6 @@ func TestDefaultInitHandler(t *testing.T) {
 	}
 }
 
-// TestParseFallbackStacks はカンマ区切りの解析と空要素除去を検証する。
-func TestParseFallbackStacks(t *testing.T) {
-	t.Parallel()
-	if got := parseFallbackStacks(""); len(got) != 0 {
-		t.Errorf("parseFallbackStacks(\"\") = %v, want empty", got)
-	}
-	got := parseFallbackStacks(" ap-northeast-3 , ,ap-northeast-2")
-	want := []string{"ap-northeast-3", "ap-northeast-2"}
-	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
-		t.Errorf("parseFallbackStacks = %v, want %v", got, want)
-	}
-}
-
 // TestDefaultInitHandler_MissingRegion は AWS_REGION が未設定時にエラーを返すことを検証する。
 func TestDefaultInitHandler_MissingRegion(t *testing.T) {
 	saveAndRestore(t)

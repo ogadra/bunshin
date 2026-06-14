@@ -202,48 +202,74 @@ func TestGetResolve_NoIdleRunner(t *testing.T) {
 	}
 }
 
-// TestGetResolve_FallbackSignalOnNoIdle は idle 枯渇時に fallback 候補を X-Fallback-Stack で通知することを検証する。
-func TestGetResolve_FallbackSignalOnNoIdle(t *testing.T) {
-	t.Parallel()
+// noIdleResolve は /resolve に GET し、ErrNoIdleRunner を返す handler の応答を返す。reqHeaders はリクエストヘッダ。
+func noIdleResolve(fallback []string, reqHeaders map[string]string) *httptest.ResponseRecorder {
 	h := NewHandler(&mockService{
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return nil, store.ErrNoIdleRunner
 		},
-	}, []string{"ap-northeast-3", "ap-northeast-2"})
-	r := newTestRouter(h)
-
+	}, fallback)
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
+	for k, v := range reqHeaders {
+		req.Header.Set(k, v)
+	}
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
+	newTestRouter(h).ServeHTTP(rec, req)
+	return rec
+}
 
+// TestGetResolve_FallbackOrigin は origin の枯渇で先頭を X-Fallback-Stack、残りを X-Fallback-Remaining に出すことを検証する。
+func TestGetResolve_FallbackOrigin(t *testing.T) {
+	t.Parallel()
+	rec := noIdleResolve([]string{"ap-northeast-3", "ap-northeast-2"}, nil)
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
 	}
-	if got := rec.Header().Get("X-Fallback-Stack"); got != "ap-northeast-3,ap-northeast-2" {
-		t.Errorf("X-Fallback-Stack = %q, want %q", got, "ap-northeast-3,ap-northeast-2")
+	if got := rec.Header().Get("X-Fallback-Stack"); got != "ap-northeast-3" {
+		t.Errorf("X-Fallback-Stack = %q, want %q", got, "ap-northeast-3")
+	}
+	if got := rec.Header().Get("X-Fallback-Remaining"); got != "ap-northeast-2" {
+		t.Errorf("X-Fallback-Remaining = %q, want %q", got, "ap-northeast-2")
 	}
 }
 
-// TestGetResolve_NoFallbackSignalWhenForwarded は転送済みリクエストでは fallback を促さないことを検証する。
-func TestGetResolve_NoFallbackSignalWhenForwarded(t *testing.T) {
+// TestGetResolve_FallbackForwarded は転送済みで残りがある場合、remaining の先頭を次の forward にすることを検証する。
+func TestGetResolve_FallbackForwarded(t *testing.T) {
 	t.Parallel()
-	h := NewHandler(&mockService{
-		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
-			return nil, store.ErrNoIdleRunner
-		},
-	}, []string{"ap-northeast-3"})
-	r := newTestRouter(h)
+	rec := noIdleResolve([]string{}, map[string]string{
+		"X-Fallback-Stack":     "ap-northeast-3",
+		"X-Fallback-Remaining": "ap-northeast-2",
+	})
+	if got := rec.Header().Get("X-Fallback-Stack"); got != "ap-northeast-2" {
+		t.Errorf("X-Fallback-Stack = %q, want %q", got, "ap-northeast-2")
+	}
+	if got := rec.Header().Get("X-Fallback-Remaining"); got != "" {
+		t.Errorf("X-Fallback-Remaining = %q, want empty", got)
+	}
+}
 
-	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
-	req.Header.Set("X-Bunshin-Forwarded", "ap-northeast-1")
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
-
+// TestGetResolve_FallbackLastStack は転送済みで残りが無い(最後の stack)場合に forward を出さないことを検証する。
+func TestGetResolve_FallbackLastStack(t *testing.T) {
+	t.Parallel()
+	rec := noIdleResolve([]string{}, map[string]string{"X-Fallback-Stack": "ap-northeast-2"})
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
 	}
 	if got := rec.Header().Get("X-Fallback-Stack"); got != "" {
-		t.Errorf("X-Fallback-Stack = %q, want empty for forwarded request", got)
+		t.Errorf("X-Fallback-Stack = %q, want empty for last stack", got)
+	}
+}
+
+// TestFallbackStacks はカンマ区切りの解析・空要素除去・自スタック除外を検証する。
+func TestFallbackStacks(t *testing.T) {
+	t.Parallel()
+	if got := FallbackStacks("", "ap-northeast-1"); len(got) != 0 {
+		t.Errorf("FallbackStacks empty = %v, want empty", got)
+	}
+	got := FallbackStacks(" ap-northeast-1 , ,ap-northeast-3,ap-northeast-2", "ap-northeast-1")
+	want := []string{"ap-northeast-3", "ap-northeast-2"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("FallbackStacks = %v, want %v", got, want)
 	}
 }
 
