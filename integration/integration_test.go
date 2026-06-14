@@ -45,6 +45,9 @@ var nginxBase string
 // テスト間で runner の状態をリセットするために broker の内部 API を直接呼び出す。
 var brokerBase string
 
+// forwardTargetBase は cross-region forward 先モックの制御 URL。TestMain で初期化される。
+var forwardTargetBase string
+
 // runnerHostnames は全 runner のホスト名。TestMain で初期化される。
 // テスト間の runner リセットに使用する。
 var runnerHostnames []string
@@ -61,9 +64,18 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, "BROKER_URL environment variable is required")
 		os.Exit(1)
 	}
+	forwardTargetBase = os.Getenv("FORWARD_TARGET_URL")
+	if forwardTargetBase == "" {
+		fmt.Fprintln(os.Stderr, "FORWARD_TARGET_URL environment variable is required")
+		os.Exit(1)
+	}
 
 	if !waitForReady(nginxBase + "/health") {
 		fmt.Fprintln(os.Stderr, "nginx did not become ready within 60 seconds")
+		os.Exit(1)
+	}
+	if !waitForReady(forwardTargetBase + "/health") {
+		fmt.Fprintln(os.Stderr, "forward target did not become ready within 60 seconds")
 		os.Exit(1)
 	}
 
@@ -239,6 +251,12 @@ func createSession(t *testing.T) sessionCookies {
 // doRequest は HTTP リクエストを送信しレスポンスを返す。
 func doRequest(t *testing.T, method, url, bodyStr, cookie string) *http.Response {
 	t.Helper()
+	return doRequestWithHeaders(t, method, url, bodyStr, cookie, nil)
+}
+
+// doRequestWithHeaders は HTTP リクエストを送信し追加ヘッダを設定する。
+func doRequestWithHeaders(t *testing.T, method, url, bodyStr, cookie string, headers map[string]string) *http.Response {
+	t.Helper()
 	var body io.Reader
 	if bodyStr != "" {
 		body = strings.NewReader(bodyStr)
@@ -253,11 +271,60 @@ func doRequest(t *testing.T, method, url, bodyStr, cookie string) *http.Response
 	if cookie != "" {
 		req.Header.Set("Cookie", cookie)
 	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		t.Fatalf("%s %s: %v", method, url, err)
 	}
 	return resp
+}
+
+type forwardedRequest struct {
+	Method string              `json:"method"`
+	Path   string              `json:"path"`
+	Host   string              `json:"host"`
+	Header map[string][]string `json:"header"`
+}
+
+func resetForwardTarget(t *testing.T) {
+	t.Helper()
+	resp, err := httpClient.Get(forwardTargetBase + "/__reset")
+	if err != nil {
+		t.Fatalf("reset forward target: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("reset forward target: want 204, got %d", resp.StatusCode)
+	}
+}
+
+func lastForwardedRequest(t *testing.T) forwardedRequest {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, err := httpClient.Get(forwardTargetBase + "/__last")
+		if err != nil {
+			t.Fatalf("get forwarded request: %v", err)
+		}
+		if resp.StatusCode == http.StatusNotFound {
+			resp.Body.Close()
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("get forwarded request: want 200, got %d", resp.StatusCode)
+		}
+		var got forwardedRequest
+		if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+			t.Fatalf("decode forwarded request: %v", err)
+		}
+		return got
+	}
+	t.Fatal("forward target did not receive a request")
+	return forwardedRequest{}
 }
 
 // executeCommand は POST /api/execute を呼び出し SSE イベントをパースして返す。
@@ -337,6 +404,46 @@ func TestCreateShellAndExecute(t *testing.T) {
 	}
 	if !hasComplete {
 		t.Errorf("complete event with exitCode=0 not found in events: %+v", events)
+	}
+}
+
+// TestForeignSessionForward は自 stack 以外の session_id prefix を所属 stack へ転送し、
+// client 由来の fallback 制御ヘッダを下流へ渡さないことを検証する。
+func TestForeignSessionForward(t *testing.T) {
+	resetForwardTarget(t)
+
+	headers := map[string]string{
+		"X-Fallback-Stack":     "client-stack",
+		"X-Fallback-Remaining": "client-remaining",
+	}
+	resp := doRequestWithHeaders(
+		t,
+		http.MethodPost,
+		nginxBase+"/api/execute",
+		`{"command":"pwd"}`,
+		"session_id=ap-northeast-3_deadbeef; shell_id=shell-x",
+		headers,
+	)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("POST /api/execute foreign session: want 204 from forward target, got %d", resp.StatusCode)
+	}
+
+	got := lastForwardedRequest(t)
+	if got.Method != http.MethodPost {
+		t.Errorf("forwarded method: want POST, got %s", got.Method)
+	}
+	if got.Path != "/api/execute" {
+		t.Errorf("forwarded path: want /api/execute, got %s", got.Path)
+	}
+	if got.Host != "ap-northeast-3.internal.test" {
+		t.Errorf("forwarded Host: want ap-northeast-3.internal.test, got %s", got.Host)
+	}
+	if values := got.Header["X-Fallback-Stack"]; len(values) > 0 {
+		t.Errorf("X-Fallback-Stack should be stripped, got %q", values)
+	}
+	if values := got.Header["X-Fallback-Remaining"]; len(values) > 0 {
+		t.Errorf("X-Fallback-Remaining should be stripped, got %q", values)
 	}
 }
 
