@@ -23,6 +23,22 @@ resource "aws_route53_record" "external_alb" {
   }
 }
 
+resource "aws_route53_record" "api_ingress_origin" {
+  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  # checkov:skip=CKV2_AWS_23:Alias targets the regional API ingress ALB through module outputs
+  for_each = local.api_ingress_origins
+
+  zone_id = data.aws_route53_zone.main.zone_id
+  name    = each.value.domain_name
+  type    = "A"
+
+  alias {
+    name                   = each.value.dns_name
+    zone_id                = each.value.zone_id
+    evaluate_target_health = true
+  }
+}
+
 resource "aws_route53_zone" "apne1_internal" {
   name = "apne1-internal.${var.domain_name}"
 
