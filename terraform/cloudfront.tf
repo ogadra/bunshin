@@ -90,7 +90,7 @@ resource "aws_cloudfront_distribution" "main" {
     origin_id = "static-s3-failover"
 
     failover_criteria {
-      status_codes = [403, 404, 500, 502, 503, 504]
+      status_codes = [500, 502, 503, 504]
     }
 
     member {
@@ -104,7 +104,7 @@ resource "aws_cloudfront_distribution" "main" {
 
   default_cache_behavior {
     allowed_methods            = ["GET", "HEAD", "OPTIONS"]
-    cached_methods             = ["GET", "HEAD"]
+    cached_methods             = ["GET", "HEAD", "OPTIONS"]
     cache_policy_id            = data.aws_cloudfront_cache_policy.caching_optimized.id
     compress                   = true
     response_headers_policy_id = data.aws_cloudfront_response_headers_policy.security_headers.id
