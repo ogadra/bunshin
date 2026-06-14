@@ -4,7 +4,7 @@ resource "aws_security_group" "broker" {
   vpc_id      = aws_vpc.apne1.id
 
   tags = merge(local.common_tags, {
-    Name    = "bunshin-broker"
+    Name    = "bunshin-apne1-broker"
     Service = "broker"
   })
 
@@ -91,14 +91,18 @@ resource "aws_security_group_rule" "ecs_egress_s3" {
   description       = "HTTPS to S3 VPC endpoint"
 }
 
-resource "aws_security_group" "external_alb" {
-  name_prefix = "bunshin-alb-"
-  description = "Security group for ALB"
+data "aws_ec2_managed_prefix_list" "cloudfront_origin_facing" {
+  name = "com.amazonaws.global.cloudfront.origin-facing"
+}
+
+resource "aws_security_group" "api_ingress_alb" {
+  name_prefix = "bunshin-api-ingress-alb-"
+  description = "Security group for API ingress ALB"
   vpc_id      = aws_vpc.apne1.id
 
   tags = merge(local.common_tags, {
-    Name    = "bunshin-alb"
-    Service = "alb"
+    Name    = "bunshin-apne1-api-ingress-alb"
+    Service = "api-ingress-alb"
   })
 
   lifecycle {
@@ -106,39 +110,51 @@ resource "aws_security_group" "external_alb" {
   }
 }
 
-resource "aws_security_group_rule" "external_alb_ingress_https" {
+resource "aws_security_group_rule" "api_ingress_alb_ingress_https" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  # trivy:ignore:AVD-AWS-0107 -- ALB is internet-facing, WAF restricts access via header validation
   type              = "ingress"
   from_port         = 443
   to_port           = 443
   protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
-  security_group_id = aws_security_group.external_alb.id
-  description       = "HTTPS from internet, WAF controlled"
+  prefix_list_ids   = [data.aws_ec2_managed_prefix_list.cloudfront_origin_facing.id]
+  security_group_id = aws_security_group.api_ingress_alb.id
+  description       = "HTTPS from CloudFront VPC origins"
 }
 
-resource "aws_security_group_rule" "external_alb_ingress_http" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  # checkov:skip=CKV_AWS_260:HTTP port 80 is used for HTTPS redirect only
-  # trivy:ignore:AVD-AWS-0107 -- HTTP listener redirects to HTTPS
-  type              = "ingress"
-  from_port         = 80
-  to_port           = 80
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
-  security_group_id = aws_security_group.external_alb.id
-  description       = "HTTP from internet for HTTPS redirect"
-}
-
-resource "aws_security_group_rule" "external_alb_egress_nginx" {
+resource "aws_security_group_rule" "api_ingress_alb_egress_nginx" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   type                     = "egress"
   from_port                = local.ecs_services["nginx"].port
   to_port                  = local.ecs_services["nginx"].port
   protocol                 = "tcp"
   source_security_group_id = aws_security_group.nginx.id
-  security_group_id        = aws_security_group.external_alb.id
+  security_group_id        = aws_security_group.api_ingress_alb.id
+  description              = "HTTP to nginx"
+}
+
+resource "aws_security_group" "internal_alb" {
+  name_prefix = "bunshin-internal-alb-"
+  description = "Security group for internal ALB"
+  vpc_id      = aws_vpc.apne1.id
+
+  tags = merge(local.common_tags, {
+    Name    = "bunshin-apne1-internal-alb"
+    Service = "internal-alb"
+  })
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_security_group_rule" "internal_alb_egress_nginx" {
+  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  type                     = "egress"
+  from_port                = local.ecs_services["nginx"].port
+  to_port                  = local.ecs_services["nginx"].port
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.nginx.id
+  security_group_id        = aws_security_group.internal_alb.id
   description              = "HTTP to nginx"
 }
 
@@ -179,15 +195,26 @@ resource "aws_security_group_rule" "nginx_egress_runner" {
   description              = "HTTP to runner"
 }
 
-resource "aws_security_group_rule" "nginx_ingress_external_alb" {
+resource "aws_security_group_rule" "nginx_ingress_api_ingress_alb" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   type                     = "ingress"
   from_port                = local.ecs_services["nginx"].port
   to_port                  = local.ecs_services["nginx"].port
   protocol                 = "tcp"
-  source_security_group_id = aws_security_group.external_alb.id
+  source_security_group_id = aws_security_group.api_ingress_alb.id
   security_group_id        = aws_security_group.nginx.id
-  description              = "HTTP from ALB"
+  description              = "HTTP from API ingress ALB"
+}
+
+resource "aws_security_group_rule" "nginx_ingress_internal_alb" {
+  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  type                     = "ingress"
+  from_port                = local.ecs_services["nginx"].port
+  to_port                  = local.ecs_services["nginx"].port
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.internal_alb.id
+  security_group_id        = aws_security_group.nginx.id
+  description              = "HTTP from internal ALB"
 }
 
 resource "aws_security_group" "runner" {

@@ -28,12 +28,37 @@ output "private_route_table_id" {
   value       = aws_route_table.apne1_private.id
 }
 
-output "external_alb_dns_name" {
-  description = "DNS name of the external ALB"
-  value       = aws_lb.external.dns_name
+output "private_subnet_cidrs" {
+  description = "CIDR blocks of private subnets"
+  value       = aws_subnet.apne1_private[*].cidr_block
 }
 
-output "external_alb_zone_id" {
-  description = "Canonical hosted zone ID of the external ALB"
-  value       = aws_lb.external.zone_id
+output "api_ingress_alb_arn" {
+  description = "ARN of the API ingress ALB"
+  value       = aws_lb.api_ingress.arn
+}
+
+output "api_ingress_alb_dns_name" {
+  description = "DNS name of the API ingress ALB"
+  value       = aws_lb.api_ingress.dns_name
+}
+
+output "api_ingress_alb_zone_id" {
+  description = "Canonical hosted zone ID of the API ingress ALB"
+  value       = aws_lb.api_ingress.zone_id
+}
+
+output "internal_route53_zone_id" {
+  description = "ID of the internal Route 53 private hosted zone"
+  value       = aws_route53_zone.internal.zone_id
+}
+
+output "internal_alb_security_group_id" {
+  description = "ID of the internal ALB security group"
+  value       = aws_security_group.internal_alb.id
+}
+
+output "nginx_security_group_id" {
+  description = "ID of the nginx security group"
+  value       = aws_security_group.nginx.id
 }

@@ -39,6 +39,11 @@ resource "aws_ecs_task_definition" "nginx" {
       protocol      = "tcp"
     }]
 
+    environment = [
+      { name = "STACK_NAME", value = data.aws_region.current.id },
+      { name = "INTERNAL_DOMAIN", value = var.domain_name },
+    ]
+
     logConfiguration = {
       logDriver = "awslogs"
       options = {
@@ -64,6 +69,8 @@ resource "aws_ecs_service" "nginx" {
   depends_on = [
     aws_iam_role_policy.execution_ecr["nginx"],
     aws_iam_role_policy.execution_logs["nginx"],
+    aws_lb_listener.api_ingress_https,
+    aws_lb_listener.internal_https,
   ]
 
   network_configuration {
@@ -72,7 +79,13 @@ resource "aws_ecs_service" "nginx" {
   }
 
   load_balancer {
-    target_group_arn = aws_lb_target_group.nginx.arn
+    target_group_arn = aws_lb_target_group.api_ingress_nginx.arn
+    container_name   = "nginx"
+    container_port   = local.ecs_services["nginx"].port
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.internal_nginx.arn
     container_name   = "nginx"
     container_port   = local.ecs_services["nginx"].port
   }
