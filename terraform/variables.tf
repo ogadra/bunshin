@@ -16,7 +16,7 @@ variable "alb_certificate_arns" {
 }
 
 variable "domain_name" {
-  description = "FQDN for the service (e.g. ogadra-bunshin.mad.bcr.dev)"
+  description = "FQDN for the service"
   type        = string
 }
 
