@@ -197,6 +197,54 @@ func TestGetResolve_NoIdleRunner(t *testing.T) {
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
 	}
+	if got := rec.Header().Get("X-Fallback-Stack"); got != "" {
+		t.Errorf("X-Fallback-Stack = %q, want empty when no fallback configured", got)
+	}
+}
+
+// TestGetResolve_FallbackSignalOnNoIdle は idle 枯渇時に fallback 候補を X-Fallback-Stack で通知することを検証する。
+func TestGetResolve_FallbackSignalOnNoIdle(t *testing.T) {
+	t.Parallel()
+	h := NewHandler(&mockService{
+		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
+			return nil, store.ErrNoIdleRunner
+		},
+	}, WithFallbackStacks([]string{"ap-northeast-3", "ap-northeast-2"}))
+	r := newTestRouter(h)
+
+	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+	if got := rec.Header().Get("X-Fallback-Stack"); got != "ap-northeast-3,ap-northeast-2" {
+		t.Errorf("X-Fallback-Stack = %q, want %q", got, "ap-northeast-3,ap-northeast-2")
+	}
+}
+
+// TestGetResolve_NoFallbackSignalWhenForwarded は転送済みリクエストでは fallback を促さないことを検証する。
+func TestGetResolve_NoFallbackSignalWhenForwarded(t *testing.T) {
+	t.Parallel()
+	h := NewHandler(&mockService{
+		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
+			return nil, store.ErrNoIdleRunner
+		},
+	}, WithFallbackStacks([]string{"ap-northeast-3"}))
+	r := newTestRouter(h)
+
+	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
+	req.Header.Set("X-Bunshin-Forwarded", "ap-northeast-1")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+	if got := rec.Header().Get("X-Fallback-Stack"); got != "" {
+		t.Errorf("X-Fallback-Stack = %q, want empty for forwarded request", got)
+	}
 }
 
 // TestGetResolve_InternalError は内部エラー時に 500 を返すことを検証する。

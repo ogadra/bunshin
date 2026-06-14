@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/ogadra/20260327-cli-demo/broker/model"
@@ -19,19 +20,38 @@ var runnerHostRe = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
 // sessionIDCookie は session 識別用の cookie 名。
 const sessionIDCookie = "session_id"
 
-const delegatedResolveHeader = "X-Bunshin-Delegated-Resolve"
+// fallbackStackHeader は idle 枯渇時に nginx へフォワード先候補スタックを伝えるレスポンスヘッダ。
+const fallbackStackHeader = "X-Fallback-Stack"
+
+// forwardedHeader は nginx が別スタックから転送したリクエストに付けるマーカー。再フォワードを防ぐため fallback を抑止する。
+const forwardedHeader = "X-Bunshin-Forwarded"
 
 // Handler は broker の HTTP ハンドラー。
 type Handler struct {
-	svc service.Service
+	svc            service.Service
+	fallbackStacks []string
+}
+
+// Option は Handler の生成オプション。
+type Option func(*Handler)
+
+// WithFallbackStacks は idle 枯渇時にフォワード先候補として通知するスタック名を設定する。
+func WithFallbackStacks(stacks []string) Option {
+	return func(h *Handler) {
+		h.fallbackStacks = append([]string(nil), stacks...)
+	}
 }
 
 // NewHandler は Handler を生成する。svc が nil の場合は panic する。
-func NewHandler(svc service.Service) *Handler {
+func NewHandler(svc service.Service, opts ...Option) *Handler {
 	if svc == nil {
 		panic("handler: nil service")
 	}
-	return &Handler{svc: svc}
+	h := &Handler{svc: svc}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
 }
 
 // registerRequest は POST /internal/runners/register のリクエストボディ。
@@ -64,6 +84,10 @@ func (h *Handler) GetResolve(c *gin.Context) {
 	result, err := h.svc.ResolveSession(c.Request.Context(), sessionID)
 	if err != nil {
 		if errors.Is(err, store.ErrNoIdleRunner) {
+			// 転送済みリクエストは多段フォワードを避けるため fallback を促さない。
+			if c.GetHeader(forwardedHeader) == "" && len(h.fallbackStacks) > 0 {
+				c.Header(fallbackStackHeader, strings.Join(h.fallbackStacks, ","))
+			}
 			writeError(c, http.StatusServiceUnavailable, model.CodeNoIdleRunner, "no idle runner available")
 			return
 		}
