@@ -64,7 +64,7 @@ resource "aws_ecs_service" "nginx" {
   depends_on = [
     aws_iam_role_policy.execution_ecr["nginx"],
     aws_iam_role_policy.execution_logs["nginx"],
-    aws_lb_listener.external_https,
+    aws_lb_listener.api_ingress_https,
     aws_lb_listener.internal_https,
   ]
 
@@ -74,7 +74,7 @@ resource "aws_ecs_service" "nginx" {
   }
 
   load_balancer {
-    target_group_arn = aws_lb_target_group.external_nginx.arn
+    target_group_arn = aws_lb_target_group.api_ingress_nginx.arn
     container_name   = "nginx"
     container_port   = local.ecs_services["nginx"].port
   }

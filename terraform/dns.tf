@@ -3,18 +3,40 @@ data "aws_route53_zone" "main" {
   private_zone = false
 }
 
-resource "aws_route53_record" "external_alb" {
+resource "aws_route53_record" "cloudfront" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  for_each = local.external_albs
+  zone_id = data.aws_route53_zone.main.zone_id
+  name    = var.domain_name
+  type    = "A"
 
-  zone_id        = data.aws_route53_zone.main.zone_id
-  name           = var.domain_name
-  type           = "A"
-  set_identifier = each.key
-
-  latency_routing_policy {
-    region = each.value.region
+  alias {
+    name                   = aws_cloudfront_distribution.main.domain_name
+    zone_id                = aws_cloudfront_distribution.main.hosted_zone_id
+    evaluate_target_health = false
   }
+}
+
+resource "aws_route53_record" "cloudfront_ipv6" {
+  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  zone_id = data.aws_route53_zone.main.zone_id
+  name    = var.domain_name
+  type    = "AAAA"
+
+  alias {
+    name                   = aws_cloudfront_distribution.main.domain_name
+    zone_id                = aws_cloudfront_distribution.main.hosted_zone_id
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "api_ingress_origin" {
+  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  # checkov:skip=CKV2_AWS_23:Alias targets the regional API ingress ALB through module outputs
+  for_each = local.api_ingress_origins
+
+  zone_id = data.aws_route53_zone.main.zone_id
+  name    = each.value.domain_name
+  type    = "A"
 
   alias {
     name                   = each.value.dns_name

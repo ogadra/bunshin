@@ -20,20 +20,20 @@ variable "domain_name" {
   type        = string
 }
 
-variable "aws_profile" {
-  description = "AWS CLI profile name for the target account"
-  type        = string
-}
-
-variable "proxy_secret" {
-  description = "Secret header value for Cloudflare Workers proxy verification via WAF"
+variable "cloudfront_certificate_arn" {
+  description = "ACM certificate ARN in us-east-1 for the CloudFront distribution"
   type        = string
   sensitive   = true
 
   validation {
-    condition     = length(var.proxy_secret) >= 50
-    error_message = "proxy_secret must be at least 50 characters."
+    condition     = can(regex("^arn:aws:acm:us-east-1:[0-9]{12}:certificate/.+", var.cloudfront_certificate_arn))
+    error_message = "cloudfront_certificate_arn must be a us-east-1 ACM certificate ARN."
   }
+}
+
+variable "aws_profile" {
+  description = "AWS CLI profile name for the target account"
+  type        = string
 }
 
 variable "runner_desired_count" {
