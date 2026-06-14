@@ -43,16 +43,6 @@ output "external_alb_zone_id" {
   value       = aws_lb.external.zone_id
 }
 
-output "api_ingress_alb_arn" {
-  description = "ARN of the API ingress ALB"
-  value       = aws_lb.api_ingress.arn
-}
-
-output "api_ingress_alb_dns_name" {
-  description = "DNS name of the API ingress ALB"
-  value       = aws_lb.api_ingress.dns_name
-}
-
 output "internal_alb_dns_name" {
   description = "DNS name of the internal ALB"
   value       = aws_lb.internal.dns_name
