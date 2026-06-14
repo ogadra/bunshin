@@ -3,23 +3,16 @@ data "aws_route53_zone" "main" {
   private_zone = false
 }
 
-resource "aws_route53_record" "external_alb" {
+resource "aws_route53_record" "cloudfront" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  for_each = local.external_albs
-
-  zone_id        = data.aws_route53_zone.main.zone_id
-  name           = var.domain_name
-  type           = "A"
-  set_identifier = each.key
-
-  latency_routing_policy {
-    region = each.value.region
-  }
+  zone_id = data.aws_route53_zone.main.zone_id
+  name    = var.domain_name
+  type    = "A"
 
   alias {
-    name                   = each.value.dns_name
-    zone_id                = each.value.zone_id
-    evaluate_target_health = true
+    name                   = aws_cloudfront_distribution.main.domain_name
+    zone_id                = aws_cloudfront_distribution.main.hosted_zone_id
+    evaluate_target_health = false
   }
 }
 

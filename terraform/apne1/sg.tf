@@ -132,57 +132,6 @@ resource "aws_security_group_rule" "api_ingress_alb_egress_nginx" {
   description              = "HTTP to nginx"
 }
 
-resource "aws_security_group" "external_alb" {
-  name_prefix = "bunshin-external-alb-"
-  description = "Security group for external ALB"
-  vpc_id      = aws_vpc.apne1.id
-
-  tags = merge(local.common_tags, {
-    Name    = "bunshin-apne1-external-alb"
-    Service = "external-alb"
-  })
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-resource "aws_security_group_rule" "external_alb_ingress_https" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  # trivy:ignore:AVD-AWS-0107 -- ALB is internet-facing, WAF restricts access via header validation
-  type              = "ingress"
-  from_port         = 443
-  to_port           = 443
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
-  security_group_id = aws_security_group.external_alb.id
-  description       = "HTTPS from internet, WAF controlled"
-}
-
-resource "aws_security_group_rule" "external_alb_ingress_http" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  # checkov:skip=CKV_AWS_260:HTTP port 80 is used for HTTPS redirect only
-  # trivy:ignore:AVD-AWS-0107 -- HTTP listener redirects to HTTPS
-  type              = "ingress"
-  from_port         = 80
-  to_port           = 80
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
-  security_group_id = aws_security_group.external_alb.id
-  description       = "HTTP from internet for HTTPS redirect"
-}
-
-resource "aws_security_group_rule" "external_alb_egress_nginx" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  type                     = "egress"
-  from_port                = local.ecs_services["nginx"].port
-  to_port                  = local.ecs_services["nginx"].port
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.nginx.id
-  security_group_id        = aws_security_group.external_alb.id
-  description              = "HTTP to nginx"
-}
-
 resource "aws_security_group" "internal_alb" {
   name_prefix = "bunshin-internal-alb-"
   description = "Security group for internal ALB"
@@ -244,17 +193,6 @@ resource "aws_security_group_rule" "nginx_egress_runner" {
   source_security_group_id = aws_security_group.runner.id
   security_group_id        = aws_security_group.nginx.id
   description              = "HTTP to runner"
-}
-
-resource "aws_security_group_rule" "nginx_ingress_external_alb" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  type                     = "ingress"
-  from_port                = local.ecs_services["nginx"].port
-  to_port                  = local.ecs_services["nginx"].port
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.external_alb.id
-  security_group_id        = aws_security_group.nginx.id
-  description              = "HTTP from ALB"
 }
 
 resource "aws_security_group_rule" "nginx_ingress_api_ingress_alb" {
