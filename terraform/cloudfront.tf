@@ -63,21 +63,11 @@ resource "aws_cloudfront_vpc_origin" "api_ingress_apne3" {
   })
 }
 
-resource "aws_cloudfront_function" "api_origin_selector" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  name    = "bunshin-api-origin-selector"
-  runtime = "cloudfront-js-2.0"
-  comment = "Selects the API ingress origin for active-active routing"
-  publish = true
-  code    = file("${path.module}/cloudfront/api-origin-selector.js")
-}
-
 # trivy:ignore:AVD-AWS-0010 -- CloudFront access logs are not required for the initial deployment
 # trivy:ignore:AVD-AWS-0011 -- CloudFront WAF is not part of the initial entrypoint replacement
 resource "aws_cloudfront_distribution" "main" {
   # checkov:skip=CKV_AWS_68:CloudFront WAF is not part of the initial entrypoint replacement
   # checkov:skip=CKV_AWS_86:CloudFront access logs are not required for the initial deployment
-  # checkov:skip=CKV_AWS_310:Origin failover is handled separately from active-active routing
   # checkov:skip=CKV_AWS_374:Geo restriction is not required for this service
   # checkov:skip=CKV2_AWS_47:Log4j protection is not needed, backend does not use Java
   enabled             = true
@@ -115,6 +105,22 @@ resource "aws_cloudfront_distribution" "main" {
     }
   }
 
+  origin_group {
+    origin_id = "api-ingress-failover"
+
+    failover_criteria {
+      status_codes = [502, 503, 504]
+    }
+
+    member {
+      origin_id = "api-ingress-apne1"
+    }
+
+    member {
+      origin_id = "api-ingress-apne3"
+    }
+  }
+
   default_cache_behavior {
     allowed_methods            = ["GET", "HEAD", "OPTIONS"]
     cached_methods             = ["GET", "HEAD"]
@@ -133,13 +139,8 @@ resource "aws_cloudfront_distribution" "main" {
     origin_request_policy_id   = data.aws_cloudfront_origin_request_policy.all_viewer_except_host_header.id
     compress                   = false
     response_headers_policy_id = data.aws_cloudfront_response_headers_policy.security_headers.id
-    target_origin_id           = "api-ingress-apne1"
+    target_origin_id           = "api-ingress-failover"
     viewer_protocol_policy     = "redirect-to-https"
-
-    function_association {
-      event_type   = "viewer-request"
-      function_arn = aws_cloudfront_function.api_origin_selector.arn
-    }
   }
 
   restrictions {
