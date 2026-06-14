@@ -98,7 +98,11 @@ func defaultInitHandler() (*handler.Handler, error) {
 	repo := store.NewDynamoRepository(client, "bunshin-runners")
 	checker := healthcheck.NewHTTPChecker(&http.Client{Timeout: 3 * time.Second})
 	svc := service.NewBrokerService(repo, region, service.WithChecker(checker))
-	return handler.NewHandler(svc, handler.ParseFallbackStacks(os.Getenv("BROKER_FALLBACK_STACKS"), region)), nil
+	return handler.NewHandler(svc, fallbackStacks(region)), nil
+}
+
+func fallbackStacks(self string) []string {
+	return handler.ParseFallbackStacks(os.Getenv("BROKER_FALLBACK_STACKS"), self)
 }
 
 // run はサーバーの起動とグレースフルシャットダウンを行う。
