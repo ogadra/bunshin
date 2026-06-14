@@ -64,9 +64,7 @@ resource "aws_cloudfront_vpc_origin" "api_ingress_apne3" {
 }
 
 # trivy:ignore:AVD-AWS-0010 -- CloudFront access logs are not required for the initial deployment
-# trivy:ignore:AVD-AWS-0011 -- CloudFront WAF is not part of the initial entrypoint replacement
 resource "aws_cloudfront_distribution" "main" {
-  # checkov:skip=CKV_AWS_68:CloudFront WAF is not part of the initial entrypoint replacement
   # checkov:skip=CKV_AWS_86:CloudFront access logs are not required for the initial deployment
   # checkov:skip=CKV_AWS_374:Geo restriction is not required for this service
   # checkov:skip=CKV2_AWS_47:Log4j protection is not needed, backend does not use Java
@@ -76,6 +74,7 @@ resource "aws_cloudfront_distribution" "main" {
   default_root_object = "index.html"
   aliases             = [var.domain_name]
   price_class         = "PriceClass_200"
+  web_acl_id          = aws_wafv2_web_acl.cloudfront.arn
 
   origin {
     domain_name              = aws_s3_bucket.static.bucket_regional_domain_name
