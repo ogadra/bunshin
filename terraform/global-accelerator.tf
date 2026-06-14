@@ -1,7 +1,8 @@
 resource "aws_globalaccelerator_accelerator" "api_ingress" {
   # checkov:skip=CKV_AWS_75:Flow logs are not required for the initial API ingress deployment
-  name            = "bunshin-api-ingress"
-  enabled         = true
+  name    = "bunshin-api-ingress"
+  enabled = true
+
   ip_address_type = "IPV4"
 
   tags = merge(local.common_tags, {
@@ -28,8 +29,9 @@ resource "aws_globalaccelerator_endpoint_group" "api_ingress_apne1" {
   traffic_dial_percentage = 100
 
   endpoint_configuration {
-    endpoint_id = module.apne1.api_ingress_alb_arn
-    weight      = 128
+    client_ip_preservation_enabled = true
+    endpoint_id                    = module.apne1.api_ingress_alb_arn
+    weight                         = 128
   }
 }
 
@@ -40,7 +42,8 @@ resource "aws_globalaccelerator_endpoint_group" "api_ingress_apne3" {
   traffic_dial_percentage = 100
 
   endpoint_configuration {
-    endpoint_id = module.apne3.api_ingress_alb_arn
-    weight      = 128
+    client_ip_preservation_enabled = true
+    endpoint_id                    = module.apne3.api_ingress_alb_arn
+    weight                         = 128
   }
 }
