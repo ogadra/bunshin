@@ -33,16 +33,6 @@ output "private_subnet_cidrs" {
   value       = aws_subnet.apne3_private[*].cidr_block
 }
 
-output "external_alb_dns_name" {
-  description = "DNS name of the external ALB"
-  value       = aws_lb.external.dns_name
-}
-
-output "external_alb_zone_id" {
-  description = "Canonical hosted zone ID of the external ALB"
-  value       = aws_lb.external.zone_id
-}
-
 output "api_ingress_alb_arn" {
   description = "ARN of the API ingress ALB"
   value       = aws_lb.api_ingress.arn
