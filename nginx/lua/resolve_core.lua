@@ -8,13 +8,22 @@ local HTTP_INTERNAL_ERROR = 500
 
 local own_stack_name = ""
 local internal_domain_name = ""
+local allowed_stacks = {}
 
-function _M.configure(stack, domain)
+function _M.configure(stack, domain, stacks)
     if stack == nil or stack == "" or domain == nil or domain == "" then
         error("resolve_core: STACK_NAME and INTERNAL_DOMAIN must be set")
     end
+    local set = {}
+    for s in (stacks or ""):gmatch("[^,]+") do
+        set[s] = true
+    end
+    if next(set) == nil then
+        error("resolve_core: BUNSHIN_STACKS must be set")
+    end
     own_stack_name = stack
     internal_domain_name = domain
+    allowed_stacks = set
 end
 
 function _M.own_stack()
@@ -25,6 +34,10 @@ function _M.internal_domain()
     return internal_domain_name
 end
 
+function _M.stacks()
+    return allowed_stacks
+end
+
 function _M.cookie_stack(session_id)
     if type(session_id) ~= "string" then
         return nil
@@ -32,25 +45,22 @@ function _M.cookie_stack(session_id)
     return session_id:match("^([^_]+)_")
 end
 
--- 任意文字列が proxy_pass の host へ流れ込むのを防ぐため stack を region 形に限定する。
-function _M.host_of(stack, domain)
-    if type(stack) ~= "string" or not stack:match("^[a-z0-9-]+$") then
-        return nil
-    end
-    if type(domain) ~= "string" or domain == "" then
+-- 既知 stack のみ許可し、未知/詐称値が proxy_pass の host へ流れるのを防ぐ。
+function _M.host_of(stack, stacks, domain)
+    if not stacks[stack] then
         return nil
     end
     return stack .. "." .. domain
 end
 
-function _M.decide_arrival(session_id, stack, domain)
+function _M.decide_arrival(session_id, stack, stacks, domain)
     local owner = _M.cookie_stack(session_id)
     if owner == nil or owner == stack then
         return nil
     end
-    local host = _M.host_of(owner, domain)
+    local host = _M.host_of(owner, stacks, domain)
     if host == nil then
-        return { exit = HTTP_INTERNAL_ERROR, log = "resolve: invalid stack in session_id: " .. tostring(owner) }
+        return { exit = HTTP_INTERNAL_ERROR, log = "resolve: unknown stack in session_id: " .. tostring(owner) }
     end
     return { forward_host = host }
 end
