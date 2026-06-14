@@ -84,6 +84,9 @@ func WithChecker(c healthcheck.Checker) Option {
 
 // NewBrokerService は BrokerService を生成する。
 func NewBrokerService(repo store.Repository, stackPrefix string, opts ...Option) *BrokerService {
+	if stackPrefix == "" {
+		panic("service: stackPrefix must not be empty")
+	}
 	s := &BrokerService{
 		repo:        repo,
 		stackPrefix: stackPrefix,

@@ -101,6 +101,17 @@ func TestNewBrokerService(t *testing.T) {
 	}
 }
 
+// TestNewBrokerService_EmptyStackPrefixPanics は stackPrefix が空文字列のとき panic することを検証する。
+func TestNewBrokerService_EmptyStackPrefixPanics(t *testing.T) {
+	t.Parallel()
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic for empty stackPrefix")
+		}
+	}()
+	NewBrokerService(&mockRepository{}, "")
+}
+
 // TestNewBrokerService_WithSessionFn は WithSessionFn オプションで sessionFn が差し替わることを検証する。
 func TestNewBrokerService_WithSessionFn(t *testing.T) {
 	t.Parallel()
