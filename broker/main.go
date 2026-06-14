@@ -106,7 +106,7 @@ func defaultInitHandler() (*handler.Handler, error) {
 }
 
 func fallbackStacks(self string) []string {
-	return handler.ParseFallbackStacks(os.Getenv("BROKER_FALLBACK_STACKS"), self)
+	return handler.FallbackStacksFromStackList(os.Getenv("BUNSHIN_STACKS"), self)
 }
 
 // run はサーバーの起動とグレースフルシャットダウンを行う。

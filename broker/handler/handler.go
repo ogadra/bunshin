@@ -111,7 +111,7 @@ func splitStacks(raw string) []string {
 	return stacks
 }
 
-func ParseFallbackStacks(raw, self string) []string {
+func FallbackStacksFromStackList(raw, self string) []string {
 	stacks := []string{}
 	for _, s := range splitStacks(raw) {
 		if s != self {

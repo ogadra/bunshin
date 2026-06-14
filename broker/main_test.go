@@ -186,7 +186,7 @@ func (fakeNoIdleService) ResolveSession(context.Context, string) (*service.Resol
 func (fakeNoIdleService) RegisterRunner(context.Context, string, string) error { return nil }
 func (fakeNoIdleService) DeregisterRunner(context.Context, string) error       { return nil }
 
-// TestDefaultInitHandler_FallbackSignal は BROKER_FALLBACK_STACKS が defaultInitHandler 経由で handler に渡り、idle 枯渇時に自スタックを除いた fallback を X-Fallback-Stack で返すことを検証する。
+// TestDefaultInitHandler_FallbackSignal は BUNSHIN_STACKS から自スタックを除いた fallback を X-Fallback-Stack で返すことを検証する。
 func TestDefaultInitHandler_FallbackSignal(t *testing.T) {
 	origNewBrokerService := newBrokerService
 	t.Cleanup(func() { newBrokerService = origNewBrokerService })
@@ -198,7 +198,7 @@ func TestDefaultInitHandler_FallbackSignal(t *testing.T) {
 	t.Setenv("AWS_REGION", "ap-northeast-1")
 	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "localdev")
-	t.Setenv("BROKER_FALLBACK_STACKS", "ap-northeast-1,ap-northeast-3")
+	t.Setenv("BUNSHIN_STACKS", "ap-northeast-1,ap-northeast-3")
 
 	h, err := defaultInitHandler()
 	if err != nil {

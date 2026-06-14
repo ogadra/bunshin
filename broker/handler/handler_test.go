@@ -274,16 +274,16 @@ func TestGetResolve_FallbackLastStack(t *testing.T) {
 	}
 }
 
-// TestParseFallbackStacks はカンマ区切りの解析・空要素除去・自スタック除外を検証する。
-func TestParseFallbackStacks(t *testing.T) {
+// TestFallbackStacksFromStackList はカンマ区切りの解析・空要素除去・自スタック除外を検証する。
+func TestFallbackStacksFromStackList(t *testing.T) {
 	t.Parallel()
-	if got := ParseFallbackStacks("", "ap-northeast-1"); len(got) != 0 {
-		t.Errorf("ParseFallbackStacks empty = %v, want empty", got)
+	if got := FallbackStacksFromStackList("", "ap-northeast-1"); len(got) != 0 {
+		t.Errorf("FallbackStacksFromStackList empty = %v, want empty", got)
 	}
-	got := ParseFallbackStacks(" ap-northeast-1 , ,ap-northeast-3,ap-northeast-2", "ap-northeast-1")
+	got := FallbackStacksFromStackList(" ap-northeast-1 , ,ap-northeast-3,ap-northeast-2", "ap-northeast-1")
 	want := []string{"ap-northeast-3", "ap-northeast-2"}
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
-		t.Errorf("ParseFallbackStacks = %v, want %v", got, want)
+		t.Errorf("FallbackStacksFromStackList = %v, want %v", got, want)
 	}
 }
 
