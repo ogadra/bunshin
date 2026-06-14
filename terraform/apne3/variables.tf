@@ -20,6 +20,28 @@ variable "proxy_secret" {
   }
 }
 
+variable "bunshin_stacks" {
+  description = "Bunshin stack regions shared by every broker"
+  type        = list(string)
+
+  validation {
+    condition = (
+      length(var.bunshin_stacks) > 0 &&
+      length(distinct(var.bunshin_stacks)) == length(var.bunshin_stacks) &&
+      alltrue([
+        for stack in var.bunshin_stacks :
+        stack == trimspace(stack) && stack != "" && !strcontains(stack, ",")
+      ])
+    )
+    error_message = "bunshin_stacks must be a non-empty list of unique, non-empty region strings without surrounding whitespace or commas."
+  }
+
+  validation {
+    condition     = contains(var.bunshin_stacks, data.aws_region.current.id)
+    error_message = "bunshin_stacks must include the current AWS region."
+  }
+}
+
 variable "runner_desired_count" {
   description = "Desired number of runner ECS tasks"
   type        = number

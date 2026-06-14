@@ -109,6 +109,7 @@ resource "aws_ecs_task_definition" "broker" {
 
     environment = [
       { name = "AWS_REGION", value = data.aws_region.current.id },
+      { name = "BUNSHIN_STACKS", value = join(",", var.bunshin_stacks) },
     ]
 
     logConfiguration = {
