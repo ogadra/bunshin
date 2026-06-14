@@ -16,6 +16,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/ogadra/20260327-cli-demo/broker/handler"
+	"github.com/ogadra/20260327-cli-demo/broker/healthcheck"
+	"github.com/ogadra/20260327-cli-demo/broker/service"
+	"github.com/ogadra/20260327-cli-demo/broker/store"
 )
 
 // saveAndRestore は全てのパッケージレベル変数を退避し、テスト終了時に復元する。
@@ -174,12 +177,43 @@ func TestDefaultInitHandler(t *testing.T) {
 	}
 }
 
-// TestFallbackStacks は BROKER_FALLBACK_STACKS を読み自スタックを除外することを検証する。
-func TestFallbackStacks(t *testing.T) {
+type fakeNoIdleService struct{}
+
+func (fakeNoIdleService) CloseSession(context.Context, string) error { return nil }
+func (fakeNoIdleService) ResolveSession(context.Context, string) (*service.ResolveResult, error) {
+	return nil, store.ErrNoIdleRunner
+}
+func (fakeNoIdleService) RegisterRunner(context.Context, string, string) error { return nil }
+func (fakeNoIdleService) DeregisterRunner(context.Context, string) error       { return nil }
+
+// TestDefaultInitHandler_FallbackSignal は BROKER_FALLBACK_STACKS が defaultInitHandler 経由で handler に渡り、idle 枯渇時に自スタックを除いた fallback を X-Fallback-Stack で返すことを検証する。
+func TestDefaultInitHandler_FallbackSignal(t *testing.T) {
+	origNewBrokerService := newBrokerService
+	t.Cleanup(func() { newBrokerService = origNewBrokerService })
+	newBrokerService = func(store.Repository, string, healthcheck.Checker) service.Service {
+		return fakeNoIdleService{}
+	}
+
+	t.Setenv("DYNAMODB_ENDPOINT", "http://localhost:18000")
+	t.Setenv("AWS_REGION", "ap-northeast-1")
+	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "localdev")
 	t.Setenv("BROKER_FALLBACK_STACKS", "ap-northeast-1,ap-northeast-3")
-	got := fallbackStacks("ap-northeast-1")
-	if len(got) != 1 || got[0] != "ap-northeast-3" {
-		t.Errorf("fallbackStacks = %v, want [ap-northeast-3]", got)
+
+	h, err := defaultInitHandler()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
+	rec := httptest.NewRecorder()
+	newRouter(h).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+	if got := rec.Header().Get("X-Fallback-Stack"); got != "ap-northeast-3" {
+		t.Errorf("X-Fallback-Stack = %q, want %q", got, "ap-northeast-3")
 	}
 }
 
