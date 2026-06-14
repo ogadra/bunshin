@@ -202,7 +202,6 @@ func TestGetResolve_NoIdleRunner(t *testing.T) {
 	}
 }
 
-// noIdleResolve は /resolve に GET し、ErrNoIdleRunner を返す handler の応答を返す。reqHeaders はリクエストヘッダ。
 func noIdleResolve(fallback []string, reqHeaders map[string]string) *httptest.ResponseRecorder {
 	h := NewHandler(&mockService{
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {

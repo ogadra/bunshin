@@ -86,8 +86,7 @@ func (h *Handler) GetResolve(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
-// signalFallback は idle 枯渇時に次の転送先を nginx へ通知する。
-// X-Fallback-Stack が無ければ origin として自スタックの候補から、有れば転送済みとして残り候補から先頭を選ぶ。
+// X-Fallback-Stack の有無を転送済み判定に兼用し、専用のマーカーヘッダを増やさない。
 func (h *Handler) signalFallback(c *gin.Context) {
 	pool := h.fallbackStacks
 	if c.GetHeader(fallbackStackHeader) != "" {
@@ -112,7 +111,6 @@ func splitStacks(raw string) []string {
 	return stacks
 }
 
-// FallbackStacks は共通の fallback 一覧 raw から空要素と自スタック self を除いた候補一覧を返す。
 func FallbackStacks(raw, self string) []string {
 	stacks := []string{}
 	for _, s := range splitStacks(raw) {
