@@ -2,7 +2,7 @@
 -- brokerの実ステータスをそのままクライアントへ返す。
 local core = require("resolve_core")
 
--- 所属stackが別なら、ローカルにセッションを持たない broker を叩かず宛先stackへ転送する。
+-- ローカル broker は別stackのセッションを持たないため、解決を試みず宛先stackへ転送する。
 local arrival = core.decide_arrival(ngx.var.cookie_session_id, core.own_stack(), core.internal_domain())
 if arrival then
     if arrival.log then
