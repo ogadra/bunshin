@@ -16,6 +16,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/ogadra/20260327-cli-demo/broker/handler"
+	"github.com/ogadra/20260327-cli-demo/broker/healthcheck"
+	"github.com/ogadra/20260327-cli-demo/broker/service"
+	"github.com/ogadra/20260327-cli-demo/broker/store"
 )
 
 // saveAndRestore は全てのパッケージレベル変数を退避し、テスト終了時に復元する。
@@ -171,6 +174,55 @@ func TestDefaultInitHandler(t *testing.T) {
 	}
 	if h == nil {
 		t.Fatal("expected non-nil handler")
+	}
+}
+
+type fakeNoIdleService struct{}
+
+func (fakeNoIdleService) CloseSession(context.Context, string) error { return nil }
+func (fakeNoIdleService) ResolveSession(context.Context, string) (*service.ResolveResult, error) {
+	return nil, store.ErrNoIdleRunner
+}
+func (fakeNoIdleService) RegisterRunner(context.Context, string, string) error { return nil }
+func (fakeNoIdleService) DeregisterRunner(context.Context, string) error       { return nil }
+
+// TestDefaultInitHandler_FallbackSignal は BUNSHIN_STACKS から自スタックを除いた fallback を X-Fallback-Stack で返すことを検証する。
+func TestDefaultInitHandler_FallbackSignal(t *testing.T) {
+	origNewBrokerService := newBrokerService
+	t.Cleanup(func() { newBrokerService = origNewBrokerService })
+	newBrokerService = func(_ store.Repository, region string, checker healthcheck.Checker) service.Service {
+		if region != "ap-northeast-1" {
+			t.Errorf("region = %q, want %q", region, "ap-northeast-1")
+		}
+		if checker == nil {
+			t.Error("checker is nil")
+		}
+		return fakeNoIdleService{}
+	}
+
+	t.Setenv("DYNAMODB_ENDPOINT", "http://localhost:18000")
+	t.Setenv("AWS_REGION", "ap-northeast-1")
+	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "localdev")
+	t.Setenv("BUNSHIN_STACKS", "ap-northeast-1,ap-northeast-3")
+
+	h, err := defaultInitHandler()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
+	rec := httptest.NewRecorder()
+	newRouter(h).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+	if got := rec.Header().Get("X-Fallback-Stack"); got != "ap-northeast-3" {
+		t.Errorf("X-Fallback-Stack = %q, want %q", got, "ap-northeast-3")
+	}
+	if got := rec.Header().Get("X-Fallback-Remaining"); got != "" {
+		t.Errorf("X-Fallback-Remaining = %q, want empty", got)
 	}
 }
 

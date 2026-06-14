@@ -57,9 +57,10 @@ type CreateSessionResult struct {
 
 // BrokerService は Service の実装。
 type BrokerService struct {
-	repo      store.Repository
-	checker   healthcheck.Checker
-	sessionFn func() (string, error)
+	repo        store.Repository
+	stackPrefix string
+	checker     healthcheck.Checker
+	sessionFn   func() (string, error)
 }
 
 // Option は BrokerService のオプション関数。
@@ -82,10 +83,14 @@ func WithChecker(c healthcheck.Checker) Option {
 }
 
 // NewBrokerService は BrokerService を生成する。
-func NewBrokerService(repo store.Repository, opts ...Option) *BrokerService {
+func NewBrokerService(repo store.Repository, stackPrefix string, opts ...Option) *BrokerService {
+	if stackPrefix == "" {
+		panic("service: stackPrefix must not be empty")
+	}
 	s := &BrokerService{
-		repo:      repo,
-		sessionFn: defaultSessionFn,
+		repo:        repo,
+		stackPrefix: stackPrefix,
+		sessionFn:   defaultSessionFn,
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -110,6 +115,7 @@ func (s *BrokerService) createSession(ctx context.Context) (*CreateSessionResult
 	if err != nil {
 		return nil, err
 	}
+	sessionID = s.stackPrefix + "_" + sessionID
 	bc := s.repo.BucketCount()
 	start := mrand.IntN(bc)
 	check := s.checker != nil

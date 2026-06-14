@@ -65,7 +65,7 @@ func TestDeleteSession_Success(t *testing.T) {
 			}
 			return nil
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodDelete, "/sessions/sess-abc", nil)
@@ -84,7 +84,7 @@ func TestDeleteSession_NotFound(t *testing.T) {
 		closeSessionFn: func(_ context.Context, _ string) error {
 			return store.ErrNotFound
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodDelete, "/sessions/sess-missing", nil)
@@ -103,7 +103,7 @@ func TestDeleteSession_InternalError(t *testing.T) {
 		closeSessionFn: func(_ context.Context, _ string) error {
 			return errors.New("unexpected")
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodDelete, "/sessions/sess-abc", nil)
@@ -125,7 +125,7 @@ func TestGetResolve_ExistingSession(t *testing.T) {
 			}
 			return &service.ResolveResult{SessionID: "sess-abc", RunnerURL: "http://10.0.0.1:8080", Created: false}, nil
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
@@ -156,7 +156,7 @@ func TestGetResolve_MissingCookie_CreatesSession(t *testing.T) {
 			}
 			return &service.ResolveResult{SessionID: "new-sess", RunnerURL: "http://10.0.0.2:8080", Created: true}, nil
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
@@ -187,7 +187,7 @@ func TestGetResolve_NoIdleRunner(t *testing.T) {
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return nil, store.ErrNoIdleRunner
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
@@ -196,6 +196,94 @@ func TestGetResolve_NoIdleRunner(t *testing.T) {
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+	if got := rec.Header().Get("X-Fallback-Stack"); got != "" {
+		t.Errorf("X-Fallback-Stack = %q, want empty when no fallback configured", got)
+	}
+}
+
+func noIdleResolve(fallback []string, reqHeaders map[string]string) *httptest.ResponseRecorder {
+	h := NewHandler(&mockService{
+		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
+			return nil, store.ErrNoIdleRunner
+		},
+	}, fallback)
+	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
+	for k, v := range reqHeaders {
+		req.Header.Set(k, v)
+	}
+	rec := httptest.NewRecorder()
+	newTestRouter(h).ServeHTTP(rec, req)
+	return rec
+}
+
+// TestGetResolve_FallbackOrigin は origin の枯渇で先頭を X-Fallback-Stack、残りを X-Fallback-Remaining に出すことを検証する。
+func TestGetResolve_FallbackOrigin(t *testing.T) {
+	t.Parallel()
+	rec := noIdleResolve([]string{"ap-northeast-3", "ap-northeast-2"}, nil)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+	if got := rec.Header().Get("X-Fallback-Stack"); got != "ap-northeast-3" {
+		t.Errorf("X-Fallback-Stack = %q, want %q", got, "ap-northeast-3")
+	}
+	if got := rec.Header().Get("X-Fallback-Remaining"); got != "ap-northeast-2" {
+		t.Errorf("X-Fallback-Remaining = %q, want %q", got, "ap-northeast-2")
+	}
+}
+
+// TestGetResolve_FallbackForwarded は転送済みで残りがある場合、remaining の先頭を次の forward にすることを検証する。
+func TestGetResolve_FallbackForwarded(t *testing.T) {
+	t.Parallel()
+	rec := noIdleResolve([]string{}, map[string]string{
+		"X-Fallback-Stack":     "ap-northeast-3",
+		"X-Fallback-Remaining": "ap-northeast-2",
+	})
+	if got := rec.Header().Get("X-Fallback-Stack"); got != "ap-northeast-2" {
+		t.Errorf("X-Fallback-Stack = %q, want %q", got, "ap-northeast-2")
+	}
+	if got := rec.Header().Get("X-Fallback-Remaining"); got != "" {
+		t.Errorf("X-Fallback-Remaining = %q, want empty", got)
+	}
+}
+
+// TestGetResolve_FallbackForwardedKeepsTail は remaining が複数のとき先頭を pop し残りを維持することを検証する。
+func TestGetResolve_FallbackForwardedKeepsTail(t *testing.T) {
+	t.Parallel()
+	rec := noIdleResolve([]string{}, map[string]string{
+		"X-Fallback-Stack":     "ap-northeast-3",
+		"X-Fallback-Remaining": "ap-northeast-2,ap-northeast-4",
+	})
+	if got := rec.Header().Get("X-Fallback-Stack"); got != "ap-northeast-2" {
+		t.Errorf("X-Fallback-Stack = %q, want %q", got, "ap-northeast-2")
+	}
+	if got := rec.Header().Get("X-Fallback-Remaining"); got != "ap-northeast-4" {
+		t.Errorf("X-Fallback-Remaining = %q, want %q", got, "ap-northeast-4")
+	}
+}
+
+// TestGetResolve_FallbackLastStack は転送済みで残りが無い(最後の stack)場合に forward を出さないことを検証する。
+func TestGetResolve_FallbackLastStack(t *testing.T) {
+	t.Parallel()
+	rec := noIdleResolve([]string{}, map[string]string{"X-Fallback-Stack": "ap-northeast-2"})
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+	if got := rec.Header().Get("X-Fallback-Stack"); got != "" {
+		t.Errorf("X-Fallback-Stack = %q, want empty for last stack", got)
+	}
+}
+
+// TestFallbackStacksFromStackList はカンマ区切りの解析・空要素除去・自スタック除外を検証する。
+func TestFallbackStacksFromStackList(t *testing.T) {
+	t.Parallel()
+	if got := FallbackStacksFromStackList("", "ap-northeast-1"); len(got) != 0 {
+		t.Errorf("FallbackStacksFromStackList empty = %v, want empty", got)
+	}
+	got := FallbackStacksFromStackList(" ap-northeast-1 , ,ap-northeast-3,ap-northeast-2", "ap-northeast-1")
+	want := []string{"ap-northeast-3", "ap-northeast-2"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("FallbackStacksFromStackList = %v, want %v", got, want)
 	}
 }
 
@@ -206,7 +294,7 @@ func TestGetResolve_InternalError(t *testing.T) {
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return nil, errors.New("unexpected")
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
@@ -232,7 +320,7 @@ func TestPostRegister_Success(t *testing.T) {
 			}
 			return nil
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	body := strings.NewReader(`{"runnerId":"r1","privateUrl":"http://10.0.0.1:8080"}`)
@@ -249,7 +337,7 @@ func TestPostRegister_Success(t *testing.T) {
 // TestPostRegister_InvalidBody はリクエストボディが不正な場合に 400 を返すことを検証する。
 func TestPostRegister_InvalidBody(t *testing.T) {
 	t.Parallel()
-	h := NewHandler(&mockService{})
+	h := NewHandler(&mockService{}, []string{})
 	r := newTestRouter(h)
 
 	body := strings.NewReader(`{}`)
@@ -270,7 +358,7 @@ func TestPostRegister_InternalError(t *testing.T) {
 		registerRunnerFn: func(_ context.Context, _, _ string) error {
 			return errors.New("unexpected")
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	body := strings.NewReader(`{"runnerId":"r1","privateUrl":"http://10.0.0.1:8080"}`)
@@ -291,7 +379,7 @@ func TestPostRegister_Conflict(t *testing.T) {
 		registerRunnerFn: func(_ context.Context, _, _ string) error {
 			return store.ErrConflict
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	body := strings.NewReader(`{"runnerId":"r1","privateUrl":"http://10.0.0.1:8080"}`)
@@ -315,7 +403,7 @@ func TestDeleteRunner_Success(t *testing.T) {
 			}
 			return nil
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodDelete, "/internal/runners/r1", nil)
@@ -334,7 +422,7 @@ func TestDeleteRunner_InternalError(t *testing.T) {
 		deregisterRunnerFn: func(_ context.Context, _ string) error {
 			return errors.New("unexpected")
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodDelete, "/internal/runners/r1", nil)
@@ -353,7 +441,7 @@ func TestWriteError_IncludesRequestID(t *testing.T) {
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return nil, errors.New("unexpected")
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
@@ -370,7 +458,7 @@ func TestWriteError_IncludesRequestID(t *testing.T) {
 func TestNewHandler(t *testing.T) {
 	t.Parallel()
 	svc := &mockService{}
-	h := NewHandler(svc)
+	h := NewHandler(svc, []string{})
 	if h.svc != svc {
 		t.Error("svc mismatch")
 	}
@@ -384,7 +472,7 @@ func TestNewHandler_NilPanics(t *testing.T) {
 			t.Fatal("expected panic for nil service")
 		}
 	}()
-	NewHandler(nil)
+	NewHandler(nil, []string{})
 }
 
 // TestPostRegister_InvalidURL は不正な URL 形式の場合に 400 を返すことを検証する。
@@ -407,7 +495,7 @@ func TestPostRegister_InvalidURL(t *testing.T) {
 					t.Fatal("service should not be called for invalid URL")
 					return nil
 				},
-			})
+			}, []string{})
 			r := newTestRouter(h)
 
 			body := strings.NewReader(`{"runnerId":"r1","privateUrl":"` + tt.url + `"}`)
@@ -467,7 +555,7 @@ func TestGetResolve_CookieSecure(t *testing.T) {
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return &service.ResolveResult{SessionID: "new-sess", RunnerURL: "http://10.0.0.1:8080", Created: true}, nil
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
@@ -503,7 +591,7 @@ func TestGetResolve_Reassigned(t *testing.T) {
 				Reassigned: true,
 			}, nil
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
@@ -534,7 +622,7 @@ func TestGetResolve_NotReassigned(t *testing.T) {
 				Reassigned: false,
 			}, nil
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)

@@ -14,6 +14,23 @@ variable "domain_name" {
   type        = string
 }
 
+variable "bunshin_stacks" {
+  description = "Bunshin stack regions shared by every broker"
+  type        = list(string)
+
+  validation {
+    condition = (
+      length(var.bunshin_stacks) > 0 &&
+      length(distinct(var.bunshin_stacks)) == length(var.bunshin_stacks) &&
+      alltrue([
+        for stack in var.bunshin_stacks :
+        can(regex("^[a-z0-9-]+$", stack))
+      ])
+    )
+    error_message = "bunshin_stacks must be a non-empty list of unique stack identifiers matching [a-z0-9-]+."
+  }
+}
+
 variable "runner_desired_count" {
   description = "Desired number of runner ECS tasks"
   type        = number
