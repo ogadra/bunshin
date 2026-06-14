@@ -23,49 +23,10 @@ resource "aws_cloudfront_origin_access_control" "static" {
   signing_protocol                  = "sigv4"
 }
 
-resource "aws_cloudfront_vpc_origin" "api_ingress_apne1" {
-  vpc_origin_endpoint_config {
-    arn                    = module.apne1.api_ingress_alb_arn
-    http_port              = 80
-    https_port             = 443
-    name                   = "bunshin-apne1-api-ingress-alb"
-    origin_protocol_policy = "https-only"
-
-    origin_ssl_protocols {
-      items    = ["TLSv1.2"]
-      quantity = 1
-    }
-  }
-
-  tags = merge(local.common_tags, {
-    Name    = "bunshin-apne1-api-ingress-origin"
-    Service = "cloudfront"
-  })
-}
-
-resource "aws_cloudfront_vpc_origin" "api_ingress_apne3" {
-  vpc_origin_endpoint_config {
-    arn                    = module.apne3.api_ingress_alb_arn
-    http_port              = 80
-    https_port             = 443
-    name                   = "bunshin-apne3-api-ingress-alb"
-    origin_protocol_policy = "https-only"
-
-    origin_ssl_protocols {
-      items    = ["TLSv1.2"]
-      quantity = 1
-    }
-  }
-
-  tags = merge(local.common_tags, {
-    Name    = "bunshin-apne3-api-ingress-origin"
-    Service = "cloudfront"
-  })
-}
-
 # trivy:ignore:AVD-AWS-0010 -- CloudFront access logs are not required for the initial deployment
 resource "aws_cloudfront_distribution" "main" {
   # checkov:skip=CKV_AWS_86:CloudFront access logs are not required for the initial deployment
+  # checkov:skip=CKV_AWS_310:Global Accelerator handles health-aware API origin routing
   # checkov:skip=CKV_AWS_374:Geo restriction is not required for this service
   # checkov:skip=CKV2_AWS_47:Log4j protection is not needed, backend does not use Java
   enabled             = true
@@ -83,36 +44,14 @@ resource "aws_cloudfront_distribution" "main" {
   }
 
   origin {
-    domain_name = local.api_ingress_origins.apne1.domain_name
-    origin_id   = "api-ingress-apne1"
+    domain_name = local.api_ingress_origin_domain_name
+    origin_id   = "api-ingress-global-accelerator"
 
-    vpc_origin_config {
-      vpc_origin_id = aws_cloudfront_vpc_origin.api_ingress_apne1.id
-    }
-  }
-
-  origin {
-    domain_name = local.api_ingress_origins.apne3.domain_name
-    origin_id   = "api-ingress-apne3"
-
-    vpc_origin_config {
-      vpc_origin_id = aws_cloudfront_vpc_origin.api_ingress_apne3.id
-    }
-  }
-
-  origin_group {
-    origin_id = "api-ingress-failover"
-
-    failover_criteria {
-      status_codes = [502, 503, 504]
-    }
-
-    member {
-      origin_id = "api-ingress-apne1"
-    }
-
-    member {
-      origin_id = "api-ingress-apne3"
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "https-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
     }
   }
 
@@ -134,7 +73,7 @@ resource "aws_cloudfront_distribution" "main" {
     origin_request_policy_id   = data.aws_cloudfront_origin_request_policy.all_viewer_except_host_header.id
     compress                   = false
     response_headers_policy_id = data.aws_cloudfront_response_headers_policy.security_headers.id
-    target_origin_id           = "api-ingress-failover"
+    target_origin_id           = "api-ingress-global-accelerator"
     viewer_protocol_policy     = "redirect-to-https"
   }
 

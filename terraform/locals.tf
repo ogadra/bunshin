@@ -15,16 +15,5 @@ locals {
     ManagedBy = "terraform"
   }
 
-  api_ingress_origins = {
-    apne1 = {
-      domain_name = "api-ingress-apne1.${var.domain_name}"
-      dns_name    = module.apne1.api_ingress_alb_dns_name
-      zone_id     = module.apne1.api_ingress_alb_zone_id
-    }
-    apne3 = {
-      domain_name = "api-ingress-apne3.${var.domain_name}"
-      dns_name    = module.apne3.api_ingress_alb_dns_name
-      zone_id     = module.apne3.api_ingress_alb_zone_id
-    }
-  }
+  api_ingress_origin_domain_name = "api-ingress.${var.domain_name}"
 }

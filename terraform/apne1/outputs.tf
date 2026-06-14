@@ -38,16 +38,6 @@ output "api_ingress_alb_arn" {
   value       = aws_lb.api_ingress.arn
 }
 
-output "api_ingress_alb_dns_name" {
-  description = "DNS name of the API ingress ALB"
-  value       = aws_lb.api_ingress.dns_name
-}
-
-output "api_ingress_alb_zone_id" {
-  description = "Canonical hosted zone ID of the API ingress ALB"
-  value       = aws_lb.api_ingress.zone_id
-}
-
 output "internal_route53_zone_id" {
   description = "ID of the internal Route 53 private hosted zone"
   value       = aws_route53_zone.internal.zone_id
