@@ -91,6 +91,47 @@ resource "aws_security_group_rule" "ecs_egress_s3" {
   description       = "HTTPS to S3 VPC endpoint"
 }
 
+data "aws_ec2_managed_prefix_list" "cloudfront_origin_facing" {
+  name = "com.amazonaws.global.cloudfront.origin-facing"
+}
+
+resource "aws_security_group" "api_ingress_alb" {
+  name_prefix = "bunshin-api-ingress-alb-"
+  description = "Security group for API ingress ALB"
+  vpc_id      = aws_vpc.apne3.id
+
+  tags = merge(local.common_tags, {
+    Name    = "bunshin-apne3-api-ingress-alb"
+    Service = "api-ingress-alb"
+  })
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_security_group_rule" "api_ingress_alb_ingress_http" {
+  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  type              = "ingress"
+  from_port         = 80
+  to_port           = 80
+  protocol          = "tcp"
+  prefix_list_ids   = [data.aws_ec2_managed_prefix_list.cloudfront_origin_facing.id]
+  security_group_id = aws_security_group.api_ingress_alb.id
+  description       = "HTTP from CloudFront VPC origins"
+}
+
+resource "aws_security_group_rule" "api_ingress_alb_egress_nginx" {
+  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  type                     = "egress"
+  from_port                = local.ecs_services["nginx"].port
+  to_port                  = local.ecs_services["nginx"].port
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.nginx.id
+  security_group_id        = aws_security_group.api_ingress_alb.id
+  description              = "HTTP to nginx"
+}
+
 resource "aws_security_group" "external_alb" {
   name_prefix = "bunshin-external-alb-"
   description = "Security group for external ALB"
@@ -214,6 +255,17 @@ resource "aws_security_group_rule" "nginx_ingress_external_alb" {
   source_security_group_id = aws_security_group.external_alb.id
   security_group_id        = aws_security_group.nginx.id
   description              = "HTTP from ALB"
+}
+
+resource "aws_security_group_rule" "nginx_ingress_api_ingress_alb" {
+  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  type                     = "ingress"
+  from_port                = local.ecs_services["nginx"].port
+  to_port                  = local.ecs_services["nginx"].port
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.api_ingress_alb.id
+  security_group_id        = aws_security_group.nginx.id
+  description              = "HTTP from API ingress ALB"
 }
 
 resource "aws_security_group_rule" "nginx_ingress_internal_alb" {
