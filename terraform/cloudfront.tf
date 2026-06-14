@@ -38,9 +38,15 @@ resource "aws_cloudfront_distribution" "main" {
   web_acl_id          = aws_wafv2_web_acl.cloudfront.arn
 
   origin {
-    domain_name              = aws_s3_bucket.static.bucket_regional_domain_name
+    domain_name              = module.apne1.static_bucket_regional_domain_name
     origin_access_control_id = aws_cloudfront_origin_access_control.static.id
-    origin_id                = "static-s3"
+    origin_id                = "static-s3-apne1"
+  }
+
+  origin {
+    domain_name              = module.apne3.static_bucket_regional_domain_name
+    origin_access_control_id = aws_cloudfront_origin_access_control.static.id
+    origin_id                = "static-s3-apne3"
   }
 
   origin {
@@ -55,13 +61,29 @@ resource "aws_cloudfront_distribution" "main" {
     }
   }
 
+  origin_group {
+    origin_id = "static-s3-failover"
+
+    failover_criteria {
+      status_codes = [403, 404, 500, 502, 503, 504]
+    }
+
+    member {
+      origin_id = "static-s3-apne1"
+    }
+
+    member {
+      origin_id = "static-s3-apne3"
+    }
+  }
+
   default_cache_behavior {
     allowed_methods            = ["GET", "HEAD", "OPTIONS"]
     cached_methods             = ["GET", "HEAD"]
     cache_policy_id            = data.aws_cloudfront_cache_policy.caching_optimized.id
     compress                   = true
     response_headers_policy_id = data.aws_cloudfront_response_headers_policy.security_headers.id
-    target_origin_id           = "static-s3"
+    target_origin_id           = "static-s3-failover"
     viewer_protocol_policy     = "redirect-to-https"
   }
 
