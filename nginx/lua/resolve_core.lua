@@ -7,7 +7,7 @@ local HTTP_OK = 200
 local HTTP_INTERNAL_ERROR = 500
 
 -- decide は capture 応答 res {status, header} を受け取り、次のいずれかを返す:
---   { exit = <status>, log = <optional message> } ... その status で終了 
+--   { exit = <status>, log = <optional message> } ... その status で終了
 --   { runner_url = <url>, set_cookie = <?>, reassigned = <?> } ... runner へ proxy
 function _M.decide(res)
     -- broker が非 2xx を返したらそのステータスを保持して終了する
