@@ -75,7 +75,7 @@ resource "aws_cloudfront_distribution" "main" {
   comment             = "Bunshin public entrypoint"
   default_root_object = "index.html"
   aliases             = [var.domain_name]
-  price_class         = "PriceClass_All"
+  price_class         = "PriceClass_200"
 
   origin {
     domain_name              = aws_s3_bucket.static.bucket_regional_domain_name
@@ -88,9 +88,7 @@ resource "aws_cloudfront_distribution" "main" {
     origin_id   = "api-ingress-apne1"
 
     vpc_origin_config {
-      origin_keepalive_timeout = 60
-      origin_read_timeout      = 120
-      vpc_origin_id            = aws_cloudfront_vpc_origin.api_ingress_apne1.id
+      vpc_origin_id = aws_cloudfront_vpc_origin.api_ingress_apne1.id
     }
   }
 
@@ -99,9 +97,7 @@ resource "aws_cloudfront_distribution" "main" {
     origin_id   = "api-ingress-apne3"
 
     vpc_origin_config {
-      origin_keepalive_timeout = 60
-      origin_read_timeout      = 120
-      vpc_origin_id            = aws_cloudfront_vpc_origin.api_ingress_apne3.id
+      vpc_origin_id = aws_cloudfront_vpc_origin.api_ingress_apne3.id
     }
   }
 
