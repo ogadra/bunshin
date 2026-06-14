@@ -42,6 +42,7 @@ resource "aws_ecs_task_definition" "nginx" {
     environment = [
       { name = "STACK_NAME", value = data.aws_region.current.id },
       { name = "INTERNAL_DOMAIN", value = var.domain_name },
+      { name = "BUNSHIN_STACKS", value = join(",", var.bunshin_stacks) },
     ]
 
     logConfiguration = {
