@@ -118,7 +118,7 @@ resource "aws_security_group_rule" "api_ingress_alb_ingress_https" {
   protocol          = "tcp"
   prefix_list_ids   = [data.aws_ec2_managed_prefix_list.cloudfront_origin_facing.id]
   security_group_id = aws_security_group.api_ingress_alb.id
-  description       = "HTTPS from CloudFront VPC origins"
+  description       = "HTTPS from CloudFront through Global Accelerator"
 }
 
 resource "aws_security_group_rule" "api_ingress_alb_egress_nginx" {
