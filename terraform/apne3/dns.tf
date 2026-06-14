@@ -1,9 +1,9 @@
 resource "aws_route53_zone" "internal" {
-  name = "apne3-internal.${var.domain_name}"
+  name = "${data.aws_region.current.id}.${var.domain_name}"
 
   vpc {
     vpc_id     = aws_vpc.apne3.id
-    vpc_region = "ap-northeast-3"
+    vpc_region = data.aws_region.current.id
   }
 
   tags = merge(local.common_tags, {
