@@ -64,7 +64,7 @@ resource "aws_ecs_service" "nginx" {
   depends_on = [
     aws_iam_role_policy.execution_ecr["nginx"],
     aws_iam_role_policy.execution_logs["nginx"],
-    aws_lb_listener.api_ingress_http,
+    aws_lb_listener.api_ingress_https,
     aws_lb_listener.external_https,
     aws_lb_listener.internal_https,
   ]
