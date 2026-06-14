@@ -63,9 +63,10 @@ check("host_of rejects path chars", core.host_of("../evil", "example.com") == ni
 check("host_of rejects empty domain", core.host_of("ap-northeast-3", "") == nil)
 check("host_of rejects nil stack", core.host_of(nil, "example.com") == nil)
 
--- decide_arrival: 自stack/domain 未設定なら転送しない (env 未設定の現挙動維持)
-check("arrival nil when stack unset", core.decide_arrival("ap-northeast-3_x", "", "example.com") == nil)
-check("arrival nil when domain unset", core.decide_arrival("ap-northeast-3_x", "ap-northeast-1", "") == nil)
+-- configure は STACK_NAME / INTERNAL_DOMAIN 未設定を許さず起動を失敗させる
+check("configure rejects missing stack", not pcall(core.configure, nil, "example.com"))
+check("configure rejects empty stack", not pcall(core.configure, "", "example.com"))
+check("configure rejects missing domain", not pcall(core.configure, "ap-northeast-1", nil))
 
 -- decide_arrival: cookie 無 / 自stack宛 はローカル解決
 check("arrival nil without cookie", core.decide_arrival(nil, "ap-northeast-1", "example.com") == nil)

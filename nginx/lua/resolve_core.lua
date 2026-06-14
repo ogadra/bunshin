@@ -9,10 +9,12 @@ local HTTP_INTERNAL_ERROR = 500
 local own_stack_name = ""
 local internal_domain_name = ""
 
--- init_by_lua から一度だけ設定する。同一イメージを region ごとに実行時 env で構成する。
 function _M.configure(stack, domain)
-    own_stack_name = stack or ""
-    internal_domain_name = domain or ""
+    if stack == nil or stack == "" or domain == nil or domain == "" then
+        error("resolve_core: STACK_NAME and INTERNAL_DOMAIN must be set")
+    end
+    own_stack_name = stack
+    internal_domain_name = domain
 end
 
 function _M.own_stack()
@@ -23,7 +25,6 @@ function _M.internal_domain()
     return internal_domain_name
 end
 
--- session_id は "<stack>_<hex>" 形式で、prefix が所属stack(AWS region 文字列)。
 function _M.cookie_stack(session_id)
     if type(session_id) ~= "string" then
         return nil
@@ -42,12 +43,7 @@ function _M.host_of(stack, domain)
     return stack .. "." .. domain
 end
 
--- session_id の prefix が自stackと異なれば所属stackの内部ALBへ転送する判断を返す。
 function _M.decide_arrival(session_id, stack, domain)
-    -- 自stack/domain 未設定時は所属を判定できないため転送しない(env 未設定の現挙動維持)。
-    if stack == nil or stack == "" or domain == nil or domain == "" then
-        return nil
-    end
     local owner = _M.cookie_stack(session_id)
     if owner == nil or owner == stack then
         return nil
