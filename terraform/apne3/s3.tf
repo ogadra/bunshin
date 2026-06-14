@@ -1,7 +1,7 @@
-# trivy:ignore:AVD-AWS-0089 -- Access logs are not required for the initial static origin
+# trivy:ignore:AVD-AWS-0089 -- Access logs are not required until static delivery logging is defined
 resource "aws_s3_bucket" "static" {
-  # checkov:skip=CKV_AWS_18:Access logs are not required for the initial static origin
-  # checkov:skip=CKV_AWS_144:Cross-region replication is not required for initial static assets
+  # checkov:skip=CKV_AWS_18:Access logs are not required until static delivery logging is defined
+  # checkov:skip=CKV_AWS_144:Replication is configured from the primary static bucket
   # checkov:skip=CKV2_AWS_61:Lifecycle policy is not required until static deploy retention is defined
   # checkov:skip=CKV2_AWS_62:Event notifications are not required for static asset serving
   # checkov:skip=CKV_AWS_145:AWS managed encryption is sufficient for static assets
@@ -64,7 +64,7 @@ data "aws_iam_policy_document" "static" {
     condition {
       test     = "StringEquals"
       variable = "AWS:SourceArn"
-      values   = [aws_cloudfront_distribution.main.arn]
+      values   = [var.cloudfront_distribution_arn]
     }
   }
 }
