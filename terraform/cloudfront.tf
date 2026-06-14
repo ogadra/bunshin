@@ -29,7 +29,7 @@ resource "aws_cloudfront_vpc_origin" "api_ingress_apne1" {
     http_port              = 80
     https_port             = 443
     name                   = "bunshin-apne1-api-ingress-alb"
-    origin_protocol_policy = "http-only"
+    origin_protocol_policy = "https-only"
 
     origin_ssl_protocols {
       items    = ["TLSv1.2"]
@@ -49,7 +49,7 @@ resource "aws_cloudfront_vpc_origin" "api_ingress_apne3" {
     http_port              = 80
     https_port             = 443
     name                   = "bunshin-apne3-api-ingress-alb"
-    origin_protocol_policy = "http-only"
+    origin_protocol_policy = "https-only"
 
     origin_ssl_protocols {
       items    = ["TLSv1.2"]
@@ -94,7 +94,7 @@ resource "aws_cloudfront_distribution" "main" {
   }
 
   origin {
-    domain_name = module.apne1.api_ingress_alb_dns_name
+    domain_name = local.api_ingress_origins.apne1.domain_name
     origin_id   = "api-ingress-apne1"
 
     vpc_origin_config {
@@ -105,7 +105,7 @@ resource "aws_cloudfront_distribution" "main" {
   }
 
   origin {
-    domain_name = module.apne3.api_ingress_alb_dns_name
+    domain_name = local.api_ingress_origins.apne3.domain_name
     origin_id   = "api-ingress-apne3"
 
     vpc_origin_config {
