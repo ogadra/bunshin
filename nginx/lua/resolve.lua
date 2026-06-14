@@ -26,6 +26,14 @@ if action.exit then
     return ngx.exit(action.exit)
 end
 
+-- idle 枯渇時、broker のシグナルに従い次の stack へ転送し、残り候補を中継する。
+if action.forward_host then
+    ngx.var.forward_host = action.forward_host
+    ngx.var.fwd_fallback_stack = action.fallback_stack
+    ngx.var.fwd_fallback_remaining = action.fallback_remaining
+    return ngx.exec("@forward")
+end
+
 ngx.var.runner_url = action.runner_url
 if action.set_cookie then
     ngx.var.resolve_set_cookie = action.set_cookie

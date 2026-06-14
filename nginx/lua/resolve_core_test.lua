@@ -81,6 +81,33 @@ check("arrival forwards foreign stack", r.forward_host == "ap-northeast-3.exampl
 r = core.decide_arrival("evilhost_x", "ap-northeast-1", STACKS, "example.com")
 check("arrival rejects unknown stack", r.exit == 500 and r.log ~= nil)
 
+-- decide_resolve: 503 + X-Fallback-Stack は次stackの内部ALBへ転送し残り候補を中継
+r = core.decide_resolve({ status = 503, header = {
+    ["X-Fallback-Stack"]     = "ap-northeast-3",
+    ["X-Fallback-Remaining"] = "ap-northeast-2",
+} }, "example.com")
+check("fallback forwards next stack", r.forward_host == "ap-northeast-3.example.com")
+check("fallback relays stack", r.fallback_stack == "ap-northeast-3")
+check("fallback relays remaining", r.fallback_remaining == "ap-northeast-2")
+
+-- decide_resolve: 残り候補が無ければ空文字で中継 (ヘッダ削除)
+r = core.decide_resolve({ status = 503, header = { ["X-Fallback-Stack"] = "ap-northeast-3" } }, "example.com")
+check("fallback empty remaining", r.forward_host == "ap-northeast-3.example.com" and r.fallback_remaining == "")
+
+-- decide_resolve: 不正な fallback stack は 503 で遮断 (転送しない)
+r = core.decide_resolve({ status = 503, header = { ["X-Fallback-Stack"] = "EVIL" } }, "example.com")
+check("fallback rejects invalid stack", r.exit == 503 and r.log ~= nil and r.forward_host == nil)
+
+-- decide_resolve: X-Fallback-Stack 無し/空 の 503 は終端 (転送しない)
+r = core.decide_resolve({ status = 503, header = {} }, "example.com")
+check("fallback terminal without header", r.exit == 503 and r.forward_host == nil)
+r = core.decide_resolve({ status = 503, header = { ["X-Fallback-Stack"] = "" } }, "example.com")
+check("fallback terminal on empty header", r.exit == 503 and r.forward_host == nil)
+
+-- decide_resolve: 200/runner は従来どおり (回帰)
+r = core.decide_resolve({ status = 200, header = { ["X-Runner-Url"] = "http://runner-1:3000" } }, "example.com")
+check("resolve still proxies runner", r.runner_url == "http://runner-1:3000" and r.forward_host == nil)
+
 if failed > 0 then
     io.stderr:write(string.format("resolve_core: %d check(s) failed\n", failed))
     os.exit(1)
