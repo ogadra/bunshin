@@ -10,6 +10,8 @@ locals {
     ManagedBy = "terraform"
   }
 
+  static_bucket_name = "bunshin-${data.aws_caller_identity.current.account_id}-${substr(sha256(var.domain_name), 0, 12)}-static"
+
   external_albs = {
     apne1 = {
       region   = "ap-northeast-1"
