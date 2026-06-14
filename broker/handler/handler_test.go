@@ -247,6 +247,21 @@ func TestGetResolve_FallbackForwarded(t *testing.T) {
 	}
 }
 
+// TestGetResolve_FallbackForwardedKeepsTail は remaining が複数のとき先頭を pop し残りを維持することを検証する。
+func TestGetResolve_FallbackForwardedKeepsTail(t *testing.T) {
+	t.Parallel()
+	rec := noIdleResolve([]string{}, map[string]string{
+		"X-Fallback-Stack":     "ap-northeast-3",
+		"X-Fallback-Remaining": "ap-northeast-2,ap-northeast-4",
+	})
+	if got := rec.Header().Get("X-Fallback-Stack"); got != "ap-northeast-2" {
+		t.Errorf("X-Fallback-Stack = %q, want %q", got, "ap-northeast-2")
+	}
+	if got := rec.Header().Get("X-Fallback-Remaining"); got != "ap-northeast-4" {
+		t.Errorf("X-Fallback-Remaining = %q, want %q", got, "ap-northeast-4")
+	}
+}
+
 // TestGetResolve_FallbackLastStack は転送済みで残りが無い(最後の stack)場合に forward を出さないことを検証する。
 func TestGetResolve_FallbackLastStack(t *testing.T) {
 	t.Parallel()
@@ -259,16 +274,16 @@ func TestGetResolve_FallbackLastStack(t *testing.T) {
 	}
 }
 
-// TestFallbackStacks はカンマ区切りの解析・空要素除去・自スタック除外を検証する。
-func TestFallbackStacks(t *testing.T) {
+// TestParseFallbackStacks はカンマ区切りの解析・空要素除去・自スタック除外を検証する。
+func TestParseFallbackStacks(t *testing.T) {
 	t.Parallel()
-	if got := FallbackStacks("", "ap-northeast-1"); len(got) != 0 {
-		t.Errorf("FallbackStacks empty = %v, want empty", got)
+	if got := ParseFallbackStacks("", "ap-northeast-1"); len(got) != 0 {
+		t.Errorf("ParseFallbackStacks empty = %v, want empty", got)
 	}
-	got := FallbackStacks(" ap-northeast-1 , ,ap-northeast-3,ap-northeast-2", "ap-northeast-1")
+	got := ParseFallbackStacks(" ap-northeast-1 , ,ap-northeast-3,ap-northeast-2", "ap-northeast-1")
 	want := []string{"ap-northeast-3", "ap-northeast-2"}
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
-		t.Errorf("FallbackStacks = %v, want %v", got, want)
+		t.Errorf("ParseFallbackStacks = %v, want %v", got, want)
 	}
 }
 

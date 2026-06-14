@@ -38,6 +38,11 @@ func NewHandler(svc service.Service, fallbackStacks []string) *Handler {
 	return &Handler{svc: svc, fallbackStacks: fallbackStacks}
 }
 
+// FallbackStacks は設定済みの fallback 候補一覧を返す(配線の検証用)。
+func (h *Handler) FallbackStacks() []string {
+	return h.fallbackStacks
+}
+
 // registerRequest は POST /internal/runners/register のリクエストボディ。
 type registerRequest struct {
 	// RunnerID は runner の一意識別子。
@@ -111,7 +116,7 @@ func splitStacks(raw string) []string {
 	return stacks
 }
 
-func FallbackStacks(raw, self string) []string {
+func ParseFallbackStacks(raw, self string) []string {
 	stacks := []string{}
 	for _, s := range splitStacks(raw) {
 		if s != self {

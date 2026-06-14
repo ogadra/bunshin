@@ -174,6 +174,26 @@ func TestDefaultInitHandler(t *testing.T) {
 	}
 }
 
+// TestDefaultInitHandler_FallbackStacks は BROKER_FALLBACK_STACKS を読み自 AWS_REGION を除いて handler に渡すことを検証する。
+func TestDefaultInitHandler_FallbackStacks(t *testing.T) {
+	saveAndRestore(t)
+
+	t.Setenv("DYNAMODB_ENDPOINT", "http://localhost:18000")
+	t.Setenv("AWS_REGION", "ap-northeast-1")
+	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "localdev")
+	t.Setenv("BROKER_FALLBACK_STACKS", "ap-northeast-1,ap-northeast-3")
+
+	h, err := defaultInitHandler()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got := h.FallbackStacks()
+	if len(got) != 1 || got[0] != "ap-northeast-3" {
+		t.Errorf("FallbackStacks = %v, want [ap-northeast-3]", got)
+	}
+}
+
 // TestDefaultInitHandler_MissingRegion は AWS_REGION が未設定時にエラーを返すことを検証する。
 func TestDefaultInitHandler_MissingRegion(t *testing.T) {
 	saveAndRestore(t)
