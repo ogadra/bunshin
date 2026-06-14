@@ -65,7 +65,7 @@ func TestDeleteSession_Success(t *testing.T) {
 			}
 			return nil
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodDelete, "/sessions/sess-abc", nil)
@@ -84,7 +84,7 @@ func TestDeleteSession_NotFound(t *testing.T) {
 		closeSessionFn: func(_ context.Context, _ string) error {
 			return store.ErrNotFound
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodDelete, "/sessions/sess-missing", nil)
@@ -103,7 +103,7 @@ func TestDeleteSession_InternalError(t *testing.T) {
 		closeSessionFn: func(_ context.Context, _ string) error {
 			return errors.New("unexpected")
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodDelete, "/sessions/sess-abc", nil)
@@ -125,7 +125,7 @@ func TestGetResolve_ExistingSession(t *testing.T) {
 			}
 			return &service.ResolveResult{SessionID: "sess-abc", RunnerURL: "http://10.0.0.1:8080", Created: false}, nil
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
@@ -156,7 +156,7 @@ func TestGetResolve_MissingCookie_CreatesSession(t *testing.T) {
 			}
 			return &service.ResolveResult{SessionID: "new-sess", RunnerURL: "http://10.0.0.2:8080", Created: true}, nil
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
@@ -187,7 +187,7 @@ func TestGetResolve_NoIdleRunner(t *testing.T) {
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return nil, store.ErrNoIdleRunner
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
@@ -209,7 +209,7 @@ func TestGetResolve_FallbackSignalOnNoIdle(t *testing.T) {
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return nil, store.ErrNoIdleRunner
 		},
-	}, WithFallbackStacks([]string{"ap-northeast-3", "ap-northeast-2"}))
+	}, []string{"ap-northeast-3", "ap-northeast-2"})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
@@ -231,7 +231,7 @@ func TestGetResolve_NoFallbackSignalWhenForwarded(t *testing.T) {
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return nil, store.ErrNoIdleRunner
 		},
-	}, WithFallbackStacks([]string{"ap-northeast-3"}))
+	}, []string{"ap-northeast-3"})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
@@ -254,7 +254,7 @@ func TestGetResolve_InternalError(t *testing.T) {
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return nil, errors.New("unexpected")
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
@@ -280,7 +280,7 @@ func TestPostRegister_Success(t *testing.T) {
 			}
 			return nil
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	body := strings.NewReader(`{"runnerId":"r1","privateUrl":"http://10.0.0.1:8080"}`)
@@ -297,7 +297,7 @@ func TestPostRegister_Success(t *testing.T) {
 // TestPostRegister_InvalidBody はリクエストボディが不正な場合に 400 を返すことを検証する。
 func TestPostRegister_InvalidBody(t *testing.T) {
 	t.Parallel()
-	h := NewHandler(&mockService{})
+	h := NewHandler(&mockService{}, []string{})
 	r := newTestRouter(h)
 
 	body := strings.NewReader(`{}`)
@@ -318,7 +318,7 @@ func TestPostRegister_InternalError(t *testing.T) {
 		registerRunnerFn: func(_ context.Context, _, _ string) error {
 			return errors.New("unexpected")
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	body := strings.NewReader(`{"runnerId":"r1","privateUrl":"http://10.0.0.1:8080"}`)
@@ -339,7 +339,7 @@ func TestPostRegister_Conflict(t *testing.T) {
 		registerRunnerFn: func(_ context.Context, _, _ string) error {
 			return store.ErrConflict
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	body := strings.NewReader(`{"runnerId":"r1","privateUrl":"http://10.0.0.1:8080"}`)
@@ -363,7 +363,7 @@ func TestDeleteRunner_Success(t *testing.T) {
 			}
 			return nil
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodDelete, "/internal/runners/r1", nil)
@@ -382,7 +382,7 @@ func TestDeleteRunner_InternalError(t *testing.T) {
 		deregisterRunnerFn: func(_ context.Context, _ string) error {
 			return errors.New("unexpected")
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodDelete, "/internal/runners/r1", nil)
@@ -401,7 +401,7 @@ func TestWriteError_IncludesRequestID(t *testing.T) {
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return nil, errors.New("unexpected")
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
@@ -418,7 +418,7 @@ func TestWriteError_IncludesRequestID(t *testing.T) {
 func TestNewHandler(t *testing.T) {
 	t.Parallel()
 	svc := &mockService{}
-	h := NewHandler(svc)
+	h := NewHandler(svc, []string{})
 	if h.svc != svc {
 		t.Error("svc mismatch")
 	}
@@ -432,7 +432,7 @@ func TestNewHandler_NilPanics(t *testing.T) {
 			t.Fatal("expected panic for nil service")
 		}
 	}()
-	NewHandler(nil)
+	NewHandler(nil, []string{})
 }
 
 // TestPostRegister_InvalidURL は不正な URL 形式の場合に 400 を返すことを検証する。
@@ -455,7 +455,7 @@ func TestPostRegister_InvalidURL(t *testing.T) {
 					t.Fatal("service should not be called for invalid URL")
 					return nil
 				},
-			})
+			}, []string{})
 			r := newTestRouter(h)
 
 			body := strings.NewReader(`{"runnerId":"r1","privateUrl":"` + tt.url + `"}`)
@@ -515,7 +515,7 @@ func TestGetResolve_CookieSecure(t *testing.T) {
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return &service.ResolveResult{SessionID: "new-sess", RunnerURL: "http://10.0.0.1:8080", Created: true}, nil
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
@@ -551,7 +551,7 @@ func TestGetResolve_Reassigned(t *testing.T) {
 				Reassigned: true,
 			}, nil
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
@@ -582,7 +582,7 @@ func TestGetResolve_NotReassigned(t *testing.T) {
 				Reassigned: false,
 			}, nil
 		},
-	})
+	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)

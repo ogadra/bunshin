@@ -30,24 +30,12 @@ type Handler struct {
 	fallbackStacks []string
 }
 
-type Option func(*Handler)
-
-func WithFallbackStacks(stacks []string) Option {
-	return func(h *Handler) {
-		h.fallbackStacks = append([]string(nil), stacks...)
-	}
-}
-
 // NewHandler は Handler を生成する。svc が nil の場合は panic する。
-func NewHandler(svc service.Service, opts ...Option) *Handler {
+func NewHandler(svc service.Service, fallbackStacks []string) *Handler {
 	if svc == nil {
 		panic("handler: nil service")
 	}
-	h := &Handler{svc: svc}
-	for _, opt := range opts {
-		opt(h)
-	}
-	return h
+	return &Handler{svc: svc, fallbackStacks: fallbackStacks}
 }
 
 // registerRequest は POST /internal/runners/register のリクエストボディ。

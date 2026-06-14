@@ -177,8 +177,8 @@ func TestDefaultInitHandler(t *testing.T) {
 // TestParseFallbackStacks はカンマ区切りの解析と空要素除去を検証する。
 func TestParseFallbackStacks(t *testing.T) {
 	t.Parallel()
-	if got := parseFallbackStacks(""); got != nil {
-		t.Errorf("parseFallbackStacks(\"\") = %v, want nil", got)
+	if got := parseFallbackStacks(""); len(got) != 0 {
+		t.Errorf("parseFallbackStacks(\"\") = %v, want empty", got)
 	}
 	got := parseFallbackStacks(" ap-northeast-3 , ,ap-northeast-2")
 	want := []string{"ap-northeast-3", "ap-northeast-2"}

@@ -99,13 +99,12 @@ func defaultInitHandler() (*handler.Handler, error) {
 	repo := store.NewDynamoRepository(client, "bunshin-runners")
 	checker := healthcheck.NewHTTPChecker(&http.Client{Timeout: 3 * time.Second})
 	svc := service.NewBrokerService(repo, region, service.WithChecker(checker))
-	fallbackStacks := parseFallbackStacks(os.Getenv("BROKER_FALLBACK_STACKS"))
-	return handler.NewHandler(svc, handler.WithFallbackStacks(fallbackStacks)), nil
+	return handler.NewHandler(svc, parseFallbackStacks(os.Getenv("BROKER_FALLBACK_STACKS"))), nil
 }
 
 // parseFallbackStacks はカンマ区切りの BROKER_FALLBACK_STACKS を空要素を除いたスタック名一覧へ分解する。
 func parseFallbackStacks(raw string) []string {
-	var stacks []string
+	stacks := []string{}
 	for _, s := range strings.Split(raw, ",") {
 		if s = strings.TrimSpace(s); s != "" {
 			stacks = append(stacks, s)
