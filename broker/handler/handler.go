@@ -20,10 +20,8 @@ var runnerHostRe = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
 // sessionIDCookie は session 識別用の cookie 名。
 const sessionIDCookie = "session_id"
 
-// fallbackStackHeader は idle 枯渇時に nginx へフォワード先候補スタックを伝えるレスポンスヘッダ。
 const fallbackStackHeader = "X-Fallback-Stack"
 
-// forwardedHeader は nginx が別スタックから転送したリクエストに付けるマーカー。再フォワードを防ぐため fallback を抑止する。
 const forwardedHeader = "X-Bunshin-Forwarded"
 
 // Handler は broker の HTTP ハンドラー。
@@ -32,10 +30,8 @@ type Handler struct {
 	fallbackStacks []string
 }
 
-// Option は Handler の生成オプション。
 type Option func(*Handler)
 
-// WithFallbackStacks は idle 枯渇時にフォワード先候補として通知するスタック名を設定する。
 func WithFallbackStacks(stacks []string) Option {
 	return func(h *Handler) {
 		h.fallbackStacks = append([]string(nil), stacks...)
@@ -84,7 +80,6 @@ func (h *Handler) GetResolve(c *gin.Context) {
 	result, err := h.svc.ResolveSession(c.Request.Context(), sessionID)
 	if err != nil {
 		if errors.Is(err, store.ErrNoIdleRunner) {
-			// 転送済みリクエストは多段フォワードを避けるため fallback を促さない。
 			if c.GetHeader(forwardedHeader) == "" && len(h.fallbackStacks) > 0 {
 				c.Header(fallbackStackHeader, strings.Join(h.fallbackStacks, ","))
 			}
