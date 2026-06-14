@@ -2,6 +2,19 @@
 -- brokerの実ステータスをそのままクライアントへ返す。
 local core = require("resolve_core")
 
+-- ローカル broker は別stackのセッションを持たないため、解決を試みず宛先stackへ転送する。
+local arrival = core.decide_arrival(ngx.var.cookie_session_id, core.own_stack(), core.stacks(), core.internal_domain())
+if arrival then
+    if arrival.log then
+        ngx.log(ngx.ERR, arrival.log)
+    end
+    if arrival.exit then
+        return ngx.exit(arrival.exit)
+    end
+    ngx.var.forward_host = arrival.forward_host
+    return ngx.exec("@forward")
+end
+
 local res = ngx.location.capture("/_resolve")
 local action = core.decide(res)
 

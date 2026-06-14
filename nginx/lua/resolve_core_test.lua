@@ -2,6 +2,8 @@
 package.path = "/usr/local/openresty/nginx/lua/?.lua;" .. package.path
 local core = require("resolve_core")
 
+local STACKS = { ["ap-northeast-1"] = true, ["ap-northeast-3"] = true }
+
 local failed = 0
 local function check(name, cond)
     if not cond then
@@ -48,6 +50,36 @@ r = core.decide({ status = 200, header = {
     ["Set-Cookie"] = { "a=1", "b=2" },
 } })
 check("joins multiple set-cookie", r.set_cookie == "a=1, b=2")
+
+-- cookie_stack は session_id "<stack>_<hex>" の prefix を返す
+check("cookie_stack extracts prefix", core.cookie_stack("ap-northeast-1_deadbeef") == "ap-northeast-1")
+check("cookie_stack nil for non-string", core.cookie_stack(nil) == nil)
+check("cookie_stack nil without underscore", core.cookie_stack("nounderscore") == nil)
+check("cookie_stack nil for empty prefix", core.cookie_stack("_abc") == nil)
+
+-- host_of は allowlist 内の stack のみ <stack>.<domain> を組み立てる
+check("host_of builds host", core.host_of("ap-northeast-3", STACKS, "example.com") == "ap-northeast-3.example.com")
+check("host_of rejects unknown stack", core.host_of("ap-southeast-9", STACKS, "example.com") == nil)
+check("host_of rejects injection value", core.host_of("evil.example.com/", STACKS, "example.com") == nil)
+check("host_of rejects nil stack", core.host_of(nil, STACKS, "example.com") == nil)
+
+-- configure は STACK_NAME / INTERNAL_DOMAIN / BUNSHIN_STACKS 未設定を許さず起動を失敗させる
+check("configure rejects missing stack", not pcall(core.configure, nil, "example.com", "ap-northeast-1"))
+check("configure rejects missing domain", not pcall(core.configure, "ap-northeast-1", nil, "ap-northeast-1"))
+check("configure rejects missing stacks", not pcall(core.configure, "ap-northeast-1", "example.com", nil))
+check("configure rejects empty stacks", not pcall(core.configure, "ap-northeast-1", "example.com", ""))
+
+-- decide_arrival: cookie 無 / 自stack宛 はローカル解決
+check("arrival nil without cookie", core.decide_arrival(nil, "ap-northeast-1", STACKS, "example.com") == nil)
+check("arrival nil for own stack", core.decide_arrival("ap-northeast-1_x", "ap-northeast-1", STACKS, "example.com") == nil)
+
+-- decide_arrival: 別stack宛は所属stackの内部ALBへ転送
+r = core.decide_arrival("ap-northeast-3_deadbeef", "ap-northeast-1", STACKS, "example.com")
+check("arrival forwards foreign stack", r.forward_host == "ap-northeast-3.example.com" and r.exit == nil)
+
+-- decide_arrival: allowlist 外の prefix は 500 で遮断
+r = core.decide_arrival("evilhost_x", "ap-northeast-1", STACKS, "example.com")
+check("arrival rejects unknown stack", r.exit == 500 and r.log ~= nil)
 
 if failed > 0 then
     io.stderr:write(string.format("resolve_core: %d check(s) failed\n", failed))
