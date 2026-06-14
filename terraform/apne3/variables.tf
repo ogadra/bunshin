@@ -30,15 +30,10 @@ variable "bunshin_stacks" {
       length(distinct(var.bunshin_stacks)) == length(var.bunshin_stacks) &&
       alltrue([
         for stack in var.bunshin_stacks :
-        stack == trimspace(stack) && stack != "" && !strcontains(stack, ",")
+        can(regex("^[a-z0-9-]+$", stack))
       ])
     )
-    error_message = "bunshin_stacks must be a non-empty list of unique, non-empty region strings without surrounding whitespace or commas."
-  }
-
-  validation {
-    condition     = contains(var.bunshin_stacks, data.aws_region.current.id)
-    error_message = "bunshin_stacks must include the current AWS region."
+    error_message = "bunshin_stacks must be a non-empty list of unique stack identifiers matching [a-z0-9-]+."
   }
 }
 
