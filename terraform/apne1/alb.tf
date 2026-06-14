@@ -127,13 +127,12 @@ resource "aws_lb" "internal" {
   })
 }
 
-# trivy:ignore:AVD-AWS-0054 -- CloudFront reaches this ALB through VPC origins over private networking
-resource "aws_lb_listener" "api_ingress_http" {
-  # checkov:skip=CKV_AWS_2:CloudFront reaches this ALB through VPC origins over private networking
-  # checkov:skip=CKV_AWS_103:CloudFront reaches this ALB through VPC origins over private networking
+resource "aws_lb_listener" "api_ingress_https" {
   load_balancer_arn = aws_lb.api_ingress.arn
-  port              = 80
-  protocol          = "HTTP"
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = var.alb_certificate_arn
 
   default_action {
     type             = "forward"

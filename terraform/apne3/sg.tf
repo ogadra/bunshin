@@ -110,15 +110,15 @@ resource "aws_security_group" "api_ingress_alb" {
   }
 }
 
-resource "aws_security_group_rule" "api_ingress_alb_ingress_http" {
+resource "aws_security_group_rule" "api_ingress_alb_ingress_https" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   type              = "ingress"
-  from_port         = 80
-  to_port           = 80
+  from_port         = 443
+  to_port           = 443
   protocol          = "tcp"
   prefix_list_ids   = [data.aws_ec2_managed_prefix_list.cloudfront_origin_facing.id]
   security_group_id = aws_security_group.api_ingress_alb.id
-  description       = "HTTP from CloudFront VPC origins"
+  description       = "HTTPS from CloudFront VPC origins"
 }
 
 resource "aws_security_group_rule" "api_ingress_alb_egress_nginx" {
