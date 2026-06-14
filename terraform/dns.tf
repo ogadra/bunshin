@@ -3,7 +3,7 @@ data "aws_route53_zone" "main" {
   private_zone = false
 }
 
-resource "aws_route53_record" "alb" {
+resource "aws_route53_record" "external_alb" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   for_each = local.external_albs
 

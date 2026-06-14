@@ -57,14 +57,14 @@ resource "aws_lb" "external" {
   drop_invalid_header_fields = true
   # checkov:skip=CKV2_AWS_76:Log4j WAF rule is not needed, backend does not use Java
   # checkov:skip=CKV_AWS_150:Deletion protection is not needed for initial deployment
-  name               = "bunshin"
+  name               = "bunshin-external"
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.external_alb.id]
   subnets            = aws_subnet.apne1_public[*].id
 
   tags = merge(local.common_tags, {
-    Service = "alb"
+    Service = "external-alb"
   })
 }
 
@@ -97,7 +97,7 @@ resource "aws_lb_listener" "external_https" {
   }
 
   tags = merge(local.common_tags, {
-    Service = "alb"
+    Service = "external-alb"
   })
 }
 
@@ -136,7 +136,7 @@ resource "aws_lb_listener" "external_http" {
   }
 
   tags = merge(local.common_tags, {
-    Service = "alb"
+    Service = "external-alb"
   })
 }
 
