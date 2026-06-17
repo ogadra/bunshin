@@ -13,33 +13,33 @@ local function check(name, cond)
 end
 
 -- broker 非 2xx はそのステータスを保持して終了 (503/500 透過)
-local r = core.decide_resolve({ status = 503, header = {} }, STACKS, "example.com")
+local r = core.decide({ status = 503, header = {} }, STACKS, "example.com")
 check("503 transparency exit", r.exit == 503)
 check("503 transparency no runner", r.runner_url == nil)
 
-r = core.decide_resolve({ status = 500, header = {} }, STACKS, "example.com")
+r = core.decide({ status = 500, header = {} }, STACKS, "example.com")
 check("500 transparency", r.exit == 500)
 
 -- 200 + 不正 X-Runner-Url は 500 で遮断
 for _, bad in ipairs({ "http://evil/path", "https://h:3000", "http://h:", "", "//h" }) do
-    r = core.decide_resolve({ status = 200, header = { ["X-Runner-Url"] = bad } }, STACKS, "example.com")
+    r = core.decide({ status = 200, header = { ["X-Runner-Url"] = bad } }, STACKS, "example.com")
     check("ssrf guard exit " .. bad, r.exit == 500)
     check("ssrf guard log " .. bad, r.log ~= nil)
 end
 
 -- 200 + X-Runner-Url ヘッダ欠落 (nil) も 500
-r = core.decide_resolve({ status = 200, header = {} }, STACKS, "example.com")
+r = core.decide({ status = 200, header = {} }, STACKS, "example.com")
 check("missing X-Runner-Url", r.exit == 500)
 
 -- 正常: runner へ proxy。exit せず宛先を返す。ヘッダ不在時は set_cookie/reassigned を伝播しない。
-r = core.decide_resolve({ status = 200, header = { ["X-Runner-Url"] = "http://runner-1:3000" } }, STACKS, "example.com")
+r = core.decide({ status = 200, header = { ["X-Runner-Url"] = "http://runner-1:3000" } }, STACKS, "example.com")
 check("valid proxy no exit", r.exit == nil)
 check("valid proxy runner", r.runner_url == "http://runner-1:3000")
 check("no set-cookie when absent", r.set_cookie == nil)
 check("no reassigned when absent", r.reassigned == nil)
 
 -- Set-Cookie / X-Session-Reassigned の伝播
-r = core.decide_resolve({ status = 200, header = {
+r = core.decide({ status = 200, header = {
     ["X-Runner-Url"] = "http://runner-1:3000",
     ["Set-Cookie"] = "session_id=abc; Path=/",
     ["X-Session-Reassigned"] = "true",
@@ -48,7 +48,7 @@ check("propagates set-cookie", r.set_cookie == "session_id=abc; Path=/")
 check("propagates reassigned", r.reassigned == "true")
 
 -- 複数 Set-Cookie (capture はテーブルで返す) を文字列へ畳む
-r = core.decide_resolve({ status = 200, header = {
+r = core.decide({ status = 200, header = {
     ["X-Runner-Url"] = "http://runner-1:3000",
     ["Set-Cookie"] = { "a=1", "b=2" },
 } }, STACKS, "example.com")
@@ -94,8 +94,8 @@ r = core.decide_arrival("ap-northeast-1_deadbeef", "ap-northeast-3", STACKS, "ex
 check("arrival rejects mismatched fallback stack exit", r.exit == 500)
 check("arrival rejects mismatched fallback stack log", r.log ~= nil)
 
--- decide_resolve: 503 + X-Fallback-Stack は次stackの内部ALBへ転送し残り候補を中継
-r = core.decide_resolve({ status = 503, header = {
+-- decide: 503 + X-Fallback-Stack は次stackの内部ALBへ転送し残り候補を中継
+r = core.decide({ status = 503, header = {
     ["X-Fallback-Stack"]     = "ap-northeast-3",
     ["X-Fallback-Remaining"] = "ap-northeast-2",
 } }, STACKS, "example.com")
@@ -103,27 +103,27 @@ check("fallback forwards next stack", r.forward_host == "ap-northeast-3.example.
 check("fallback relays stack", r.fallback_stack == "ap-northeast-3")
 check("fallback relays remaining", r.fallback_remaining == "ap-northeast-2")
 
--- decide_resolve: 残り候補が無ければ空文字で中継 (ヘッダ削除)
-r = core.decide_resolve({ status = 503, header = { ["X-Fallback-Stack"] = "ap-northeast-3" } }, STACKS, "example.com")
+-- decide: 残り候補が無ければ空文字で中継 (ヘッダ削除)
+r = core.decide({ status = 503, header = { ["X-Fallback-Stack"] = "ap-northeast-3" } }, STACKS, "example.com")
 check("fallback empty remaining host", r.forward_host == "ap-northeast-3.example.com")
 check("fallback empty remaining value", r.fallback_remaining == "")
 
--- decide_resolve: 不正な fallback stack は 503 で遮断 (転送しない)
-r = core.decide_resolve({ status = 503, header = { ["X-Fallback-Stack"] = "EVIL" } }, STACKS, "example.com")
+-- decide: 不正な fallback stack は 503 で遮断 (転送しない)
+r = core.decide({ status = 503, header = { ["X-Fallback-Stack"] = "EVIL" } }, STACKS, "example.com")
 check("fallback rejects invalid stack exit", r.exit == 503)
 check("fallback rejects invalid stack log", r.log ~= nil)
 check("fallback rejects invalid stack no host", r.forward_host == nil)
 
--- decide_resolve: X-Fallback-Stack 無し/空 の 503 は終端 (転送しない)
-r = core.decide_resolve({ status = 503, header = {} }, STACKS, "example.com")
+-- decide: X-Fallback-Stack 無し/空 の 503 は終端 (転送しない)
+r = core.decide({ status = 503, header = {} }, STACKS, "example.com")
 check("fallback terminal without header exit", r.exit == 503)
 check("fallback terminal without header no host", r.forward_host == nil)
-r = core.decide_resolve({ status = 503, header = { ["X-Fallback-Stack"] = "" } }, STACKS, "example.com")
+r = core.decide({ status = 503, header = { ["X-Fallback-Stack"] = "" } }, STACKS, "example.com")
 check("fallback terminal on empty header exit", r.exit == 503)
 check("fallback terminal on empty header no host", r.forward_host == nil)
 
--- decide_resolve: 200/runner は従来どおり (回帰)
-r = core.decide_resolve({ status = 200, header = { ["X-Runner-Url"] = "http://runner-1:3000" } }, STACKS, "example.com")
+-- decide: 200/runner は従来どおり (回帰)
+r = core.decide({ status = 200, header = { ["X-Runner-Url"] = "http://runner-1:3000" } }, STACKS, "example.com")
 check("resolve still proxies runner url", r.runner_url == "http://runner-1:3000")
 check("resolve still proxies runner no host", r.forward_host == nil)
 

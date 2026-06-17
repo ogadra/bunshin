@@ -75,7 +75,7 @@ function _M.decide_arrival(session_id, stack, stacks, domain, fallback_stack)
     return { forward_host = host }
 end
 
-function _M.decide_resolve(res, stacks, domain)
+function _M.decide(res, stacks, domain)
     if res.status == HTTP_SERVICE_UNAVAILABLE then
         local next_stack = res.header["X-Fallback-Stack"]
         if next_stack ~= nil and next_stack ~= "" then

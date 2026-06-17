@@ -22,7 +22,7 @@ if arrival then
 end
 
 local res = ngx.location.capture("/_resolve")
-local action = core.decide_resolve(res, core.stacks(), core.internal_domain())
+local action = core.decide(res, core.stacks(), core.internal_domain())
 
 if action.log then
     ngx.log(ngx.ERR, action.log)
