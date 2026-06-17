@@ -23,7 +23,7 @@ type recorder struct {
 func requireEnv(name string) string {
 	value := os.Getenv(name)
 	if value == "" {
-		log.Fatalf("%s environment variable is required", name)
+		panic(name + " environment variable is required")
 	}
 	return value
 }
