@@ -69,12 +69,14 @@ function _M.host_of(stack, stacks, domain)
 end
 
 function _M.decide_arrival(session_id, stack, stacks, domain, fallback_stack)
+    -- fallback 転送は session 所属未確定の到着なので、この stack の broker で解決を続ける。
     if fallback_stack ~= nil and fallback_stack ~= "" then
         if fallback_stack ~= stack then
             return { exit = HTTP_INTERNAL_ERROR, log = "resolve: fallback stack does not match own stack: " .. tostring(fallback_stack) }
         end
         return nil
     end
+    -- session_id prefix は所属 stack 確定済みの印なので、自 stack 以外なら所属先へ到着させる。
     local owner = _M.cookie_stack(session_id)
     if owner == nil or owner == stack then
         return nil
