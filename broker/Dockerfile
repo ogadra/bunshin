@@ -1,5 +1,5 @@
 # checkov:skip=CKV_DOCKER_2:health check is managed by compose/orchestrator
-FROM golang:1.26.4-alpine@sha256:f23e8b227fb4493eabe03bede4d5a32d04092da71962f1fb79b5f7d1e6c2a17f AS build
+FROM golang:1.26.4-alpine@sha256:f1ddd9fe14fffc091dd98cb4bfa999f32c5fc77d2f2305ea9f0e2595c5437c14 AS build
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
@@ -27,16 +27,16 @@ FROM build AS binary
 RUN CGO_ENABLED=0 go build -o /server .
 
 # production image
-FROM alpine:3.23@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11
+FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 RUN adduser -D -H -s /sbin/nologin appuser
 COPY apk-checksums.sha256 /tmp/apks.sha256
 RUN set -euxo pipefail; \
     mkdir -p /tmp/apks; \
     apk update; \
     apk fetch --recursive -o /tmp/apks \
-        bash=5.3.3-r1 \
-        ca-certificates=20260413-r0 \
-        curl=8.19.0-r0; \
+        bash=5.3.9-r1 \
+        ca-certificates=20260611-r0 \
+        curl=8.20.0-r1; \
     apk verify /tmp/apks/*.apk; \
     find /tmp/apks -type f -name '*.apk' -exec basename {} \; | sort > /tmp/apks.actual; \
     awk '{print $2}' /tmp/apks.sha256 | sort > /tmp/apks.expected; \
