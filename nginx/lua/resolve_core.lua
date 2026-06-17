@@ -11,15 +11,23 @@ local own_stack_name = ""
 local internal_domain_name = ""
 local allowed_stacks = {}
 
-function _M.configure(stack, domain, stacks)
+local function string_header(headers, name, label)
+    local value = headers[name]
+    if value ~= nil and type(value) ~= "string" then
+        return nil, "resolve: invalid " .. label .. " header type: " .. type(value)
+    end
+    return value, nil
+end
+
+function _M.configure(stack, domain, stack_names)
     if stack == nil or stack == "" or domain == nil or domain == "" then
         error("resolve_core: STACK_NAME and INTERNAL_DOMAIN must be set")
     end
-    if stacks == nil or stacks == "" then
+    if stack_names == nil or stack_names == "" then
         error("resolve_core: BUNSHIN_STACKS must be set")
     end
     local set = {}
-    for s in stacks:gmatch("[^,]+") do
+    for s in stack_names:gmatch("[^,]+") do
         set[s] = true
     end
     if next(set) == nil then
@@ -80,14 +88,14 @@ end
 
 function _M.decide(res, stacks, domain)
     if res.status == HTTP_SERVICE_UNAVAILABLE then
-        local next_stack = res.header["X-Fallback-Stack"]
-        if next_stack ~= nil and type(next_stack) ~= "string" then
-            return { exit = HTTP_SERVICE_UNAVAILABLE, log = "resolve: invalid fallback stack header type: " .. type(next_stack) }
+        local next_stack, err = string_header(res.header, "X-Fallback-Stack", "fallback stack")
+        if err ~= nil then
+            return { exit = HTTP_SERVICE_UNAVAILABLE, log = err }
         end
         if next_stack ~= nil and next_stack ~= "" then
-            local remaining = res.header["X-Fallback-Remaining"]
-            if remaining ~= nil and type(remaining) ~= "string" then
-                return { exit = HTTP_SERVICE_UNAVAILABLE, log = "resolve: invalid fallback remaining header type: " .. type(remaining) }
+            local remaining, err = string_header(res.header, "X-Fallback-Remaining", "fallback remaining")
+            if err ~= nil then
+                return { exit = HTTP_SERVICE_UNAVAILABLE, log = err }
             end
             local host = _M.host_of(next_stack, stacks, domain)
             if host == nil then
