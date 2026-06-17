@@ -12,11 +12,14 @@ services:
     ports:
       - "${NGINX_PORT}:8080"
     volumes:
-      - ./integration/testdata/forward-target.crt:/etc/ssl/certs/ca-certificates.crt:ro
+      - forward-target-certs:/etc/ssl/certs:ro
     environment:
       STACK_NAME: "${STACK_NAME}"
       INTERNAL_DOMAIN: "${INTERNAL_DOMAIN}"
       BUNSHIN_STACKS: "${BUNSHIN_STACKS}"
+    depends_on:
+      forward-cert:
+        condition: service_completed_successfully
 
   broker:
     build:
@@ -101,15 +104,26 @@ services:
     profiles:
       - integration
 
+  forward-cert:
+    build:
+      context: integration/
+    command: ["go", "run", "./cmd/gen-forward-cert"]
+    volumes:
+      - forward-target-certs:/app/testdata
+    user: root
+
   forward-target:
     build:
       context: integration/
     command: ["go", "run", "./cmd/forward-target"]
     volumes:
-      - ./integration/testdata:/app/testdata:ro
+      - forward-target-certs:/app/testdata:ro
     environment:
       FORWARD_TARGET_CERT_FILE: /app/testdata/forward-target.crt
       FORWARD_TARGET_KEY_FILE: /app/testdata/forward-target.key
+    depends_on:
+      forward-cert:
+        condition: service_completed_successfully
     user: root
     networks:
       default:
@@ -136,3 +150,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 3
+
+volumes:
+  forward-target-certs:

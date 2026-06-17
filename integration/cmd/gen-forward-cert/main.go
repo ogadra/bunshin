@@ -57,6 +57,9 @@ func run() error {
 	if err := writePEM("testdata/forward-target.crt", "CERTIFICATE", der); err != nil {
 		return err
 	}
+	if err := writePEM("testdata/ca-certificates.crt", "CERTIFICATE", der); err != nil {
+		return err
+	}
 	return writePEM("testdata/forward-target.key", "RSA PRIVATE KEY", x509.MarshalPKCS1PrivateKey(key))
 }
 
