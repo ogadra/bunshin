@@ -35,6 +35,7 @@ check("missing X-Runner-Url", r.exit == 500)
 r = core.decide({ status = 200, header = { ["X-Runner-Url"] = "http://runner-1:3000" } }, STACKS, "example.com")
 check("valid proxy no exit", r.exit == nil)
 check("valid proxy runner", r.runner_url == "http://runner-1:3000")
+check("valid proxy no forward host", r.forward_host == nil)
 check("no set-cookie when absent", r.set_cookie == nil)
 check("no reassigned when absent", r.reassigned == nil)
 
@@ -121,11 +122,6 @@ check("fallback terminal without header no host", r.forward_host == nil)
 r = core.decide({ status = 503, header = { ["X-Fallback-Stack"] = "" } }, STACKS, "example.com")
 check("fallback terminal on empty header exit", r.exit == 503)
 check("fallback terminal on empty header no host", r.forward_host == nil)
-
--- decide: 200/runner は従来どおり (回帰)
-r = core.decide({ status = 200, header = { ["X-Runner-Url"] = "http://runner-1:3000" } }, STACKS, "example.com")
-check("resolve still proxies runner url", r.runner_url == "http://runner-1:3000")
-check("resolve still proxies runner no host", r.forward_host == nil)
 
 if failed > 0 then
     io.stderr:write(string.format("resolve_core: %d check(s) failed\n", failed))
