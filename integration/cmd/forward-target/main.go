@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -13,6 +14,7 @@ type recordedRequest struct {
 	Path   string              `json:"path"`
 	Host   string              `json:"host"`
 	Header map[string][]string `json:"header"`
+	Body   string              `json:"body"`
 }
 
 type recorder struct {
@@ -28,7 +30,7 @@ func requireEnv(name string) string {
 	return value
 }
 
-func (r *recorder) set(req *http.Request) {
+func (r *recorder) set(req *http.Request, body string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.req = &recordedRequest{
@@ -36,6 +38,7 @@ func (r *recorder) set(req *http.Request) {
 		Path:   req.URL.RequestURI(),
 		Host:   req.Host,
 		Header: req.Header.Clone(),
+		Body:   body,
 	}
 }
 
@@ -79,7 +82,12 @@ func main() {
 	keyFile := requireEnv("FORWARD_TARGET_KEY_FILE")
 	target := http.NewServeMux()
 	target.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
-		rec.set(req)
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			http.Error(w, "read body", http.StatusInternalServerError)
+			return
+		}
+		rec.set(req, string(body))
 		w.WriteHeader(http.StatusNoContent)
 	})
 	srv := &http.Server{

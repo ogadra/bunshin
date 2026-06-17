@@ -286,6 +286,7 @@ type forwardedRequest struct {
 	Path   string              `json:"path"`
 	Host   string              `json:"host"`
 	Header map[string][]string `json:"header"`
+	Body   string              `json:"body"`
 }
 
 func resetForwardTarget(t *testing.T) {
@@ -599,6 +600,12 @@ func TestNoIdleRunnerExecuteFallbackForward(t *testing.T) {
 	}
 	if got.Host != "ap-northeast-3.internal.test" {
 		t.Errorf("forwarded Host: want ap-northeast-3.internal.test, got %s", got.Host)
+	}
+	if values := got.Header["Content-Type"]; len(values) != 1 || values[0] != "application/json" {
+		t.Errorf("Content-Type = %q, want [application/json]", values)
+	}
+	if got.Body != body {
+		t.Errorf("forwarded body = %q, want %q", got.Body, body)
 	}
 	if values := got.Header["X-Fallback-Stack"]; len(values) != 1 || values[0] != "ap-northeast-3" {
 		t.Errorf("X-Fallback-Stack = %q, want [ap-northeast-3]", values)
