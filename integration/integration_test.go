@@ -286,6 +286,7 @@ type forwardedRequest struct {
 	Path   string              `json:"path"`
 	Host   string              `json:"host"`
 	Header map[string][]string `json:"header"`
+	Body   string              `json:"body"`
 }
 
 func resetForwardTarget(t *testing.T) {
@@ -570,11 +571,10 @@ func TestExecuteWithoutCookies(t *testing.T) {
 	}
 }
 
-// TestNoIdleRunnerExecute は全ての runner が busy の状態で /api/execute を呼び出した場合、
-// broker の 503 がそのままクライアントへ伝わることを検証する。
-// nginx は auth_request ではなく access_by_lua + ngx.location.capture でセッションを解決するため、
-// broker の実ステータス (503) が 500 に潰されず保持される。
-func TestNoIdleRunnerExecute(t *testing.T) {
+// TestNoIdleRunnerExecuteFallbackForward は全ての runner が busy の状態で broker が返す
+// fallback headers を nginx が下流 stack へ中継することを検証する。
+func TestNoIdleRunnerExecuteFallbackForward(t *testing.T) {
+	resetForwardTarget(t)
 	cookies1 := createSession(t)
 	cookies2 := createSession(t)
 	t.Cleanup(func() {
@@ -582,14 +582,36 @@ func TestNoIdleRunnerExecute(t *testing.T) {
 		resetRunners(t, cookies2.SessionID)
 	})
 
-	// 存在しない session_id で実行 → broker が新規割り当てを試みるが idle runner なし → 503
 	fakeCookies := sessionCookies{SessionID: "nonexistent", ShellID: "nonexistent"}
 	body := `{"command":"pwd"}`
 	resp := doRequest(t, http.MethodPost, nginxBase+"/api/execute", body, fakeCookies.cookieHeader())
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusServiceUnavailable {
-		t.Errorf("expected 503 when no idle runner on execute, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("POST /api/execute no idle runner: want 204 from forward target, got %d", resp.StatusCode)
+	}
+
+	got := lastForwardedRequest(t)
+	if got.Method != http.MethodPost {
+		t.Errorf("forwarded method: want POST, got %s", got.Method)
+	}
+	if got.Path != "/api/execute" {
+		t.Errorf("forwarded path: want /api/execute, got %s", got.Path)
+	}
+	if got.Host != "ap-northeast-3.internal.test" {
+		t.Errorf("forwarded Host: want ap-northeast-3.internal.test, got %s", got.Host)
+	}
+	if values := got.Header["Content-Type"]; len(values) != 1 || values[0] != "application/json" {
+		t.Errorf("Content-Type = %q, want [application/json]", values)
+	}
+	if got.Body != body {
+		t.Errorf("forwarded body = %q, want %q", got.Body, body)
+	}
+	if values := got.Header["X-Fallback-Stack"]; len(values) != 1 || values[0] != "ap-northeast-3" {
+		t.Errorf("X-Fallback-Stack = %q, want [ap-northeast-3]", values)
+	}
+	if values := got.Header["X-Fallback-Remaining"]; len(values) > 0 {
+		t.Errorf("X-Fallback-Remaining should be empty, got %q", values)
 	}
 }
 
@@ -621,12 +643,10 @@ func TestDeleteWithMissingShellCookie(t *testing.T) {
 	}
 }
 
-// TestNoIdleRunner は全ての runner が busy の状態でセッション作成を試みた場合、
-// broker の 503 がそのままクライアントへ伝わることを検証する。
-// nginx は access_by_lua + ngx.location.capture でセッションを解決するため、broker が
-// idle runner なしで返す 503 が (auth_request のように 500 へ潰されず) 保持される。
+// TestNoIdleRunner は全ての runner が busy の状態で broker が返す fallback headers を、
+// セッション作成時にも nginx が下流 stack へ中継することを検証する。
 func TestNoIdleRunner(t *testing.T) {
-	// セッションを2つ作成して全 runner を busy にする
+	resetForwardTarget(t)
 	cookies1 := createSession(t)
 	cookies2 := createSession(t)
 	t.Cleanup(func() {
@@ -634,11 +654,27 @@ func TestNoIdleRunner(t *testing.T) {
 		resetRunners(t, cookies2.SessionID)
 	})
 
-	// idle runner がない状態で新規セッション作成を試みる → 503
 	resp := doRequest(t, http.MethodPost, nginxBase+"/api/shell", "", "")
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusServiceUnavailable {
-		t.Errorf("expected 503 when no idle runner, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("POST /api/shell no idle runner: want 204 from forward target, got %d", resp.StatusCode)
+	}
+
+	got := lastForwardedRequest(t)
+	if got.Method != http.MethodPost {
+		t.Errorf("forwarded method: want POST, got %s", got.Method)
+	}
+	if got.Path != "/api/shell" {
+		t.Errorf("forwarded path: want /api/shell, got %s", got.Path)
+	}
+	if got.Host != "ap-northeast-3.internal.test" {
+		t.Errorf("forwarded Host: want ap-northeast-3.internal.test, got %s", got.Host)
+	}
+	if values := got.Header["X-Fallback-Stack"]; len(values) != 1 || values[0] != "ap-northeast-3" {
+		t.Errorf("X-Fallback-Stack = %q, want [ap-northeast-3]", values)
+	}
+	if values := got.Header["X-Fallback-Remaining"]; len(values) > 0 {
+		t.Errorf("X-Fallback-Remaining should be empty, got %q", values)
 	}
 }

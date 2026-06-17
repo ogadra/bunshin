@@ -252,13 +252,13 @@ func TestGetResolve_FallbackForwardedKeepsTail(t *testing.T) {
 	t.Parallel()
 	rec := noIdleResolve([]string{}, map[string]string{
 		"X-Fallback-Stack":     "ap-northeast-3",
-		"X-Fallback-Remaining": "ap-northeast-2,ap-northeast-4",
+		"X-Fallback-Remaining": "ap-northeast-2,us-east-1",
 	})
 	if got := rec.Header().Get("X-Fallback-Stack"); got != "ap-northeast-2" {
 		t.Errorf("X-Fallback-Stack = %q, want %q", got, "ap-northeast-2")
 	}
-	if got := rec.Header().Get("X-Fallback-Remaining"); got != "ap-northeast-4" {
-		t.Errorf("X-Fallback-Remaining = %q, want %q", got, "ap-northeast-4")
+	if got := rec.Header().Get("X-Fallback-Remaining"); got != "us-east-1" {
+		t.Errorf("X-Fallback-Remaining = %q, want %q", got, "us-east-1")
 	}
 }
 

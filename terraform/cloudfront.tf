@@ -6,12 +6,37 @@ data "aws_cloudfront_cache_policy" "caching_disabled" {
   name = "Managed-CachingDisabled"
 }
 
-data "aws_cloudfront_origin_request_policy" "all_viewer_except_host_header" {
-  name = "Managed-AllViewerExceptHostHeader"
-}
-
 data "aws_cloudfront_response_headers_policy" "security_headers" {
   name = "Managed-SecurityHeadersPolicy"
+}
+
+resource "aws_cloudfront_origin_request_policy" "api_ingress" {
+  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  name    = "bunshin-api-ingress"
+  comment = "Forward API request data without client-controlled fallback headers"
+
+  cookies_config {
+    cookie_behavior = "all"
+  }
+
+  headers_config {
+    header_behavior = "whitelist"
+
+    headers {
+      items = [
+        "Accept",
+        "Accept-Language",
+        "Content-Type",
+        "Origin",
+        "Referer",
+        "User-Agent",
+      ]
+    }
+  }
+
+  query_strings_config {
+    query_string_behavior = "all"
+  }
 }
 
 resource "aws_cloudfront_origin_access_control" "static" {
@@ -70,7 +95,7 @@ resource "aws_cloudfront_distribution" "main" {
     allowed_methods            = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
     cached_methods             = ["GET", "HEAD", "OPTIONS"]
     cache_policy_id            = data.aws_cloudfront_cache_policy.caching_disabled.id
-    origin_request_policy_id   = data.aws_cloudfront_origin_request_policy.all_viewer_except_host_header.id
+    origin_request_policy_id   = aws_cloudfront_origin_request_policy.api_ingress.id
     compress                   = false
     response_headers_policy_id = data.aws_cloudfront_response_headers_policy.security_headers.id
     target_origin_id           = "api-ingress-global-accelerator"
