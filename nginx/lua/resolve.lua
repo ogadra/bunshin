@@ -2,8 +2,14 @@
 -- brokerの実ステータスをそのままクライアントへ返す。
 local core = require("resolve_core")
 
--- ローカル broker は別stackのセッションを持たないため、解決を試みず宛先stackへ転送する。
-local arrival = core.decide_arrival(ngx.var.cookie_session_id, core.own_stack(), core.stacks(), core.internal_domain())
+local fallback_stack = ngx.var.relay_fallback_stack
+local arrival = core.decide_arrival(
+    ngx.var.cookie_session_id,
+    core.own_stack(),
+    core.stacks(),
+    core.internal_domain(),
+    fallback_stack
+)
 if arrival then
     if arrival.log then
         ngx.log(ngx.ERR, arrival.log)
@@ -16,7 +22,7 @@ if arrival then
 end
 
 local res = ngx.location.capture("/_resolve")
-local action = core.decide(res)
+local action = core.decide_resolve(res, core.stacks(), core.internal_domain())
 
 if action.log then
     ngx.log(ngx.ERR, action.log)
@@ -26,7 +32,6 @@ if action.exit then
     return ngx.exit(action.exit)
 end
 
--- idle 枯渇時、broker のシグナルに従い次の stack へ転送し、残り候補を中継する。
 if action.forward_host then
     ngx.var.forward_host = action.forward_host
     ngx.var.fwd_fallback_stack = action.fallback_stack

@@ -22,6 +22,9 @@ function _M.configure(stack, domain, stacks)
     if next(set) == nil then
         error("resolve_core: BUNSHIN_STACKS must be set")
     end
+    if not set[stack] then
+        error("resolve_core: STACK_NAME must be included in BUNSHIN_STACKS")
+    end
     own_stack_name = stack
     internal_domain_name = domain
     allowed_stacks = set
@@ -48,13 +51,19 @@ end
 
 -- 既知 stack のみ許可し、未知/詐称値が proxy_pass の host へ流れるのを防ぐ。
 function _M.host_of(stack, stacks, domain)
-    if not stacks[stack] then
+    if type(stacks) ~= "table" or not stacks[stack] then
         return nil
     end
     return stack .. "." .. domain
 end
 
-function _M.decide_arrival(session_id, stack, stacks, domain)
+function _M.decide_arrival(session_id, stack, stacks, domain, fallback_stack)
+    if fallback_stack ~= nil and fallback_stack ~= "" then
+        if fallback_stack ~= stack then
+            return { exit = HTTP_INTERNAL_ERROR, log = "resolve: fallback stack does not match own stack: " .. tostring(fallback_stack) }
+        end
+        return nil
+    end
     local owner = _M.cookie_stack(session_id)
     if owner == nil or owner == stack then
         return nil
@@ -66,16 +75,11 @@ function _M.decide_arrival(session_id, stack, stacks, domain)
     return { forward_host = host }
 end
 
--- decide_resolve は capture 応答 res {status, header} と内部ALB ドメインから振る舞いを返す:
---   { exit = <status>, log = <?> } ... その status で終了
---   { forward_host = <host>, fallback_stack = <?>, fallback_remaining = <?> } ... 別stackへ転送
---   { runner_url = <url>, set_cookie = <?>, reassigned = <?> } ... runner へ proxy
-function _M.decide_resolve(res, domain)
-    -- idle 枯渇時、broker は 503 に次の転送先 stack を載せる。無ければカスケード終端。
+function _M.decide_resolve(res, stacks, domain)
     if res.status == HTTP_SERVICE_UNAVAILABLE then
         local next_stack = res.header["X-Fallback-Stack"]
         if next_stack ~= nil and next_stack ~= "" then
-            local host = _M.host_of(next_stack, _M.stacks(), domain)
+            local host = _M.host_of(next_stack, stacks, domain)
             if host == nil then
                 return { exit = HTTP_SERVICE_UNAVAILABLE, log = "resolve: invalid fallback stack: " .. tostring(next_stack) }
             end
@@ -110,10 +114,6 @@ function _M.decide_resolve(res, domain)
         set_cookie = set_cookie,
         reassigned = res.header["X-Session-Reassigned"],
     }
-end
-
-function _M.decide(res)
-    return _M.decide_resolve(res, internal_domain_name)
 end
 
 return _M
