@@ -15,8 +15,11 @@ function _M.configure(stack, domain, stacks)
     if stack == nil or stack == "" or domain == nil or domain == "" then
         error("resolve_core: STACK_NAME and INTERNAL_DOMAIN must be set")
     end
+    if stacks == nil or stacks == "" then
+        error("resolve_core: BUNSHIN_STACKS must be set")
+    end
     local set = {}
-    for s in (stacks or ""):gmatch("[^,]+") do
+    for s in stacks:gmatch("[^,]+") do
         set[s] = true
     end
     if next(set) == nil then
@@ -78,7 +81,14 @@ end
 function _M.decide(res, stacks, domain)
     if res.status == HTTP_SERVICE_UNAVAILABLE then
         local next_stack = res.header["X-Fallback-Stack"]
+        if next_stack ~= nil and type(next_stack) ~= "string" then
+            return { exit = HTTP_SERVICE_UNAVAILABLE, log = "resolve: invalid fallback stack header type: " .. type(next_stack) }
+        end
         if next_stack ~= nil and next_stack ~= "" then
+            local remaining = res.header["X-Fallback-Remaining"]
+            if remaining ~= nil and type(remaining) ~= "string" then
+                return { exit = HTTP_SERVICE_UNAVAILABLE, log = "resolve: invalid fallback remaining header type: " .. type(remaining) }
+            end
             local host = _M.host_of(next_stack, stacks, domain)
             if host == nil then
                 return { exit = HTTP_SERVICE_UNAVAILABLE, log = "resolve: invalid fallback stack: " .. tostring(next_stack) }
@@ -86,7 +96,7 @@ function _M.decide(res, stacks, domain)
             return {
                 forward_host       = host,
                 fallback_stack     = next_stack,
-                fallback_remaining = res.header["X-Fallback-Remaining"] or "",
+                fallback_remaining = remaining,
             }
         end
         return { exit = HTTP_SERVICE_UNAVAILABLE }

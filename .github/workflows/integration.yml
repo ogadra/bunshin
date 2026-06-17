@@ -28,8 +28,15 @@ jobs:
           persist-credentials: false
       - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
       - uses: crazy-max/ghaction-github-runtime@04d248b84655b509d8c44dc1d6f990c879747487 # v4.0.0
+      - name: Generate integration TLS fixture
+        run: |
+          docker run --rm \
+            -v "$PWD/integration:/app" \
+            -w /app \
+            golang:1.26-alpine@sha256:f23e8b227fb4493eabe03bede4d5a32d04092da71962f1fb79b5f7d1e6c2a17f \
+            go run ./cmd/gen-forward-cert
       - name: Build integration images
-        run: docker compose --env-file .env.example --profile integration build nginx broker runner-1 runner-2 integration-test
+        run: docker compose --env-file .env.example --profile integration build nginx broker runner-1 runner-2 integration-test forward-target
       - name: Run integration tests
         run: docker compose --env-file .env.example --profile integration run --rm integration-test
       - name: Cleanup

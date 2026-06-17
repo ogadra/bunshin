@@ -1,17 +1,11 @@
 package main
 
 import (
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/json"
 	"log"
-	"math/big"
 	"net/http"
+	"os"
 	"sync"
-	"time"
 )
 
 type recordedRequest struct {
@@ -24,6 +18,14 @@ type recordedRequest struct {
 type recorder struct {
 	mu  sync.Mutex
 	req *recordedRequest
+}
+
+func requireEnv(name string) string {
+	value := os.Getenv(name)
+	if value == "" {
+		log.Fatalf("%s environment variable is required", name)
+	}
+	return value
 }
 
 func (r *recorder) set(req *http.Request) {
@@ -58,34 +60,6 @@ func (r *recorder) last(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
-func selfSignedCert() (tls.Certificate, error) {
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-	tmpl := x509.Certificate{
-		SerialNumber: serial,
-		Subject:      pkix.Name{CommonName: "forward-target"},
-		NotBefore:    time.Now().Add(-time.Hour),
-		NotAfter:     time.Now().Add(time.Hour),
-		DNSNames:     []string{"ap-northeast-3.internal.test", "forward-target"},
-		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-	}
-	der, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, &key.PublicKey, key)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-	return tls.Certificate{
-		Certificate: [][]byte{der},
-		PrivateKey:  key,
-	}, nil
-}
-
 func main() {
 	rec := &recorder{}
 
@@ -101,21 +75,18 @@ func main() {
 		}
 	}()
 
-	cert, err := selfSignedCert()
-	if err != nil {
-		log.Fatalf("create certificate: %v", err)
-	}
+	certFile := requireEnv("FORWARD_TARGET_CERT_FILE")
+	keyFile := requireEnv("FORWARD_TARGET_KEY_FILE")
 	target := http.NewServeMux()
 	target.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
 		rec.set(req)
 		w.WriteHeader(http.StatusNoContent)
 	})
 	srv := &http.Server{
-		Addr:      ":443",
-		Handler:   target,
-		TLSConfig: &tls.Config{Certificates: []tls.Certificate{cert}},
+		Addr:    ":443",
+		Handler: target,
 	}
-	if err := srv.ListenAndServeTLS("", ""); err != nil {
+	if err := srv.ListenAndServeTLS(certFile, keyFile); err != nil {
 		log.Fatalf("https server: %v", err)
 	}
 }

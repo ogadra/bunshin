@@ -35,7 +35,9 @@ end
 if action.forward_host then
     ngx.var.forward_host = action.forward_host
     ngx.var.fwd_fallback_stack = action.fallback_stack
-    ngx.var.fwd_fallback_remaining = action.fallback_remaining
+    if action.fallback_remaining ~= nil then
+        ngx.var.fwd_fallback_remaining = action.fallback_remaining
+    end
     return ngx.exec("@forward")
 end
 
