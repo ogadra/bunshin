@@ -154,7 +154,7 @@ func TestGetResolve_MissingCookie_CreatesSession(t *testing.T) {
 			if sessionID != "" {
 				t.Errorf("sessionID = %q, want empty", sessionID)
 			}
-			return &service.ResolveResult{SessionID: "new-sess", RunnerURL: "http://10.0.0.2:8080", Created: true}, nil
+			return &service.ResolveResult{SessionID: "ap-northeast-1_new-sess", RunnerURL: "http://10.0.0.2:8080", Created: true}, nil
 		},
 	}, []string{})
 	r := newTestRouter(h)
@@ -171,7 +171,7 @@ func TestGetResolve_MissingCookie_CreatesSession(t *testing.T) {
 	}
 	found := false
 	for _, c := range rec.Result().Cookies() {
-		if c.Name == "session_id" && c.Value == "new-sess" {
+		if c.Name == "session_id" && c.Value == "ap-northeast-1_new-sess" {
 			found = true
 		}
 	}
