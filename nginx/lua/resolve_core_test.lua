@@ -104,6 +104,13 @@ check("fallback forwards next stack", r.forward_host == "ap-northeast-3.example.
 check("fallback relays stack", r.fallback_stack == "ap-northeast-3")
 check("fallback relays remaining", r.fallback_remaining == "ap-northeast-2")
 
+-- decide: 残り候補が複数ならカンマ区切り文字列のまま中継
+r = core.decide({ status = 503, header = {
+    ["X-Fallback-Stack"]     = "ap-northeast-3",
+    ["X-Fallback-Remaining"] = "ap-northeast-2,us-east-1",
+} }, STACKS, "example.com")
+check("fallback relays comma-separated remaining", r.fallback_remaining == "ap-northeast-2,us-east-1")
+
 -- decide: 残り候補が無ければ空文字で中継 (ヘッダ削除)
 r = core.decide({ status = 503, header = { ["X-Fallback-Stack"] = "ap-northeast-3" } }, STACKS, "example.com")
 check("fallback empty remaining host", r.forward_host == "ap-northeast-3.example.com")
