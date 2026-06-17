@@ -86,17 +86,26 @@ function _M.decide_arrival(session_id, stack, stacks, domain, fallback_stack)
     return { forward_host = host }
 end
 
+function _M.validate_resolve_response(res)
+    if res.status ~= HTTP_SERVICE_UNAVAILABLE then
+        return nil
+    end
+    local _, err = string_header(res.header, "X-Fallback-Stack", "fallback stack")
+    if err ~= nil then
+        return { exit = HTTP_SERVICE_UNAVAILABLE, log = err }
+    end
+    local _, remaining_err = string_header(res.header, "X-Fallback-Remaining", "fallback remaining")
+    if remaining_err ~= nil then
+        return { exit = HTTP_SERVICE_UNAVAILABLE, log = remaining_err }
+    end
+    return nil
+end
+
 function _M.decide(res, stacks, domain)
     if res.status == HTTP_SERVICE_UNAVAILABLE then
-        local next_stack, err = string_header(res.header, "X-Fallback-Stack", "fallback stack")
-        if err ~= nil then
-            return { exit = HTTP_SERVICE_UNAVAILABLE, log = err }
-        end
+        local next_stack = res.header["X-Fallback-Stack"]
         if next_stack ~= nil and next_stack ~= "" then
-            local remaining, err = string_header(res.header, "X-Fallback-Remaining", "fallback remaining")
-            if err ~= nil then
-                return { exit = HTTP_SERVICE_UNAVAILABLE, log = err }
-            end
+            local remaining = res.header["X-Fallback-Remaining"]
             local host = _M.host_of(next_stack, stacks, domain)
             if host == nil then
                 return { exit = HTTP_SERVICE_UNAVAILABLE, log = "resolve: invalid fallback stack: " .. tostring(next_stack) }

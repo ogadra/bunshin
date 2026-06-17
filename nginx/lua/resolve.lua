@@ -22,6 +22,14 @@ if arrival then
 end
 
 local res = ngx.location.capture("/_resolve")
+local invalid = core.validate_resolve_response(res)
+if invalid then
+    if invalid.log then
+        ngx.log(ngx.ERR, invalid.log)
+    end
+    return ngx.exit(invalid.exit)
+end
+
 local action = core.decide(res, core.stacks(), core.internal_domain())
 
 if action.log then

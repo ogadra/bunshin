@@ -116,16 +116,16 @@ r = core.decide({ status = 503, header = { ["X-Fallback-Stack"] = "ap-northeast-
 check("fallback empty remaining host", r.forward_host == "ap-northeast-3.example.com")
 check("fallback empty remaining value", r.fallback_remaining == nil)
 
--- decide: fallback header が複数値なら転送しない
-r = core.decide({ status = 503, header = { ["X-Fallback-Stack"] = { "ap-northeast-3" } } }, STACKS, "example.com")
-check("fallback rejects stack table exit", r.exit == 503)
-check("fallback rejects stack table log", r.log ~= nil)
-r = core.decide({ status = 503, header = {
+-- validate_resolve_response: fallback header が複数値なら decide の前に遮断
+r = core.validate_resolve_response({ status = 503, header = { ["X-Fallback-Stack"] = { "ap-northeast-3" } } })
+check("fallback validates stack table exit", r.exit == 503)
+check("fallback validates stack table log", r.log ~= nil)
+r = core.validate_resolve_response({ status = 503, header = {
     ["X-Fallback-Stack"]     = "ap-northeast-3",
     ["X-Fallback-Remaining"] = { "ap-northeast-2" },
-} }, STACKS, "example.com")
-check("fallback rejects remaining table exit", r.exit == 503)
-check("fallback rejects remaining table log", r.log ~= nil)
+} })
+check("fallback validates remaining table exit", r.exit == 503)
+check("fallback validates remaining table log", r.log ~= nil)
 
 -- decide: 不正な fallback stack は 503 で遮断 (転送しない)
 r = core.decide({ status = 503, header = { ["X-Fallback-Stack"] = "EVIL" } }, STACKS, "example.com")
