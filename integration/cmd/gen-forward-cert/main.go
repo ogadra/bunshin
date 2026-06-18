@@ -14,15 +14,18 @@ import (
 	"time"
 )
 
-func writePEM(path string, typ string, der []byte) error {
+func writePEM(path string, typ string, der []byte, perm os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	f, err := os.Create(path)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
+	if err := f.Chmod(perm); err != nil {
+		return err
+	}
 	return pem.Encode(f, &pem.Block{Type: typ, Bytes: der})
 }
 
@@ -54,13 +57,13 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if err := writePEM("testdata/forward-target.crt", "CERTIFICATE", der); err != nil {
+	if err := writePEM("testdata/forward-target.crt", "CERTIFICATE", der, 0o644); err != nil {
 		return err
 	}
-	if err := writePEM("testdata/ca-certificates.crt", "CERTIFICATE", der); err != nil {
+	if err := writePEM("testdata/ca-certificates.crt", "CERTIFICATE", der, 0o644); err != nil {
 		return err
 	}
-	return writePEM("testdata/forward-target.key", "RSA PRIVATE KEY", x509.MarshalPKCS1PrivateKey(key))
+	return writePEM("testdata/forward-target.key", "RSA PRIVATE KEY", x509.MarshalPKCS1PrivateKey(key), 0o600)
 }
 
 func main() {
