@@ -11,6 +11,15 @@ services:
         - type=gha,scope=nginx,mode=max
     ports:
       - "${NGINX_PORT}:8080"
+    volumes:
+      - forward-target-certs:/etc/ssl/certs:ro
+    environment:
+      STACK_NAME: "${STACK_NAME}"
+      INTERNAL_DOMAIN: "${INTERNAL_DOMAIN}"
+      BUNSHIN_STACKS: "${BUNSHIN_STACKS}"
+    depends_on:
+      forward-cert:
+        condition: service_completed_successfully
 
   broker:
     build:
@@ -23,6 +32,8 @@ services:
       - "${BROKER_PORT}:8080"
     env_file:
       - broker/.env.example
+    environment:
+      BUNSHIN_STACKS: "${BUNSHIN_STACKS}"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
       interval: 5s
@@ -78,6 +89,7 @@ services:
     environment:
       NGINX_URL: "http://nginx:8080"
       BROKER_URL: "http://broker:8080"
+      FORWARD_TARGET_URL: "http://forward-target:8080"
     depends_on:
       nginx:
         condition: service_started
@@ -87,6 +99,36 @@ services:
         condition: service_started
       runner-2:
         condition: service_started
+      forward-target:
+        condition: service_started
+    profiles:
+      - integration
+
+  forward-cert:
+    build:
+      context: integration/
+    command: ["go", "run", "./cmd/gen-forward-cert"]
+    volumes:
+      - forward-target-certs:/app/testdata
+    user: root
+
+  forward-target:
+    build:
+      context: integration/
+    command: ["go", "run", "./cmd/forward-target"]
+    volumes:
+      - forward-target-certs:/app/testdata:ro
+    environment:
+      FORWARD_TARGET_CERT_FILE: /app/testdata/forward-target.crt
+      FORWARD_TARGET_KEY_FILE: /app/testdata/forward-target.key
+    depends_on:
+      forward-cert:
+        condition: service_completed_successfully
+    user: root
+    networks:
+      default:
+        aliases:
+          - ap-northeast-3.internal.test
     profiles:
       - integration
 
@@ -108,3 +150,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 3
+
+volumes:
+  forward-target-certs:
