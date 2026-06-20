@@ -6,6 +6,11 @@ resource "aws_route53_zone" "internal" {
     vpc_region = data.aws_region.current.id
   }
 
+  vpc {
+    vpc_id     = var.peer_vpc.id
+    vpc_region = var.peer_vpc.region
+  }
+
   tags = merge(local.common_tags, {
     Service = "internal-alb"
   })
