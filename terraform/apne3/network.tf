@@ -73,11 +73,17 @@ resource "aws_route_table_association" "apne3_public" {
 }
 
 resource "aws_route_table" "apne3_private" {
+  # checkov:skip=CKV2_AWS_44:VPC peering route is limited to the peer VPC CIDR
   vpc_id = aws_vpc.apne3.id
 
   route {
     cidr_block     = "0.0.0.0/0"
     nat_gateway_id = aws_nat_gateway.apne3.id
+  }
+
+  route {
+    cidr_block                = var.peer_vpc.cidr
+    vpc_peering_connection_id = var.peer_vpc.peering_connection_id
   }
 
   tags = merge(local.common_tags, {
