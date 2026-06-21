@@ -25,7 +25,7 @@ if arrival then
         " target_host=", tostring(arrival.forward_host),
         " uri=", tostring(ngx.var.request_uri)
     )
-    return ngx.exec("@forward")
+    return ngx.exec("@forward_owner")
 end
 
 local res = ngx.location.capture("/_resolve")
@@ -59,7 +59,7 @@ if action.forward_host then
         " target_host=", tostring(action.forward_host),
         " uri=", tostring(ngx.var.request_uri)
     )
-    return ngx.exec("@forward")
+    return ngx.exec("@forward_fallback")
 end
 
 ngx.var.runner_url = action.runner_url
