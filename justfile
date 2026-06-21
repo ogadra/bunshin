@@ -16,6 +16,10 @@ plan env: (_validate-env env)
 apply env: (_validate-env env)
     terraform -chdir=terraform apply -var-file=environments/{{env}}.tfvars
 
+# Deploy services for the specified environment
+deploy env service="": (_validate-env env)
+    scripts/deploy.sh {{env}} {{service}}
+
 # Destroy resources for the specified environment
 destroy env: (_validate-env env)
     terraform -chdir=terraform destroy -var-file=environments/{{env}}.tfvars
