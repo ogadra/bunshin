@@ -18,7 +18,7 @@ if arrival then
         return ngx.exit(arrival.exit)
     end
     ngx.var.forward_host = arrival.forward_host
-    return ngx.exec("@forward")
+    return ngx.exec("@forward_owner")
 end
 
 local res = ngx.location.capture("/_resolve")
@@ -44,7 +44,7 @@ if action.forward_host then
     ngx.var.forward_host = action.forward_host
     ngx.var.fwd_fallback_stack = action.fallback_stack
     ngx.var.fwd_fallback_remaining = action.fallback_remaining
-    return ngx.exec("@forward")
+    return ngx.exec("@forward_fallback")
 end
 
 ngx.var.runner_url = action.runner_url
