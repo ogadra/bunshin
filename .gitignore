@@ -1,4 +1,6 @@
 runner/server
+front/node_modules/
+front/dist/
 .direnv/
 .codex
 __pycache__/

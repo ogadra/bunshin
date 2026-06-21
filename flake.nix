@@ -22,6 +22,8 @@
           go_1_26
           k6
           lefthook
+          nodejs_24
+          pnpm
           terraform
           tflint
           trivy
