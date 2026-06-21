@@ -1,0 +1,29 @@
+{
+  "name": "bunshin-front",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "build": "vp build",
+    "check": "vp check",
+    "test": "vp test",
+    "preview": "vp preview"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.3",
+    "vite": "npm:@voidzero-dev/vite-plus-core@0.1.13",
+    "vite-plugin-singlefile": "^2.0.3",
+    "vite-plus": "0.1.13",
+    "vitest": "^4.1.9"
+  },
+  "packageManager": "pnpm@10.33.2",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ],
+    "overrides": {
+      "vite": "npm:@voidzero-dev/vite-plus-core@0.1.13"
+    }
+  }
+}

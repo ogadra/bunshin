@@ -1,8 +1,11 @@
 runner/server
+front/node_modules/
+front/dist/
 .direnv/
 .codex
 __pycache__/
 .env
+!.env.example
 .takt/
 .terraform/
 terraform/*.tfstate
