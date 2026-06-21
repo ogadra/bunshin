@@ -33,9 +33,8 @@ wait_for_replication() {
 }
 
 main() {
-    local env_name="${1:?Usage: scripts/deploy/nginx.sh <env> <aws_account_id> <domain_name>}"
-    local aws_account_id="${2:?Usage: scripts/deploy/nginx.sh <env> <aws_account_id> <domain_name>}"
-    local domain_name="${3:?Usage: scripts/deploy/nginx.sh <env> <aws_account_id> <domain_name>}"
+    local env_name="${1:?Usage: scripts/deploy/nginx.sh <env> <aws_account_id>}"
+    local aws_account_id="${2:?Usage: scripts/deploy/nginx.sh <env> <aws_account_id>}"
     local image_tag
     local short_image_tag
     local registry="${aws_account_id}.dkr.ecr.${ECR_REGION}.amazonaws.com"
@@ -44,7 +43,7 @@ main() {
     image_tag="$(git -C "${ROOT_DIR}" rev-parse HEAD)"
     short_image_tag="$(git -C "${ROOT_DIR}" rev-parse --short=7 HEAD)"
 
-    echo "Deploying ${SERVICE} to ${env_name} (${domain_name})"
+    echo "Deploying ${SERVICE} to ${env_name}"
     docker buildx build \
         --platform linux/arm64 \
         --build-arg NGINX_RESOLVER=169.254.169.253 \

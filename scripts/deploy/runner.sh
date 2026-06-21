@@ -33,9 +33,8 @@ wait_for_replication() {
 }
 
 main() {
-    local env_name="${1:?Usage: scripts/deploy/runner.sh <env> <aws_account_id> <domain_name>}"
-    local aws_account_id="${2:?Usage: scripts/deploy/runner.sh <env> <aws_account_id> <domain_name>}"
-    local domain_name="${3:?Usage: scripts/deploy/runner.sh <env> <aws_account_id> <domain_name>}"
+    local env_name="${1:?Usage: scripts/deploy/runner.sh <env> <aws_account_id>}"
+    local aws_account_id="${2:?Usage: scripts/deploy/runner.sh <env> <aws_account_id>}"
     local image_tag
     local short_image_tag
     local image
@@ -51,7 +50,7 @@ main() {
         "${registry}/bunshin/${SERVICE}:latest"
     )
 
-    echo "Deploying ${SERVICE} to ${env_name} (${domain_name})"
+    echo "Deploying ${SERVICE} to ${env_name}"
     docker build \
         -t "${tags[0]}" \
         -t "${tags[1]}" \
