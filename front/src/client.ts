@@ -1,3 +1,5 @@
+import { SessionReassignedError } from "./errors/SessionReassignedError";
+
 export const SseEventType = {
   STDOUT: "stdout",
   STDERR: "stderr",
@@ -8,13 +10,6 @@ export type SseEvent =
   | { type: typeof SseEventType.STDOUT; data: string }
   | { type: typeof SseEventType.STDERR; data: string }
   | { type: typeof SseEventType.COMPLETE; exitCode: number };
-
-export class SessionReassignedError extends Error {
-  constructor() {
-    super("Session reassigned");
-    this.name = "SessionReassignedError";
-  }
-}
 
 export const createShell = async (signal?: AbortSignal): Promise<void> => {
   const res = await fetch("/api/shell", { method: "POST", signal });

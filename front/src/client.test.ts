@@ -1,5 +1,6 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { createShell, deleteShell, execute, SessionReassignedError, SseEventType } from "./client";
+import { createShell, deleteShell, execute, SseEventType } from "./client";
+import { SessionReassignedError } from "./errors/SessionReassignedError";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);

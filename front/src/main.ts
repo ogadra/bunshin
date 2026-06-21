@@ -1,4 +1,5 @@
-import { createShell, deleteShell, execute, SessionReassignedError, SseEventType } from "./client";
+import { createShell, deleteShell, execute, SseEventType } from "./client";
+import { SessionReassignedError } from "./errors/SessionReassignedError";
 import "./style.css";
 
 const status = document.getElementById("status")!;
