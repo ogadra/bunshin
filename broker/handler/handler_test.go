@@ -2,8 +2,10 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -203,6 +205,10 @@ func TestGetResolve_NoIdleRunner(t *testing.T) {
 }
 
 func noIdleResolve(fallback []string, reqHeaders map[string]string) *httptest.ResponseRecorder {
+	return noIdleResolveWithCookie(fallback, reqHeaders, "")
+}
+
+func noIdleResolveWithCookie(fallback []string, reqHeaders map[string]string, sessionID string) *httptest.ResponseRecorder {
 	h := NewHandler(&mockService{
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return nil, store.ErrNoIdleRunner
@@ -211,6 +217,9 @@ func noIdleResolve(fallback []string, reqHeaders map[string]string) *httptest.Re
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
 	for k, v := range reqHeaders {
 		req.Header.Set(k, v)
+	}
+	if sessionID != "" {
+		req.AddCookie(&http.Cookie{Name: "session_id", Value: sessionID})
 	}
 	rec := httptest.NewRecorder()
 	newTestRouter(h).ServeHTTP(rec, req)
@@ -635,5 +644,58 @@ func TestGetResolve_NotReassigned(t *testing.T) {
 	}
 	if got := rec.Header().Get("X-Runner-Url"); got != "http://10.0.0.1:8080" {
 		t.Errorf("X-Runner-Url = %q, want %q", got, "http://10.0.0.1:8080")
+	}
+}
+
+// log.SetOutput はパッケージ全体のグローバル状態を触るため、これを使うテストでは t.Parallel() を付けない。
+func captureStdLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	origOut, origFlags := log.Writer(), log.Flags()
+	log.SetOutput(&buf)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(origOut)
+		log.SetFlags(origFlags)
+	})
+	return &buf
+}
+
+// TestSignalFallback_LogsUnavailable は fallback pool 枯渇時に
+// fallback_signal unavailable ログが request_id と session_id 付きで出ることを検証する。
+func TestSignalFallback_LogsUnavailable(t *testing.T) {
+	buf := captureStdLog(t)
+	rec := noIdleResolveWithCookie([]string{}, nil, "sess-xyz")
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+	for _, want := range []string{
+		"fallback_signal unavailable",
+		"request_id=test-req-id",
+		"session_id=sess-xyz",
+	} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("log = %q, want substring %q", buf.String(), want)
+		}
+	}
+}
+
+// TestSignalFallback_LogsNextStack は fallback 転送発生時に
+// next_stack / remaining / request_id / session_id 付きのログが出ることを検証する。
+func TestSignalFallback_LogsNextStack(t *testing.T) {
+	buf := captureStdLog(t)
+	rec := noIdleResolveWithCookie([]string{"ap-northeast-3", "ap-northeast-2"}, nil, "sess-abc")
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+	for _, want := range []string{
+		"fallback_signal next_stack=ap-northeast-3",
+		"remaining=ap-northeast-2",
+		"request_id=test-req-id",
+		"session_id=sess-abc",
+	} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("log = %q, want substring %q", buf.String(), want)
+		}
 	}
 }

@@ -3,6 +3,7 @@ package handler
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -93,12 +94,31 @@ func (h *Handler) signalFallback(c *gin.Context) {
 		pool = splitStacks(c.GetHeader(fallbackRemainingHeader))
 	}
 	if len(pool) == 0 {
+		log.Printf("fallback_signal unavailable request_id=%s session_id=%s", requestID(c), sessionCookie(c))
 		return
 	}
 	c.Header(fallbackStackHeader, pool[0])
 	if len(pool) > 1 {
 		c.Header(fallbackRemainingHeader, strings.Join(pool[1:], ","))
 	}
+	log.Printf(
+		"fallback_signal next_stack=%s remaining=%s request_id=%s session_id=%s",
+		pool[0],
+		strings.Join(pool[1:], ","),
+		requestID(c),
+		sessionCookie(c),
+	)
+}
+
+func requestID(c *gin.Context) string {
+	reqID, _ := c.Get(requestIDKey)
+	rid, _ := reqID.(string)
+	return rid
+}
+
+func sessionCookie(c *gin.Context) string {
+	sessionID, _ := c.Cookie(sessionIDCookie)
+	return sessionID
 }
 
 func splitStacks(raw string) []string {
