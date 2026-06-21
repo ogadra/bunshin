@@ -58,7 +58,7 @@ var shellMetaChars = regexp.MustCompile(`[;|&<>\t\n\r` + "`" + `]|\$\(`)
 //   - prefix matches in whitelistedPrefixCommands (bare or with args, no shell metacharacters),
 //   - "nix run nixpkgs#..." invocations without shell metacharacters.
 //
-// Otherwise it returns "validated".
+// Otherwise it returns "unclassified".
 func classifyCommand(cmd string) string {
 	trimmed := strings.TrimSpace(cmd)
 	if whitelistedExactCommands[trimmed] {
@@ -74,5 +74,5 @@ func classifyCommand(cmd string) string {
 			return "whitelisted"
 		}
 	}
-	return "validated"
+	return "unclassified"
 }

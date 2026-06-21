@@ -483,6 +483,44 @@ func TestExecuteWhitelistedWithExecError(t *testing.T) {
 	}
 }
 
+// TestExecuteNonWhitelistedAuditLog verifies that executing a non-whitelisted
+// command logs the "unclassified" class and the command string to the audit log.
+func TestExecuteNonWhitelistedAuditLog(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+
+	sm := NewShellManager()
+	defer sm.CloseAll()
+	sm.newShell = func() (Shell, error) {
+		return &mockShell{exitCode: 0}, nil
+	}
+	handler := newHandler(sm)
+
+	id, _, err := sm.Create()
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+
+	body := strings.NewReader(`{"command":"curl https://example.com"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	logOutput := buf.String()
+	if !strings.Contains(logOutput, "class=unclassified") {
+		t.Fatalf("expected audit log to contain class=unclassified, got:\n%s", logOutput)
+	}
+	if !strings.Contains(logOutput, `command="curl https://example.com"`) {
+		t.Fatalf("expected audit log to contain the command, got:\n%s", logOutput)
+	}
+}
+
 // TestExecuteNonWhitelistedSSE verifies that a non-whitelisted command
 // executes and returns SSE events.
 func TestExecuteNonWhitelistedSSE(t *testing.T) {
