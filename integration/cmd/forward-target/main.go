@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -18,8 +19,9 @@ type recordedRequest struct {
 }
 
 type recorder struct {
-	mu  sync.Mutex
-	req *recordedRequest
+	mu     sync.Mutex
+	req    *recordedRequest
+	status int
 }
 
 func requireEnv(name string) string {
@@ -45,8 +47,32 @@ func (r *recorder) set(req *http.Request, body string) {
 func (r *recorder) reset(w http.ResponseWriter, _ *http.Request) {
 	r.mu.Lock()
 	r.req = nil
+	r.status = http.StatusNoContent
 	r.mu.Unlock()
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (r *recorder) setStatus(w http.ResponseWriter, req *http.Request) {
+	code := req.URL.Query().Get("code")
+	if code == "" {
+		http.Error(w, "missing code", http.StatusBadRequest)
+		return
+	}
+	var status int
+	if _, err := fmt.Sscanf(code, "%d", &status); err != nil || status < 100 || status > 599 {
+		http.Error(w, "invalid code", http.StatusBadRequest)
+		return
+	}
+	r.mu.Lock()
+	r.status = status
+	r.mu.Unlock()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (r *recorder) responseStatus() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.status
 }
 
 func (r *recorder) last(w http.ResponseWriter, _ *http.Request) {
@@ -64,13 +90,14 @@ func (r *recorder) last(w http.ResponseWriter, _ *http.Request) {
 }
 
 func main() {
-	rec := &recorder{}
+	rec := &recorder{status: http.StatusNoContent}
 
 	control := http.NewServeMux()
 	control.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 	control.HandleFunc("/__reset", rec.reset)
+	control.HandleFunc("/__status", rec.setStatus)
 	control.HandleFunc("/__last", rec.last)
 	go func() {
 		if err := http.ListenAndServe(":8080", control); err != nil {
@@ -88,7 +115,7 @@ func main() {
 			return
 		}
 		rec.set(req, string(body))
-		w.WriteHeader(http.StatusNoContent)
+		w.WriteHeader(rec.responseStatus())
 	})
 	srv := &http.Server{
 		Addr:    ":443",
