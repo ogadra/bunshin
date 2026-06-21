@@ -40,6 +40,7 @@ OUTPUT_FILE = str(Path(__file__).with_name("bunshin_architecture"))
 def region_stack(name: str, cidr: str, azs: str) -> dict[str, object]:
     with Cluster(name, graph_attr={**CLUSTER_FONT, "margin": "20"}):
         static = S3("S3 Static Assets")
+        ddb = Dynamodb("DynamoDB\nbunshin-runners")
 
         with Cluster(f"VPC {cidr}", graph_attr={**CLUSTER_FONT, "margin": "16"}):
             with Cluster(f"Private Subnets ({azs})", graph_attr={**CLUSTER_FONT, "margin": "20"}):
@@ -52,9 +53,7 @@ def region_stack(name: str, cidr: str, azs: str) -> dict[str, object]:
                     runner = ECS("Runner\nFargate / x86_64")
                     broker = ECS("Broker\n1 task / ARM64")
 
-                cloudmap = Route53("Cloud Map\nbroker.internal")
-                ddb = Dynamodb("DynamoDB\nbunshin-runners")
-                vpce_gateway = Endpoint("Gateway VPCE\nS3 / DynamoDB")
+                vpce_gateway = Endpoint("Gateway VPCE\nDynamoDB")
                 vpce_interface = Endpoint("Interface VPCE\nECR / Logs")
 
                 api_alb >> nginx
@@ -63,12 +62,12 @@ def region_stack(name: str, cidr: str, azs: str) -> dict[str, object]:
                 nginx >> Edge(label="proxy") >> runner
                 nginx >> Edge(label="auth_request") >> broker
                 runner >> Edge(label="register") >> broker
-                broker >> ddb
-                broker >> cloudmap
                 vpce_gateway >> Edge(style="invis") >> vpce_interface
                 vpce_interface >> Edge(style="invis") >> api_alb
                 api_alb >> Edge(style="invis") >> internal_alb
                 internal_alb >> Edge(style="invis") >> nginx
+
+        broker >> ddb
 
     return {
         "api_alb": api_alb,
