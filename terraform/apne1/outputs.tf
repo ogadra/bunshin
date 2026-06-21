@@ -33,11 +33,6 @@ output "api_ingress_alb_arn" {
   value       = aws_lb.api_ingress.arn
 }
 
-output "internal_route53_zone_id" {
-  description = "ID of the internal Route 53 private hosted zone"
-  value       = aws_route53_zone.internal.zone_id
-}
-
 output "internal_alb_security_group_id" {
   description = "ID of the internal ALB security group"
   value       = aws_security_group.internal_alb.id
