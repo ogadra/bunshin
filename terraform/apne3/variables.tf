@@ -36,6 +36,16 @@ variable "bunshin_stacks" {
   }
 }
 
+variable "peer_vpc" {
+  description = "Peer VPC for cross-region routing and internal DNS resolution"
+  type = object({
+    id                    = string
+    region                = string
+    cidr                  = string
+    peering_connection_id = string
+  })
+}
+
 variable "runner_desired_count" {
   description = "Desired number of runner ECS tasks"
   type        = number
