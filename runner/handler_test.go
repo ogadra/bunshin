@@ -9,7 +9,6 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 )
@@ -487,8 +486,9 @@ func TestExecuteWhitelistedWithExecError(t *testing.T) {
 // command logs the "unclassified" class and the command string to the audit log.
 func TestExecuteNonWhitelistedAuditLog(t *testing.T) {
 	var buf bytes.Buffer
+	oldOutput := log.Writer()
 	log.SetOutput(&buf)
-	defer log.SetOutput(os.Stderr)
+	t.Cleanup(func() { log.SetOutput(oldOutput) })
 
 	sm := NewShellManager()
 	defer sm.CloseAll()
@@ -575,8 +575,9 @@ func TestHealth(t *testing.T) {
 // in audit logs to support client identification behind MAP-E or DS-Lite.
 func TestExecuteCloudFrontViewerAddress(t *testing.T) {
 	var buf bytes.Buffer
+	oldOutput := log.Writer()
 	log.SetOutput(&buf)
-	defer log.SetOutput(os.Stderr)
+	t.Cleanup(func() { log.SetOutput(oldOutput) })
 
 	sm := NewShellManager()
 	defer sm.CloseAll()
@@ -611,8 +612,9 @@ func TestExecuteCloudFrontViewerAddress(t *testing.T) {
 // header is absent, handleExecute falls back to c.ClientIP for the remote field.
 func TestExecuteFallbackClientIP(t *testing.T) {
 	var buf bytes.Buffer
+	oldOutput := log.Writer()
 	log.SetOutput(&buf)
-	defer log.SetOutput(os.Stderr)
+	t.Cleanup(func() { log.SetOutput(oldOutput) })
 
 	sm := NewShellManager()
 	defer sm.CloseAll()
