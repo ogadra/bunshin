@@ -1,6 +1,7 @@
 runner/server
 front/node_modules/
 front/dist/
+docs/.venv/
 .direnv/
 .codex
 __pycache__/
