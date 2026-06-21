@@ -222,7 +222,6 @@ resource "aws_ecs_service" "runner" {
   depends_on = [
     aws_iam_role_policy.execution_ecr["runner"],
     aws_iam_role_policy.execution_logs["runner"],
-    aws_iam_role_policy.runner_bedrock,
   ]
 
   network_configuration {

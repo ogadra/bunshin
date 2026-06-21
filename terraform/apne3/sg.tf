@@ -265,17 +265,6 @@ resource "aws_security_group_rule" "runner_egress_broker" {
   description              = "HTTP to broker"
 }
 
-resource "aws_security_group_rule" "runner_egress_bedrock" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  type                     = "egress"
-  from_port                = 443
-  to_port                  = 443
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.bedrock_endpoint.id
-  security_group_id        = aws_security_group.runner.id
-  description              = "HTTPS to Bedrock Runtime VPC endpoint"
-}
-
 # trivy:ignore:AVD-AWS-0104 -- runner requires outbound internet access
 resource "aws_security_group_rule" "runner_egress_https" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
