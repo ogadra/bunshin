@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 SERVICES=(broker nginx runner front)
-REGIONS=(ap-northeast-1 ap-northeast-3)
+ECR_REGION="ap-northeast-1"
 
 die() {
     echo "Error: $*" >&2
@@ -69,14 +69,10 @@ run_service() {
 login_ecr() {
     local env_name="${1:?}"
     local aws_account_id="${2:?}"
-    local region
-    local registry
+    local registry="${aws_account_id}.dkr.ecr.${ECR_REGION}.amazonaws.com"
 
-    for region in "${REGIONS[@]}"; do
-        registry="${aws_account_id}.dkr.ecr.${region}.amazonaws.com"
-        aws --profile "${env_name}" --region "${region}" ecr get-login-password \
-            | docker login --username AWS --password-stdin "${registry}"
-    done
+    aws --profile "${env_name}" --region "${ECR_REGION}" ecr get-login-password \
+        | docker login --username AWS --password-stdin "${registry}"
 }
 
 main() {
