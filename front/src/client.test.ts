@@ -89,6 +89,40 @@ describe("execute", () => {
     await expect(gen.next()).rejects.toThrow("No response body");
   });
 
+  test("parses data: without trailing space", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      ...sseBody([
+        'data:{"type":"stdout","data":"no-space"}',
+        'data: {"type":"stdout","data":"with-space"}',
+      ]),
+    });
+
+    const events = [];
+    for await (const event of execute("test")) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      { type: SseEventType.STDOUT, data: "no-space" },
+      { type: SseEventType.STDOUT, data: "with-space" },
+    ]);
+  });
+
+  test("skips empty data: lines", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      ...sseBody(["data:", 'data: {"type":"stdout","data":"ok"}']),
+    });
+
+    const events = [];
+    for await (const event of execute("test")) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([{ type: SseEventType.STDOUT, data: "ok" }]);
+  });
+
   test("skips non-data lines", async () => {
     mockFetch.mockResolvedValue({
       ok: true,

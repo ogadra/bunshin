@@ -53,7 +53,8 @@ void attempt(1000);
 
 window.addEventListener("beforeunload", () => {
   ac.abort();
-  if (ready) deleteShell();
+  execAbort?.abort();
+  deleteShell();
 });
 
 let execAbort: AbortController | null = null;

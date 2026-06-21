@@ -9,7 +9,13 @@
     <div id="status" class="status">Connecting...</div>
     <pre id="output" class="output"></pre>
     <form id="input-bar" class="input-bar">
-      <input type="text" id="command" placeholder="Enter command..." disabled />
+      <input
+        type="text"
+        id="command"
+        placeholder="Enter command..."
+        aria-label="Command"
+        disabled
+      />
       <button type="submit" disabled>Run</button>
     </form>
     <script type="module" src="/src/main.ts"></script>

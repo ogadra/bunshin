@@ -45,8 +45,10 @@ export async function* execute(command: string, signal?: AbortSignal): AsyncGene
       if (!done) chunks.push(lines.pop()!);
 
       for (const line of lines) {
-        if (!line.startsWith("data: ")) continue;
-        yield JSON.parse(line.slice(6)) as SseEvent;
+        if (!line.startsWith("data:")) continue;
+        const payload = line.slice(5).trimStart();
+        if (!payload) continue;
+        yield JSON.parse(payload) as SseEvent;
       }
 
       if (done) {

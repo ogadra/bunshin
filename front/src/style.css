@@ -48,7 +48,6 @@ body {
   color: #d4d4d4;
   font-family: monospace;
   font-size: inherit;
-  outline: none;
 }
 
 .input-bar button {
@@ -58,6 +57,12 @@ body {
   color: #fff;
   font-family: monospace;
   cursor: pointer;
+}
+
+.input-bar input:focus-visible,
+.input-bar button:focus-visible {
+  outline: 2px solid #4fc3f7;
+  outline-offset: -2px;
 }
 
 .input-bar button:disabled {
