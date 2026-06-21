@@ -11,9 +11,9 @@ import (
 	"log"
 	mrand "math/rand/v2"
 
-	"github.com/ogadra/20260327-cli-demo/broker/healthcheck"
-	"github.com/ogadra/20260327-cli-demo/broker/model"
-	"github.com/ogadra/20260327-cli-demo/broker/store"
+	"github.com/ogadra/bunshin/broker/healthcheck"
+	"github.com/ogadra/bunshin/broker/model"
+	"github.com/ogadra/bunshin/broker/store"
 )
 
 // randReader はセッション ID 生成に使う暗号学的乱数ソース。テスト時に差し替える。

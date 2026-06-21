@@ -6,8 +6,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ogadra/20260327-cli-demo/broker/model"
-	"github.com/ogadra/20260327-cli-demo/broker/store"
+	"github.com/ogadra/bunshin/broker/model"
+	"github.com/ogadra/bunshin/broker/store"
 )
 
 // errorReader は常にエラーを返す io.Reader。

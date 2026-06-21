@@ -11,7 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/ogadra/20260327-cli-demo/broker/model"
+	"github.com/ogadra/bunshin/broker/model"
 )
 
 // bucketCount は IdleBucket のバケット数。

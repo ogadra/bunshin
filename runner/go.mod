@@ -1,4 +1,4 @@
-module github.com/ogadra/20260327-cli-demo/runner
+module github.com/ogadra/bunshin/runner
 
 go 1.26.1
 

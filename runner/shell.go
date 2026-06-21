@@ -154,7 +154,7 @@ func newBashShellFromCommander(cmd commander) (*bashShell, error) {
 
 	scanner := bufio.NewScanner(stdoutPipe)
 	// TODO: Replace bufio.Scanner with a delimiter-based reader to remove the
-	// per-line size cap entirely. See https://github.com/ogadra/20260327-cli-demo/issues/2
+	// per-line size cap entirely. See https://github.com/ogadra/bunshin/issues/2
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // up to 1 MiB per line
 
 	s := &bashShell{
