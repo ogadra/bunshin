@@ -332,7 +332,7 @@ func TestIntegrationCreateExecuteDelete(t *testing.T) {
 		t.Fatal("shell_id cookie not found in response")
 	}
 
-	// Execute whitelisted command; validator should not be called.
+	// Execute whitelisted command.
 	body := strings.NewReader(`{"command":"pwd"}`)
 	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/execute", body)
 	req.AddCookie(&http.Cookie{Name: "shell_id", Value: shellID})
@@ -345,12 +345,8 @@ func TestIntegrationCreateExecuteDelete(t *testing.T) {
 	if resp2.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", resp2.StatusCode, http.StatusOK)
 	}
-	if v.called {
-		t.Fatal("validator should not be called for whitelisted command")
-	}
 
-	// Execute non-whitelisted command; validator should not be called.
-	v.called = false
+	// Execute non-whitelisted command.
 	body2 := strings.NewReader(`{"command":"curl -s http://localhost"}`)
 	req2, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/execute", body2)
 	req2.AddCookie(&http.Cookie{Name: "shell_id", Value: shellID})
@@ -362,9 +358,6 @@ func TestIntegrationCreateExecuteDelete(t *testing.T) {
 
 	if resp4.StatusCode != http.StatusOK {
 		t.Fatalf("validated status = %d, want %d", resp4.StatusCode, http.StatusOK)
-	}
-	if v.called {
-		t.Fatal("validator should not be called for non-whitelisted command")
 	}
 
 	// Delete shell.

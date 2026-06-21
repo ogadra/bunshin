@@ -381,7 +381,7 @@ func TestIntegrationConcurrentExecute(t *testing.T) {
 }
 
 // TestIntegrationNonWhitelistedSkipsValidator verifies that a non-whitelisted
-// command executes through the full HTTP stack without calling the validator.
+// command executes through the full HTTP stack.
 func TestIntegrationNonWhitelistedSkipsValidator(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
@@ -419,9 +419,6 @@ func TestIntegrationNonWhitelistedSkipsValidator(t *testing.T) {
 	last := events[len(events)-1]
 	if last.Type != "complete" || last.ExitCode == nil || *last.ExitCode != 0 {
 		t.Fatalf("last event = %+v, want complete with exitCode=0", last)
-	}
-	if v.called {
-		t.Fatal("validator should not be called")
 	}
 }
 

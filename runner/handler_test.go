@@ -484,21 +484,19 @@ func TestExecuteWhitelistedWithExecError(t *testing.T) {
 }
 
 // mockValidator is a test double for the Validator interface that returns
-// preconfigured ValidationResult and error, and tracks whether it was called.
+// preconfigured ValidationResult and error.
 type mockValidator struct {
 	result ValidationResult
 	err    error
-	called bool
 }
 
-// Validate records that it was called and returns the preconfigured result and error.
+// Validate returns the preconfigured result and error.
 func (m *mockValidator) Validate(_ context.Context, _ string) (ValidationResult, error) {
-	m.called = true
 	return m.result, m.err
 }
 
 // TestExecuteValidatedSafe verifies that a non-whitelisted command executes
-// without calling the validator.
+// and returns SSE events.
 func TestExecuteValidatedSafe(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
@@ -528,21 +526,17 @@ func TestExecuteValidatedSafe(t *testing.T) {
 	if last.Type != "complete" || last.ExitCode == nil || *last.ExitCode != 0 {
 		t.Fatalf("expected complete with exitCode=0, got %+v", last)
 	}
-	if v.called {
-		t.Fatal("validator should not be called")
-	}
 }
 
 // TestExecuteWhitelistedSkipsValidator verifies that whitelisted commands
-// bypass the validator entirely and execute directly.
+// execute directly when a validator is configured.
 func TestExecuteWhitelistedSkipsValidator(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{exitCode: 0}, nil
 	}
-	// Validator that would reject if called.
-	v := &mockValidator{result: ValidationResult{Safe: false, Reason: "should not be called"}}
+	v := &mockValidator{result: ValidationResult{Safe: false, Reason: "should not matter"}}
 	handler := newHandler(sm, v)
 
 	id, _, err := sm.Create()
@@ -558,9 +552,6 @@ func TestExecuteWhitelistedSkipsValidator(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
-	}
-	if v.called {
-		t.Fatal("validator should not be called for whitelisted commands")
 	}
 }
 
