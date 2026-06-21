@@ -1,4 +1,5 @@
 import { createShell, deleteShell, execute, SseEventType } from "./client";
+import { SessionReassignedError } from "./errors/SessionReassignedError";
 import "./style.css";
 
 const status = document.getElementById("status")!;
@@ -85,6 +86,16 @@ const run = async () => {
     }
   } catch (err) {
     if (controller.signal.aborted) return;
+    if (err instanceof SessionReassignedError) {
+      try {
+        await createShell(controller.signal);
+        append("Session recreated. Run the command again.\n", "error");
+      } catch (createErr) {
+        const msg = createErr instanceof Error ? createErr.message : "Unknown error";
+        append(`Error: ${msg}\n`, "error");
+      }
+      return;
+    }
     const msg = err instanceof Error ? err.message : "Unknown error";
     append(`Error: ${msg}\n`, "error");
   } finally {

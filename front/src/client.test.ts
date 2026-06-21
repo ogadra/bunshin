@@ -1,5 +1,6 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { createShell, deleteShell, execute, SseEventType } from "./client";
+import { SessionReassignedError } from "./errors/SessionReassignedError";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -10,10 +11,15 @@ beforeEach(() => {
 
 const textEncoder = new TextEncoder();
 
+const responseHeaders = (values: Record<string, string> = {}) => ({
+  get: (name: string) => values[name] ?? null,
+});
+
 const sseBody = (lines: string[]) => {
   const encoded = textEncoder.encode(lines.join("\n") + "\n");
   let read = false;
   return {
+    headers: responseHeaders(),
     body: {
       getReader: () => ({
         read: async () => {
@@ -78,13 +84,23 @@ describe("execute", () => {
   });
 
   test("throws on non-ok response", async () => {
-    mockFetch.mockResolvedValue({ ok: false, status: 403 });
+    mockFetch.mockResolvedValue({ ok: false, status: 403, headers: responseHeaders() });
     const gen = execute("ls");
     await expect(gen.next()).rejects.toThrow("Failed to execute: 403");
   });
 
+  test("throws reassigned error when response has reassigned header", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 400,
+      headers: responseHeaders({ "X-Session-Reassigned": "true" }),
+    });
+    const gen = execute("ls");
+    await expect(gen.next()).rejects.toBeInstanceOf(SessionReassignedError);
+  });
+
   test("throws on missing body", async () => {
-    mockFetch.mockResolvedValue({ ok: true, body: null });
+    mockFetch.mockResolvedValue({ ok: true, headers: responseHeaders(), body: null });
     const gen = execute("ls");
     await expect(gen.next()).rejects.toThrow("No response body");
   });
@@ -144,6 +160,7 @@ describe("execute", () => {
     );
     mockFetch.mockResolvedValue({
       ok: true,
+      headers: responseHeaders(),
       body: {
         getReader: () => ({
           read: async () => ({ done: false, value: encoded }),

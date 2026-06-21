@@ -18,14 +18,17 @@ if arrival then
         return ngx.exit(arrival.exit)
     end
     ngx.var.forward_host = arrival.forward_host
+    ngx.var.fwd_fallback_stack = arrival.owner_stack
+    ngx.var.fwd_fallback_remaining = core.fallback_remaining_excluding(arrival.owner_stack)
     ngx.log(
         ngx.WARN,
         "cross_stack_forward reason=session_owner",
         " owner_stack=", tostring(arrival.owner_stack),
+        " fallback_remaining=", tostring(ngx.var.fwd_fallback_remaining or ""),
         " target_host=", tostring(arrival.forward_host),
         " uri=", tostring(ngx.var.request_uri)
     )
-    return ngx.exec("@forward")
+    return ngx.exec("@forward_owner")
 end
 
 local res = ngx.location.capture("/_resolve")
@@ -59,7 +62,7 @@ if action.forward_host then
         " target_host=", tostring(action.forward_host),
         " uri=", tostring(ngx.var.request_uri)
     )
-    return ngx.exec("@forward")
+    return ngx.exec("@forward_fallback")
 end
 
 ngx.var.runner_url = action.runner_url

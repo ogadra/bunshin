@@ -1,3 +1,5 @@
+import { SessionReassignedError } from "./errors/SessionReassignedError";
+
 export const SseEventType = {
   STDOUT: "stdout",
   STDERR: "stderr",
@@ -27,6 +29,9 @@ export async function* execute(command: string, signal?: AbortSignal): AsyncGene
     body: JSON.stringify({ command }),
     signal,
   });
+  if (res.headers.get("X-Session-Reassigned") === "true") {
+    throw new SessionReassignedError();
+  }
   if (!res.ok) throw new Error(`Failed to execute: ${res.status}`);
   if (!res.body) throw new Error("No response body");
 

@@ -75,6 +75,13 @@ check("configure rejects missing stacks", not pcall(core.configure, "ap-northeas
 check("configure rejects empty stacks", not pcall(core.configure, "ap-northeast-1", "example.com", ""))
 check("configure rejects own stack outside allowlist", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-3"))
 
+core.configure("ap-northeast-1", "example.com", "ap-northeast-1,ap-northeast-2,ap-northeast-3")
+check("fallback excludes attempted owner", core.fallback_remaining_excluding("ap-northeast-2") == "ap-northeast-3")
+core.configure("ap-northeast-1", "example.com", "ap-northeast-1,ap-northeast-3,ap-northeast-2,ap-northeast-4")
+check("fallback keeps configured order", core.fallback_remaining_excluding("ap-northeast-2") == "ap-northeast-3,ap-northeast-4")
+core.configure("ap-northeast-1", "example.com", "ap-northeast-1,ap-northeast-3")
+check("fallback returns nil when no candidate remains", core.fallback_remaining_excluding("ap-northeast-3") == nil)
+
 -- decide_arrival: cookie 無 / 自stack宛 はローカル解決
 check("arrival nil without cookie", core.decide_arrival(nil, "ap-northeast-1", STACKS, "example.com") == nil)
 check("arrival nil for own stack", core.decide_arrival("ap-northeast-1_x", "ap-northeast-1", STACKS, "example.com") == nil)
@@ -82,8 +89,8 @@ check("arrival nil for own stack", core.decide_arrival("ap-northeast-1_x", "ap-n
 -- decide_arrival: 別stack宛は所属stackの内部ALBへ転送
 r = core.decide_arrival("ap-northeast-3_deadbeef", "ap-northeast-1", STACKS, "example.com")
 check("arrival forwards foreign stack host", r.forward_host == "ap-northeast-3.example.com")
-check("arrival forwards foreign stack no exit", r.exit == nil)
 check("arrival forwards foreign stack owner", r.owner_stack == "ap-northeast-3")
+check("arrival forwards foreign stack no exit", r.exit == nil)
 
 -- decide_arrival: allowlist 外の prefix は 500 で遮断
 r = core.decide_arrival("evilhost_x", "ap-northeast-1", STACKS, "example.com")
