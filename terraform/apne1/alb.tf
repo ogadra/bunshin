@@ -56,11 +56,12 @@ resource "aws_lb" "api_ingress" {
   # checkov:skip=CKV2_AWS_20:CloudFront reaches this ALB through VPC origins over private networking
   drop_invalid_header_fields = true
   # checkov:skip=CKV_AWS_150:Deletion protection is not needed for initial deployment
-  name               = "bunshin-api-ingress"
-  internal           = true
-  load_balancer_type = "application"
-  security_groups    = [aws_security_group.api_ingress_alb.id]
-  subnets            = local.ecs_subnet_ids
+  name                   = "bunshin-api-ingress"
+  internal               = true
+  load_balancer_type     = "application"
+  enable_xff_client_port = true
+  security_groups        = [aws_security_group.api_ingress_alb.id]
+  subnets                = local.ecs_subnet_ids
 
   tags = merge(local.common_tags, {
     Service = "api-ingress-alb"

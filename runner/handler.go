@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/netip"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -21,8 +23,14 @@ type Shell interface {
 // shellIDCookie is the cookie name used to pass the shell ID.
 const shellIDCookie = "shell_id"
 
+const clientAddressHeader = "X-Bunshin-Client-Address"
+
 // errMissingShellCookie is the error message returned when the shell_id cookie is absent.
 const errMissingShellCookie = "missing shell_id cookie"
+
+const errMissingClientAddressHeader = "missing X-Bunshin-Client-Address header"
+
+const errInvalidClientAddressHeader = "invalid X-Bunshin-Client-Address header"
 
 // executeRequest is the JSON body for POST /api/execute.
 type executeRequest struct {
@@ -125,7 +133,11 @@ func handleExecute(sm *ShellManager) gin.HandlerFunc {
 		}
 
 		class := classifyCommand(req.Command)
-		remote := clientIP(c)
+		remote, err := clientAddress(c)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
+			return
+		}
 		auditLog(id, remote, class, req.Command, nil, nil)
 
 		c.Header("Content-Type", "text/event-stream")
@@ -160,14 +172,14 @@ func handleExecute(sm *ShellManager) gin.HandlerFunc {
 // auditLog writes a structured audit log line.
 // exitCode and err are optional and only appended when non-nil.
 func auditLog(shell, remote, class, command string, exitCode *int, err error) {
-	msg := fmt.Sprintf("[AUDIT] shell=%s remote=%s class=%s command=%q", shell, remote, class, command)
+	msg := fmt.Sprintf("%s [AUDIT] shell=%s remote=%s class=%s command=%q", time.Now().Format("2006/01/02 15:04:05.000"), shell, remote, class, command)
 	if exitCode != nil {
 		msg += fmt.Sprintf(" exitCode=%d", *exitCode)
 	}
 	if err != nil {
 		msg += fmt.Sprintf(" error=%v", err)
 	}
-	log.Print(msg)
+	log.New(log.Writer(), "", 0).Print(msg)
 }
 
 // writeSSE marshals an sseEvent to JSON and writes it as a Server-Sent Event line.
@@ -177,16 +189,14 @@ func writeSSE(w http.ResponseWriter, event sseEvent) {
 	fmt.Fprintf(w, "data: %s\n\n", data)
 }
 
-// clientIP extracts the client address from the request.
-// It prefers the CloudFront-Viewer-Address header set by CloudFront,
-// which contains the viewer IP and source port in ip:port format.
-// The source port is preserved because it helps identify clients
-// behind MAP-E or DS-Lite where multiple households share a single
-// global IP and are distinguished by port ranges.
-// If the header is absent, it falls back to Gin's c.ClientIP.
-func clientIP(c *gin.Context) string {
-	if addr := c.GetHeader("CloudFront-Viewer-Address"); addr != "" {
-		return addr
+func clientAddress(c *gin.Context) (string, error) {
+	value := c.GetHeader(clientAddressHeader)
+	if value == "" {
+		return "", errors.New(errMissingClientAddressHeader)
 	}
-	return c.ClientIP()
+	addr, err := netip.ParseAddrPort(value)
+	if err != nil || addr.Port() == 0 {
+		return "", errors.New(errInvalidClientAddressHeader)
+	}
+	return addr.String(), nil
 }
