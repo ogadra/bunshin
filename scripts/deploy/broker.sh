@@ -64,6 +64,9 @@ main() {
     local registry="${aws_account_id}.dkr.ecr.${ECR_REGION}.amazonaws.com"
     local digest
     local region
+    local pids=()
+    local pid
+    local exit_code=0
 
     image_tag="$(git -C "${ROOT_DIR}" rev-parse HEAD)"
     short_image_tag="$(git -C "${ROOT_DIR}" rev-parse --short=7 HEAD)"
@@ -84,8 +87,15 @@ main() {
     wait_for_replication "${env_name}" "${digest}"
 
     for region in "${ECS_REGIONS[@]}"; do
-        deploy_to_region "${env_name}" "${region}" "${aws_account_id}" "${digest}"
+        deploy_to_region "${env_name}" "${region}" "${aws_account_id}" "${digest}" &
+        pids+=("$!")
     done
+    for pid in "${pids[@]}"; do
+        if ! wait "${pid}"; then
+            exit_code=1
+        fi
+    done
+    return "${exit_code}"
 }
 
 main "$@"
