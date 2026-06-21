@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/netip"
 	"os"
 	"strings"
 	"testing"
@@ -272,6 +273,10 @@ func doRequestWithHeaders(t *testing.T, method, url, bodyStr, cookie string, hea
 		req.Header.Set("Cookie", cookie)
 	}
 	for k, v := range headers {
+		if strings.EqualFold(k, "Host") {
+			req.Host = v
+			continue
+		}
 		req.Header.Set(k, v)
 	}
 	resp, err := httpClient.Do(req)
@@ -326,6 +331,20 @@ func lastForwardedRequest(t *testing.T) forwardedRequest {
 	}
 	t.Fatal("forward target did not receive a request")
 	return forwardedRequest{}
+}
+
+func assertForwardedClientAddress(t *testing.T, got forwardedRequest, want string) {
+	t.Helper()
+	values := got.Header["X-Bunshin-Client-Address"]
+	if len(values) != 1 {
+		t.Fatalf("X-Bunshin-Client-Address = %q, want exactly one value", values)
+	}
+	if _, err := netip.ParseAddrPort(values[0]); err != nil {
+		t.Fatalf("X-Bunshin-Client-Address = %q, want ip:port: %v", values[0], err)
+	}
+	if values[0] != want {
+		t.Fatalf("X-Bunshin-Client-Address = %q, want %q", values[0], want)
+	}
 }
 
 // executeCommand は POST /api/execute を呼び出し SSE イベントをパースして返す。
@@ -414,8 +433,12 @@ func TestForeignSessionForward(t *testing.T) {
 	resetForwardTarget(t)
 
 	headers := map[string]string{
-		"X-Fallback-Stack":     "client-stack",
-		"X-Fallback-Remaining": "client-remaining",
+		"CloudFront-Viewer-Address": "203.0.113.10:45678",
+		"X-Bunshin-Client-Address":  "198.51.100.10:11111",
+		"X-Fallback-Stack":          "client-stack",
+		"X-Fallback-Remaining":      "client-remaining",
+		"X-Forwarded-For":           "198.51.100.20",
+		"X-Forwarded-Port":          "22222",
 	}
 	resp := doRequestWithHeaders(
 		t,
@@ -446,6 +469,35 @@ func TestForeignSessionForward(t *testing.T) {
 	if values := got.Header["X-Fallback-Remaining"]; len(values) > 0 {
 		t.Errorf("X-Fallback-Remaining should be stripped, got %q", values)
 	}
+	assertForwardedClientAddress(t, got, "203.0.113.10:45678")
+}
+
+func TestForeignSessionForwardRelaysInternalClientAddress(t *testing.T) {
+	resetForwardTarget(t)
+
+	headers := map[string]string{
+		"Host":                      "ap-northeast-1.internal.test",
+		"CloudFront-Viewer-Address": "203.0.113.70:45678",
+		"X-Bunshin-Client-Address":  "198.51.100.70:11111",
+	}
+	resp := doRequestWithHeaders(
+		t,
+		http.MethodPost,
+		nginxBase+"/api/execute",
+		`{"command":"pwd"}`,
+		"session_id=ap-northeast-3_deadbeef; shell_id=shell-x",
+		headers,
+	)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("POST /api/execute internal foreign session: want 204 from forward target, got %d", resp.StatusCode)
+	}
+
+	got := lastForwardedRequest(t)
+	if got.Host != "ap-northeast-3.internal.test" {
+		t.Errorf("forwarded Host: want ap-northeast-3.internal.test, got %s", got.Host)
+	}
+	assertForwardedClientAddress(t, got, "198.51.100.70:11111")
 }
 
 // TestDeleteShell はセッション削除が 204 を返すことを検証する。
@@ -584,7 +636,13 @@ func TestNoIdleRunnerExecuteFallbackForward(t *testing.T) {
 
 	fakeCookies := sessionCookies{SessionID: "nonexistent", ShellID: "nonexistent"}
 	body := `{"command":"pwd"}`
-	resp := doRequest(t, http.MethodPost, nginxBase+"/api/execute", body, fakeCookies.cookieHeader())
+	headers := map[string]string{
+		"CloudFront-Viewer-Address": "203.0.113.30:45678",
+		"X-Bunshin-Client-Address":  "198.51.100.30:11111",
+		"X-Forwarded-For":           "198.51.100.40",
+		"X-Forwarded-Port":          "22222",
+	}
+	resp := doRequestWithHeaders(t, http.MethodPost, nginxBase+"/api/execute", body, fakeCookies.cookieHeader(), headers)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusNoContent {
@@ -613,6 +671,7 @@ func TestNoIdleRunnerExecuteFallbackForward(t *testing.T) {
 	if values := got.Header["X-Fallback-Remaining"]; len(values) > 0 {
 		t.Errorf("X-Fallback-Remaining should be empty, got %q", values)
 	}
+	assertForwardedClientAddress(t, got, "203.0.113.30:45678")
 }
 
 // TestDeleteWithExpiredShellCookie は正規の session_id cookie と不正な shell_id cookie で
@@ -654,7 +713,13 @@ func TestNoIdleRunner(t *testing.T) {
 		resetRunners(t, cookies2.SessionID)
 	})
 
-	resp := doRequest(t, http.MethodPost, nginxBase+"/api/shell", "", "")
+	headers := map[string]string{
+		"CloudFront-Viewer-Address": "203.0.113.50:45678",
+		"X-Bunshin-Client-Address":  "198.51.100.50:11111",
+		"X-Forwarded-For":           "198.51.100.60",
+		"X-Forwarded-Port":          "22222",
+	}
+	resp := doRequestWithHeaders(t, http.MethodPost, nginxBase+"/api/shell", "", "", headers)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusNoContent {
@@ -677,4 +742,5 @@ func TestNoIdleRunner(t *testing.T) {
 	if values := got.Header["X-Fallback-Remaining"]; len(values) > 0 {
 		t.Errorf("X-Fallback-Remaining should be empty, got %q", values)
 	}
+	assertForwardedClientAddress(t, got, "203.0.113.50:45678")
 }

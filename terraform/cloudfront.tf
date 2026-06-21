@@ -22,6 +22,7 @@ resource "aws_cloudfront_origin_request_policy" "api_ingress" {
       items = [
         "Accept",
         "Accept-Language",
+        "CloudFront-Viewer-Address",
         "Content-Type",
         "Origin",
         "Referer",

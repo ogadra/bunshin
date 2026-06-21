@@ -331,6 +331,7 @@ func TestIntegrationCreateExecuteDelete(t *testing.T) {
 	body := strings.NewReader(`{"command":"pwd"}`)
 	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/execute", body)
 	req.AddCookie(&http.Cookie{Name: "shell_id", Value: shellID})
+	setClientAddressHeader(req)
 	resp2, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("POST /api/execute error: %v", err)
@@ -345,6 +346,7 @@ func TestIntegrationCreateExecuteDelete(t *testing.T) {
 	body2 := strings.NewReader(`{"command":"curl -s http://localhost"}`)
 	req2, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/execute", body2)
 	req2.AddCookie(&http.Cookie{Name: "shell_id", Value: shellID})
+	setClientAddressHeader(req2)
 	resp4, err := http.DefaultClient.Do(req2)
 	if err != nil {
 		t.Fatalf("POST /api/execute validated error: %v", err)

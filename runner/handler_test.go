@@ -9,9 +9,14 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 )
+
+func setClientAddressHeader(req *http.Request) {
+	req.Header.Set(clientAddressHeader, "203.0.113.50:12345")
+}
 
 // TestCreateShell verifies that POST /api/shell creates a new shell
 // and returns a JSON body containing a non-empty shellId.
@@ -167,6 +172,7 @@ func TestExecuteWhitelisted(t *testing.T) {
 	body := strings.NewReader(`{"command":"ls"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
 	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
+	setClientAddressHeader(req)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -210,6 +216,7 @@ func TestExecuteNonWhitelisted(t *testing.T) {
 	body := strings.NewReader(`{"command":"rm --version"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
 	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
+	setClientAddressHeader(req)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -236,6 +243,7 @@ func TestExecuteNonWhitelistedWithArgs(t *testing.T) {
 	body := strings.NewReader(`{"command":"curl https://example.com"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
 	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
+	setClientAddressHeader(req)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -292,6 +300,7 @@ func TestExecuteInvalidJSON(t *testing.T) {
 	body := strings.NewReader(`{invalid`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
 	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
+	setClientAddressHeader(req)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -315,6 +324,7 @@ func TestExecuteEmptyCommand(t *testing.T) {
 	body := strings.NewReader(`{"command":""}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
 	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
+	setClientAddressHeader(req)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -409,6 +419,7 @@ func TestExecuteWhitelistedWithStderr(t *testing.T) {
 	body := strings.NewReader(`{"command":"ls"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
 	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
+	setClientAddressHeader(req)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -446,6 +457,7 @@ func TestExecuteWhitelistedNonZeroExit(t *testing.T) {
 	body := strings.NewReader(`{"command":"ls"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
 	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
+	setClientAddressHeader(req)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -474,6 +486,7 @@ func TestExecuteWhitelistedWithExecError(t *testing.T) {
 	body := strings.NewReader(`{"command":"ls"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
 	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
+	setClientAddressHeader(req)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -505,6 +518,7 @@ func TestExecuteNonWhitelistedAuditLog(t *testing.T) {
 	body := strings.NewReader(`{"command":"curl https://example.com"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
 	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
+	setClientAddressHeader(req)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -518,6 +532,9 @@ func TestExecuteNonWhitelistedAuditLog(t *testing.T) {
 	}
 	if !strings.Contains(logOutput, `command="curl https://example.com"`) {
 		t.Fatalf("expected audit log to contain the command, got:\n%s", logOutput)
+	}
+	if !regexp.MustCompile(`(?m)^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \[AUDIT\]`).MatchString(logOutput) {
+		t.Fatalf("expected audit log timestamp with milliseconds, got:\n%s", logOutput)
 	}
 }
 
@@ -539,6 +556,7 @@ func TestExecuteNonWhitelistedSSE(t *testing.T) {
 	body := strings.NewReader(`{"command":"curl https://example.com"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
 	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
+	setClientAddressHeader(req)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -570,10 +588,7 @@ func TestHealth(t *testing.T) {
 	}
 }
 
-// TestExecuteCloudFrontViewerAddress verifies that when the CloudFront-Viewer-Address
-// header is present, handleExecute uses the full ip:port value as the remote field
-// in audit logs to support client identification behind MAP-E or DS-Lite.
-func TestExecuteCloudFrontViewerAddress(t *testing.T) {
+func TestExecuteClientAddressHeader(t *testing.T) {
 	var buf bytes.Buffer
 	oldOutput := log.Writer()
 	log.SetOutput(&buf)
@@ -594,7 +609,10 @@ func TestExecuteCloudFrontViewerAddress(t *testing.T) {
 	body := strings.NewReader(`{"command":"ls"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
 	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
+	req.Header.Set(clientAddressHeader, "198.51.100.20:45678")
 	req.Header.Set("CloudFront-Viewer-Address", "203.0.113.50:12345")
+	req.Header.Set("X-Forwarded-For", "203.0.113.60")
+	req.Header.Set("X-Forwarded-Port", "11111")
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -603,14 +621,15 @@ func TestExecuteCloudFrontViewerAddress(t *testing.T) {
 	}
 
 	logOutput := buf.String()
-	if !strings.Contains(logOutput, "remote=203.0.113.50:12345") {
-		t.Fatalf("expected audit log to contain remote=203.0.113.50:12345, got:\n%s", logOutput)
+	if !strings.Contains(logOutput, "remote=198.51.100.20:45678") {
+		t.Fatalf("expected audit log to contain remote=198.51.100.20:45678, got:\n%s", logOutput)
+	}
+	if strings.Contains(logOutput, "203.0.113.50") || strings.Contains(logOutput, "203.0.113.60") {
+		t.Fatalf("expected audit log to ignore client-controlled forwarded headers, got:\n%s", logOutput)
 	}
 }
 
-// TestExecuteFallbackClientIP verifies that when the CloudFront-Viewer-Address
-// header is absent, handleExecute falls back to c.ClientIP for the remote field.
-func TestExecuteFallbackClientIP(t *testing.T) {
+func TestExecuteIPv6ClientAddressHeader(t *testing.T) {
 	var buf bytes.Buffer
 	oldOutput := log.Writer()
 	log.SetOutput(&buf)
@@ -631,6 +650,7 @@ func TestExecuteFallbackClientIP(t *testing.T) {
 	body := strings.NewReader(`{"command":"ls"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
 	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
+	req.Header.Set(clientAddressHeader, "[2001:db8::1]:54321")
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -639,8 +659,114 @@ func TestExecuteFallbackClientIP(t *testing.T) {
 	}
 
 	logOutput := buf.String()
-	if !strings.Contains(logOutput, "remote=192.0.2.1") {
-		t.Fatalf("expected audit log to contain remote=192.0.2.1, got:\n%s", logOutput)
+	if !strings.Contains(logOutput, "remote=[2001:db8::1]:54321") {
+		t.Fatalf("expected audit log to contain remote=[2001:db8::1]:54321, got:\n%s", logOutput)
+	}
+}
+
+func TestExecuteUnbracketedIPv6ClientAddressHeader(t *testing.T) {
+	var buf bytes.Buffer
+	oldOutput := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(oldOutput) })
+
+	sm := NewShellManager()
+	defer sm.CloseAll()
+	sm.newShell = func() (Shell, error) {
+		return &mockShell{exitCode: 0}, nil
+	}
+	handler := newHandler(sm)
+
+	id, _, err := sm.Create()
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+
+	body := strings.NewReader(`{"command":"ls"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
+	req.Header.Set(clientAddressHeader, "2001:db8::1:54321")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	logOutput := buf.String()
+	if !strings.Contains(logOutput, "remote=[2001:db8::1]:54321") {
+		t.Fatalf("expected audit log to contain remote=[2001:db8::1]:54321, got:\n%s", logOutput)
+	}
+}
+
+func TestExecuteMissingClientAddressHeader(t *testing.T) {
+	sm := NewShellManager()
+	defer sm.CloseAll()
+	sm.newShell = func() (Shell, error) {
+		return &mockShell{exitCode: 0}, nil
+	}
+	handler := newHandler(sm)
+
+	id, _, err := sm.Create()
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+
+	body := strings.NewReader(`{"command":"ls"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+	if !strings.Contains(w.Body.String(), errMissingClientAddressHeader) {
+		t.Fatalf("expected missing client address error, got %q", w.Body.String())
+	}
+}
+
+func TestExecuteInvalidClientAddressHeader(t *testing.T) {
+	sm := NewShellManager()
+	defer sm.CloseAll()
+	sm.newShell = func() (Shell, error) {
+		return &mockShell{exitCode: 0}, nil
+	}
+	handler := newHandler(sm)
+
+	id, _, err := sm.Create()
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+
+	body := strings.NewReader(`{"command":"ls"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
+	req.Header.Set(clientAddressHeader, "203.0.113.50")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+	if !strings.Contains(w.Body.String(), errInvalidClientAddressHeader) {
+		t.Fatalf("expected invalid client address error, got %q", w.Body.String())
+	}
+}
+
+func TestParseClientAddressRejectsInvalidPorts(t *testing.T) {
+	cases := []string{
+		"203.0.113.50:0",
+		"203.0.113.50:not-a-port",
+		"203.0.113.50:65536",
+	}
+	for _, value := range cases {
+		t.Run(value, func(t *testing.T) {
+			_, err := parseClientAddress(value)
+			if err == nil || err.Error() != errInvalidClientAddressHeader {
+				t.Fatalf("parseClientAddress(%q) error = %v, want %q", value, err, errInvalidClientAddressHeader)
+			}
+		})
 	}
 }
 

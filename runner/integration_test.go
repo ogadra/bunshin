@@ -55,6 +55,7 @@ func executeCommand(t *testing.T, ts *httptest.Server, shellID, command string) 
 		t.Fatalf("new request: %v", err)
 	}
 	req.AddCookie(&http.Cookie{Name: "shell_id", Value: shellID})
+	setClientAddressHeader(req)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("POST /api/execute error: %v", err)
@@ -165,6 +166,7 @@ func TestIntegrationNonWhitelistedCommand(t *testing.T) {
 		t.Fatalf("new request: %v", err)
 	}
 	req.AddCookie(&http.Cookie{Name: "shell_id", Value: sid})
+	setClientAddressHeader(req)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("POST /api/execute error: %v", err)
@@ -219,6 +221,7 @@ func TestIntegrationExecuteAfterDelete(t *testing.T) {
 		t.Fatalf("new request: %v", err)
 	}
 	execReq.AddCookie(&http.Cookie{Name: "shell_id", Value: sid})
+	setClientAddressHeader(execReq)
 	execResp, err := http.DefaultClient.Do(execReq)
 	if err != nil {
 		t.Fatalf("POST /api/execute error: %v", err)
@@ -302,6 +305,7 @@ func TestIntegrationCreateDeleteLifecycle(t *testing.T) {
 		t.Fatalf("new request: %v", err)
 	}
 	execReq.AddCookie(&http.Cookie{Name: "shell_id", Value: sid})
+	setClientAddressHeader(execReq)
 	execResp, err := http.DefaultClient.Do(execReq)
 	if err != nil {
 		t.Fatalf("POST /api/execute error: %v", err)
@@ -340,6 +344,7 @@ func TestIntegrationConcurrentExecute(t *testing.T) {
 				return
 			}
 			req.AddCookie(&http.Cookie{Name: "shell_id", Value: sid})
+			setClientAddressHeader(req)
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				errs[i] = err
@@ -396,6 +401,7 @@ func TestIntegrationNonWhitelistedSSE(t *testing.T) {
 		t.Fatalf("new request: %v", err)
 	}
 	req.AddCookie(&http.Cookie{Name: "shell_id", Value: sid})
+	setClientAddressHeader(req)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("POST /api/execute error: %v", err)
