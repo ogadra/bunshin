@@ -10,6 +10,7 @@ local HTTP_SERVICE_UNAVAILABLE = 503
 local own_stack_name = ""
 local internal_domain_name = ""
 local allowed_stacks = {}
+local ordered_stacks = {}
 
 local function string_header(headers, name, label)
     local value = headers[name]
@@ -27,8 +28,10 @@ function _M.configure(stack, domain, stack_names)
         error("resolve_core: BUNSHIN_STACKS must be set")
     end
     local set = {}
+    local list = {}
     for s in stack_names:gmatch("[^,]+") do
         set[s] = true
+        table.insert(list, s)
     end
     if next(set) == nil then
         error("resolve_core: BUNSHIN_STACKS must be set")
@@ -39,6 +42,7 @@ function _M.configure(stack, domain, stack_names)
     own_stack_name = stack
     internal_domain_name = domain
     allowed_stacks = set
+    ordered_stacks = list
 end
 
 function _M.own_stack()
@@ -51,6 +55,19 @@ end
 
 function _M.stacks()
     return allowed_stacks
+end
+
+function _M.fallback_remaining_excluding(stack)
+    local remaining = {}
+    for _, candidate in ipairs(ordered_stacks) do
+        if candidate ~= own_stack_name and candidate ~= stack then
+            table.insert(remaining, candidate)
+        end
+    end
+    if #remaining == 0 then
+        return nil
+    end
+    return table.concat(remaining, ",")
 end
 
 function _M.cookie_stack(session_id)
@@ -85,7 +102,7 @@ function _M.decide_arrival(session_id, stack, stacks, domain, fallback_stack)
     if host == nil then
         return { exit = HTTP_INTERNAL_ERROR, log = "resolve: unknown stack in session_id: " .. tostring(owner) }
     end
-    return { forward_host = host }
+    return { forward_host = host, owner_stack = owner }
 end
 
 function _M.validate_resolve_response(res)
