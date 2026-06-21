@@ -28,13 +28,10 @@ const setDisabled = (disabled: boolean) => {
 
 const MAX_DELAY_MS = 8000;
 const ac = new AbortController();
-let ready = false;
-
 const attempt = async (delay: number): Promise<void> => {
   try {
     await createShell(ac.signal);
     if (ac.signal.aborted) return;
-    ready = true;
     status.hidden = true;
     setDisabled(false);
     append("$ ");
