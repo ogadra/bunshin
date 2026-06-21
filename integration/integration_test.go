@@ -273,6 +273,10 @@ func doRequestWithHeaders(t *testing.T, method, url, bodyStr, cookie string, hea
 		req.Header.Set("Cookie", cookie)
 	}
 	for k, v := range headers {
+		if strings.EqualFold(k, "Host") {
+			req.Host = v
+			continue
+		}
 		req.Header.Set(k, v)
 	}
 	resp, err := httpClient.Do(req)
@@ -466,6 +470,34 @@ func TestForeignSessionForward(t *testing.T) {
 		t.Errorf("X-Fallback-Remaining should be stripped, got %q", values)
 	}
 	assertForwardedClientAddress(t, got, "203.0.113.10:45678")
+}
+
+func TestForeignSessionForwardRelaysInternalClientAddress(t *testing.T) {
+	resetForwardTarget(t)
+
+	headers := map[string]string{
+		"Host":                      "ap-northeast-1.internal.test",
+		"CloudFront-Viewer-Address": "203.0.113.70:45678",
+		"X-Bunshin-Client-Address":  "198.51.100.70:11111",
+	}
+	resp := doRequestWithHeaders(
+		t,
+		http.MethodPost,
+		nginxBase+"/api/execute",
+		`{"command":"pwd"}`,
+		"session_id=ap-northeast-3_deadbeef; shell_id=shell-x",
+		headers,
+	)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("POST /api/execute internal foreign session: want 204 from forward target, got %d", resp.StatusCode)
+	}
+
+	got := lastForwardedRequest(t)
+	if got.Host != "ap-northeast-3.internal.test" {
+		t.Errorf("forwarded Host: want ap-northeast-3.internal.test, got %s", got.Host)
+	}
+	assertForwardedClientAddress(t, got, "198.51.100.70:11111")
 }
 
 // TestDeleteShell はセッション削除が 204 を返すことを検証する。

@@ -8,6 +8,8 @@ import (
 	"log"
 	"net/http"
 	"net/netip"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -194,9 +196,23 @@ func clientAddress(c *gin.Context) (string, error) {
 	if value == "" {
 		return "", errors.New(errMissingClientAddressHeader)
 	}
+	return parseClientAddress(value)
+}
+
+func parseClientAddress(value string) (string, error) {
 	addr, err := netip.ParseAddrPort(value)
-	if err != nil || addr.Port() == 0 {
+	if err == nil && addr.Port() != 0 {
+		return addr.String(), nil
+	}
+
+	portStart := strings.LastIndexByte(value, ':')
+	if portStart <= 0 || portStart == len(value)-1 {
 		return "", errors.New(errInvalidClientAddressHeader)
 	}
-	return addr.String(), nil
+	ip, ipErr := netip.ParseAddr(value[:portStart])
+	port, portErr := strconv.ParseUint(value[portStart+1:], 10, 16)
+	if ipErr != nil || portErr != nil || port == 0 {
+		return "", errors.New(errInvalidClientAddressHeader)
+	}
+	return netip.AddrPortFrom(ip, uint16(port)).String(), nil
 }

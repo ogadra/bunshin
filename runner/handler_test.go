@@ -664,6 +664,41 @@ func TestExecuteIPv6ClientAddressHeader(t *testing.T) {
 	}
 }
 
+func TestExecuteUnbracketedIPv6ClientAddressHeader(t *testing.T) {
+	var buf bytes.Buffer
+	oldOutput := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(oldOutput) })
+
+	sm := NewShellManager()
+	defer sm.CloseAll()
+	sm.newShell = func() (Shell, error) {
+		return &mockShell{exitCode: 0}, nil
+	}
+	handler := newHandler(sm)
+
+	id, _, err := sm.Create()
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+
+	body := strings.NewReader(`{"command":"ls"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
+	req.Header.Set(clientAddressHeader, "2001:db8::1:54321")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	logOutput := buf.String()
+	if !strings.Contains(logOutput, "remote=[2001:db8::1]:54321") {
+		t.Fatalf("expected audit log to contain remote=[2001:db8::1]:54321, got:\n%s", logOutput)
+	}
+}
+
 func TestExecuteMissingClientAddressHeader(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
@@ -716,6 +751,22 @@ func TestExecuteInvalidClientAddressHeader(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), errInvalidClientAddressHeader) {
 		t.Fatalf("expected invalid client address error, got %q", w.Body.String())
+	}
+}
+
+func TestParseClientAddressRejectsInvalidPorts(t *testing.T) {
+	cases := []string{
+		"203.0.113.50:0",
+		"203.0.113.50:not-a-port",
+		"203.0.113.50:65536",
+	}
+	for _, value := range cases {
+		t.Run(value, func(t *testing.T) {
+			_, err := parseClientAddress(value)
+			if err == nil || err.Error() != errInvalidClientAddressHeader {
+				t.Fatalf("parseClientAddress(%q) error = %v, want %q", value, err, errInvalidClientAddressHeader)
+			}
+		})
 	}
 }
 
