@@ -43,7 +43,7 @@ type sseEvent struct {
 
 // newHandler creates a gin.Engine with all API routes registered.
 // The returned engine handles GET /health, POST /api/shell, DELETE /api/shell, and POST /api/execute.
-func newHandler(sm *ShellManager, _ Validator) *gin.Engine {
+func newHandler(sm *ShellManager) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.SetTrustedProxies([]string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"})

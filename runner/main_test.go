@@ -13,9 +13,6 @@ import (
 	"syscall"
 	"testing"
 	"time"
-
-	"github.com/aws/aws-sdk-go-v2/aws"
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 )
 
 // TestMainSuccess verifies that main completes without calling fatalf
@@ -23,7 +20,6 @@ import (
 // main reads RUNNER_PORT and calls start, making injection impractical.
 func TestMainSuccess(t *testing.T) {
 	t.Setenv("RUNNER_PORT", "3000")
-	stubValidator(t)
 
 	broker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusCreated)
@@ -308,7 +304,7 @@ func TestIntegrationCreateExecuteDelete(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
 
-	ts := httptest.NewServer(newHandler(sm, nil))
+	ts := httptest.NewServer(newHandler(sm))
 	defer ts.Close()
 
 	// Create shell.
@@ -434,7 +430,6 @@ func TestRunShutdownTimeout(t *testing.T) {
 // leftover SIGTERM signals from other tests canceling the registration context.
 func TestStartAndShutdown(t *testing.T) {
 	t.Setenv("BROKER_URL", "http://dummy:8080")
-	stubValidator(t)
 
 	origReg := registerFn
 	defer func() { registerFn = origReg }()
@@ -577,7 +572,6 @@ func TestStartMissingBrokerURL(t *testing.T) {
 // broker registration fails.
 func TestStartRegisterError(t *testing.T) {
 	t.Setenv("BROKER_URL", "http://broker:8080")
-	stubValidator(t)
 
 	orig := registerFn
 	defer func() { registerFn = orig }()
@@ -599,7 +593,6 @@ func TestStartRegisterError(t *testing.T) {
 // when a termination signal is received during the registration phase.
 func TestStartRegisterCanceledBySignal(t *testing.T) {
 	t.Setenv("BROKER_URL", "http://broker:8080")
-	stubValidator(t)
 
 	orig := registerFn
 	defer func() { registerFn = orig }()
@@ -620,7 +613,6 @@ func TestStartRegisterCanceledBySignal(t *testing.T) {
 // TestStartRegisterReceivesBrokerURL verifies that the broker URL from
 // the environment is passed to the register function.
 func TestStartRegisterReceivesBrokerURL(t *testing.T) {
-	stubValidator(t)
 
 	broker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusCreated)
@@ -648,136 +640,6 @@ func TestStartRegisterReceivesBrokerURL(t *testing.T) {
 
 	if gotBrokerURL != broker.URL {
 		t.Errorf("brokerURL = %q, want %q", gotBrokerURL, broker.URL)
-	}
-}
-
-// TestNewBedrockValidatorFromEnvDefault verifies that newBedrockValidatorFromEnv
-// returns a non-nil Validator using the default model ID when BEDROCK_MODEL_ID is not set.
-func TestNewBedrockValidatorFromEnvDefault(t *testing.T) {
-	t.Setenv("BEDROCK_MODEL_ID", "")
-	t.Setenv("AWS_REGION", "us-east-1")
-	v, err := newBedrockValidatorFromEnv(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	bv, ok := v.(*BedrockValidator)
-	if !ok {
-		t.Fatal("expected *BedrockValidator")
-	}
-	if bv.modelID != defaultModelID {
-		t.Fatalf("modelID = %q, want %q", bv.modelID, defaultModelID)
-	}
-}
-
-// TestNewBedrockValidatorFromEnvConfigError verifies that newBedrockValidatorFromEnv
-// returns an error when AWS config loading fails.
-func TestNewBedrockValidatorFromEnvConfigError(t *testing.T) {
-	orig := loadAWSConfigFn
-	defer func() { loadAWSConfigFn = orig }()
-	loadAWSConfigFn = func(ctx context.Context, optFns ...func(*awsconfig.LoadOptions) error) (aws.Config, error) {
-		return aws.Config{}, errors.New("config load failed")
-	}
-
-	_, err := newBedrockValidatorFromEnv(context.Background())
-	if err == nil {
-		t.Fatal("expected error when AWS config loading fails")
-	}
-	if !strings.Contains(err.Error(), "load aws config") {
-		t.Fatalf("error should mention load aws config, got: %v", err)
-	}
-}
-
-// TestNewBedrockValidatorFromEnvMissingRegion verifies that newBedrockValidatorFromEnv
-// returns an error when the AWS region is not configured.
-func TestNewBedrockValidatorFromEnvMissingRegion(t *testing.T) {
-	t.Setenv("AWS_REGION", "")
-	t.Setenv("AWS_DEFAULT_REGION", "")
-	t.Setenv("AWS_CONFIG_FILE", "/dev/null")
-	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", "/dev/null")
-	_, err := newBedrockValidatorFromEnv(context.Background())
-	if err == nil {
-		t.Fatal("expected error when AWS region is missing")
-	}
-	if !strings.Contains(err.Error(), "aws region is required") {
-		t.Fatalf("error should mention aws region, got: %v", err)
-	}
-}
-
-// TestNewBedrockValidatorFromEnvCustomModel verifies that newBedrockValidatorFromEnv
-// uses the BEDROCK_MODEL_ID environment variable when set.
-func TestNewBedrockValidatorFromEnvCustomModel(t *testing.T) {
-	t.Setenv("BEDROCK_MODEL_ID", "custom-model-id")
-	t.Setenv("AWS_REGION", "us-east-1")
-	v, err := newBedrockValidatorFromEnv(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	bv, ok := v.(*BedrockValidator)
-	if !ok {
-		t.Fatal("expected *BedrockValidator")
-	}
-	if bv.modelID != "custom-model-id" {
-		t.Fatalf("modelID = %q, want %q", bv.modelID, "custom-model-id")
-	}
-}
-
-// TestStartValidatorFallback verifies that start continues with a nil validator
-// when the validator factory function fails, logging a warning instead of failing.
-func TestStartValidatorFallback(t *testing.T) {
-	t.Setenv("BROKER_URL", "http://dummy:8080")
-
-	orig := newValidatorFn
-	defer func() { newValidatorFn = orig }()
-	newValidatorFn = func(ctx context.Context) (Validator, error) {
-		return nil, errors.New("validator init failed")
-	}
-
-	origReg := registerFn
-	defer func() { registerFn = origReg }()
-	registerFn = func(ctx context.Context, deps registerDeps) error {
-		return nil
-	}
-
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Listen error: %v", err)
-	}
-	addr := ln.Addr().String()
-	ln.Close()
-
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- start(addr)
-	}()
-
-	waitForServer(t, addr)
-
-	proc, err := os.FindProcess(os.Getpid())
-	if err != nil {
-		t.Fatalf("FindProcess error: %v", err)
-	}
-	if err := proc.Signal(syscall.SIGTERM); err != nil {
-		t.Fatalf("Signal error: %v", err)
-	}
-
-	select {
-	case err := <-errCh:
-		if err != nil {
-			t.Fatalf("start should succeed even when validator fails, got: %v", err)
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("start did not return within 10 seconds")
-	}
-}
-
-// stubValidator replaces newValidatorFn with a function that returns nil
-// and restores the original function when the test completes.
-func stubValidator(t *testing.T) {
-	t.Helper()
-	orig := newValidatorFn
-	t.Cleanup(func() { newValidatorFn = orig })
-	newValidatorFn = func(ctx context.Context) (Validator, error) {
-		return nil, nil
 	}
 }
 

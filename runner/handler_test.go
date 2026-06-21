@@ -19,7 +19,7 @@ import (
 func TestCreateShell(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/shell", nil)
 	w := httptest.NewRecorder()
@@ -66,7 +66,7 @@ func TestCreateShell(t *testing.T) {
 func TestDeleteShell(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {
@@ -102,7 +102,7 @@ func TestDeleteShell(t *testing.T) {
 // shell_id cookie returns 400 Bad Request.
 func TestDeleteShellMissingCookie(t *testing.T) {
 	sm := NewShellManager()
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/shell", nil)
 	w := httptest.NewRecorder()
@@ -117,7 +117,7 @@ func TestDeleteShellMissingCookie(t *testing.T) {
 // shell ID returns 404 Not Found.
 func TestDeleteShellNotFound(t *testing.T) {
 	sm := NewShellManager()
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/shell", nil)
 	req.AddCookie(&http.Cookie{Name: "shell_id", Value: "nonexistent"})
@@ -136,7 +136,7 @@ func TestDeleteShellCloseError(t *testing.T) {
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{closeErr: errors.New("close failed")}, nil
 	}
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {
@@ -158,7 +158,7 @@ func TestDeleteShellCloseError(t *testing.T) {
 func TestExecuteWhitelisted(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {
@@ -201,7 +201,7 @@ func TestExecuteNonWhitelisted(t *testing.T) {
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{exitCode: 0}, nil
 	}
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {
@@ -227,7 +227,7 @@ func TestExecuteNonWhitelistedWithArgs(t *testing.T) {
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{exitCode: 0}, nil
 	}
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {
@@ -249,7 +249,7 @@ func TestExecuteNonWhitelistedWithArgs(t *testing.T) {
 // shell_id cookie returns 400 Bad Request.
 func TestExecuteMissingShellCookie(t *testing.T) {
 	sm := NewShellManager()
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	body := strings.NewReader(`{"command":"ls"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
@@ -265,7 +265,7 @@ func TestExecuteMissingShellCookie(t *testing.T) {
 // shell ID returns 404 Not Found.
 func TestExecuteShellNotFound(t *testing.T) {
 	sm := NewShellManager()
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	body := strings.NewReader(`{"command":"ls"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
@@ -283,7 +283,7 @@ func TestExecuteShellNotFound(t *testing.T) {
 func TestExecuteInvalidJSON(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {
@@ -306,7 +306,7 @@ func TestExecuteInvalidJSON(t *testing.T) {
 func TestExecuteEmptyCommand(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {
@@ -328,7 +328,7 @@ func TestExecuteEmptyCommand(t *testing.T) {
 // /api/shell return 405 Method Not Allowed.
 func TestShellMethodNotAllowed(t *testing.T) {
 	sm := NewShellManager()
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/shell", nil)
 	w := httptest.NewRecorder()
@@ -343,7 +343,7 @@ func TestShellMethodNotAllowed(t *testing.T) {
 // /api/execute return 405 Method Not Allowed.
 func TestExecuteMethodNotAllowed(t *testing.T) {
 	sm := NewShellManager()
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/execute", nil)
 	w := httptest.NewRecorder()
@@ -361,7 +361,7 @@ func TestCreateShellError(t *testing.T) {
 	sm.newShell = func() (Shell, error) {
 		return nil, errors.New("shell broken")
 	}
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/shell", nil)
 	w := httptest.NewRecorder()
@@ -400,7 +400,7 @@ func TestExecuteWhitelistedWithStderr(t *testing.T) {
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{exitCode: 0, stderr: "warning: something"}, nil
 	}
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {
@@ -437,7 +437,7 @@ func TestExecuteWhitelistedNonZeroExit(t *testing.T) {
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{exitCode: 2}, nil
 	}
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {
@@ -465,7 +465,7 @@ func TestExecuteWhitelistedWithExecError(t *testing.T) {
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{exitCode: -1, err: errors.New("broken")}, nil
 	}
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {
@@ -491,7 +491,7 @@ func TestExecuteNonWhitelistedSSE(t *testing.T) {
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{exitCode: 0}, nil
 	}
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {
@@ -515,10 +515,11 @@ func TestExecuteNonWhitelistedSSE(t *testing.T) {
 	}
 }
 
+
 // TestHealth verifies that GET /health returns 200 OK with body "ok\n".
 func TestHealth(t *testing.T) {
 	sm := NewShellManager()
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
@@ -545,7 +546,7 @@ func TestExecuteCloudFrontViewerAddress(t *testing.T) {
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{exitCode: 0}, nil
 	}
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {
@@ -581,7 +582,7 @@ func TestExecuteFallbackClientIP(t *testing.T) {
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{exitCode: 0}, nil
 	}
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {
