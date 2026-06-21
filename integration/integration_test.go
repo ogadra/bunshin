@@ -306,6 +306,18 @@ func resetForwardTarget(t *testing.T) {
 	}
 }
 
+func setForwardTargetStatus(t *testing.T, status int) {
+	t.Helper()
+	resp, err := httpClient.Get(fmt.Sprintf("%s/__status?code=%d", forwardTargetBase, status))
+	if err != nil {
+		t.Fatalf("set forward target status: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("set forward target status: want 204, got %d", resp.StatusCode)
+	}
+}
+
 func lastForwardedRequest(t *testing.T) forwardedRequest {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -498,6 +510,50 @@ func TestForeignSessionForwardRelaysInternalClientAddress(t *testing.T) {
 		t.Errorf("forwarded Host: want ap-northeast-3.internal.test, got %s", got.Host)
 	}
 	assertForwardedClientAddress(t, got, "198.51.100.70:11111")
+}
+
+func TestForeignSessionOwnerUnavailableRecreatesSession(t *testing.T) {
+	resetForwardTarget(t)
+	setForwardTargetStatus(t, http.StatusBadGateway)
+	t.Cleanup(func() { resetForwardTarget(t) })
+
+	resp := doRequestWithHeaders(
+		t,
+		http.MethodPost,
+		nginxBase+"/api/shell",
+		"",
+		"session_id=ap-northeast-3_deadbeef; shell_id=shell-x",
+		map[string]string{"CloudFront-Viewer-Address": "203.0.113.80:45678"},
+	)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("POST /api/shell owner unavailable: want 204, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get("X-Session-Reassigned"); got != "true" {
+		t.Fatalf("X-Session-Reassigned = %q, want true", got)
+	}
+
+	var cookies sessionCookies
+	for _, c := range resp.Cookies() {
+		switch c.Name {
+		case "session_id":
+			cookies.SessionID = c.Value
+		case "shell_id":
+			cookies.ShellID = c.Value
+		}
+	}
+	if !strings.HasPrefix(cookies.SessionID, "ap-northeast-1_") {
+		t.Fatalf("session_id = %q, want ap-northeast-1 prefix", cookies.SessionID)
+	}
+	if cookies.ShellID == "" {
+		t.Fatal("shell_id cookie not found in reassigned response")
+	}
+	t.Cleanup(func() { resetRunners(t, cookies.SessionID) })
+
+	got := lastForwardedRequest(t)
+	if got.Host != "ap-northeast-3.internal.test" {
+		t.Errorf("forwarded Host: want ap-northeast-3.internal.test, got %s", got.Host)
+	}
 }
 
 // TestDeleteShell はセッション削除が 204 を返すことを検証する。
