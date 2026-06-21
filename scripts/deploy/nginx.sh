@@ -7,10 +7,9 @@ PLATFORM="linux/arm64"
 REGIONS=(ap-northeast-1 ap-northeast-3)
 
 main() {
-    local env_name="${1:?Usage: scripts/deploy/nginx.sh <env> <aws_profile> <aws_account_id> <domain_name>}"
-    local aws_profile_name="${2:?Usage: scripts/deploy/nginx.sh <env> <aws_profile> <aws_account_id> <domain_name>}"
-    local aws_account_id="${3:?Usage: scripts/deploy/nginx.sh <env> <aws_profile> <aws_account_id> <domain_name>}"
-    local domain_name="${4:?Usage: scripts/deploy/nginx.sh <env> <aws_profile> <aws_account_id> <domain_name>}"
+    local env_name="${1:?Usage: scripts/deploy/nginx.sh <env> <aws_account_id> <domain_name>}"
+    local aws_account_id="${2:?Usage: scripts/deploy/nginx.sh <env> <aws_account_id> <domain_name>}"
+    local domain_name="${3:?Usage: scripts/deploy/nginx.sh <env> <aws_account_id> <domain_name>}"
     local image_tag
     local short_image_tag
     local registry
@@ -39,12 +38,12 @@ main() {
         "${ROOT_DIR}/${SERVICE}"
 
     for region in "${REGIONS[@]}"; do
-        aws --profile "${aws_profile_name}" --region "${region}" ecs update-service \
+        aws --profile "${env_name}" --region "${region}" ecs update-service \
             --cluster bunshin \
             --service "bunshin-${SERVICE}" \
             --force-new-deployment \
             >/dev/null
-        aws --profile "${aws_profile_name}" --region "${region}" ecs wait services-stable \
+        aws --profile "${env_name}" --region "${region}" ecs wait services-stable \
             --cluster bunshin \
             --services "bunshin-${SERVICE}"
     done

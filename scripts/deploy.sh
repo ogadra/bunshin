@@ -60,22 +60,21 @@ tfvar_string() {
 run_service() {
     local service="${1:?}"
     local env_name="${2:?}"
-    local aws_profile_name="${3:?}"
-    local aws_account_id="${4:?}"
-    local domain_name="${5:?}"
+    local aws_account_id="${3:?}"
+    local domain_name="${4:?}"
 
-    "${ROOT_DIR}/scripts/deploy/${service}.sh" "${env_name}" "${aws_profile_name}" "${aws_account_id}" "${domain_name}"
+    "${ROOT_DIR}/scripts/deploy/${service}.sh" "${env_name}" "${aws_account_id}" "${domain_name}"
 }
 
 login_ecr() {
-    local aws_profile_name="${1:?}"
+    local env_name="${1:?}"
     local aws_account_id="${2:?}"
     local region
     local registry
 
     for region in "${REGIONS[@]}"; do
         registry="${aws_account_id}.dkr.ecr.${region}.amazonaws.com"
-        aws --profile "${aws_profile_name}" --region "${region}" ecr get-login-password \
+        aws --profile "${env_name}" --region "${region}" ecr get-login-password \
             | docker login --username AWS --password-stdin "${registry}"
     done
 }
@@ -84,7 +83,6 @@ main() {
     local env_name="${1:?Usage: scripts/deploy.sh <env> [service]}"
     local service="${2:-}"
     local tfvars_file="${ROOT_DIR}/terraform/environments/${env_name}.tfvars"
-    local aws_profile_name
     local domain_name
     local aws_account_id
     local pid
@@ -99,26 +97,25 @@ main() {
         die "terraform/environments/${env_name}.tfvars does not exist"
     fi
 
-    aws_profile_name="$(tfvar_string aws_profile "${tfvars_file}")"
     domain_name="$(tfvar_string domain_name "${tfvars_file}")"
-    aws_account_id="$(aws --profile "${aws_profile_name}" sts get-caller-identity --query Account --output text)"
+    aws_account_id="$(aws --profile "${env_name}" sts get-caller-identity --query Account --output text)"
 
     if [[ -z "${aws_account_id}" || "${aws_account_id}" == "None" ]]; then
-        die "failed to resolve AWS account id for profile ${aws_profile_name}"
+        die "failed to resolve AWS account id for profile ${env_name}"
     fi
 
     if [[ -n "${service}" ]]; then
         if uses_ecs "${service}"; then
-            login_ecr "${aws_profile_name}" "${aws_account_id}"
+            login_ecr "${env_name}" "${aws_account_id}"
         fi
-        run_service "${service}" "${env_name}" "${aws_profile_name}" "${aws_account_id}" "${domain_name}"
+        run_service "${service}" "${env_name}" "${aws_account_id}" "${domain_name}"
         return
     fi
 
-    login_ecr "${aws_profile_name}" "${aws_account_id}"
+    login_ecr "${env_name}" "${aws_account_id}"
 
     for service in "${SERVICES[@]}"; do
-        run_service "${service}" "${env_name}" "${aws_profile_name}" "${aws_account_id}" "${domain_name}" &
+        run_service "${service}" "${env_name}" "${aws_account_id}" "${domain_name}" &
         pids+=("$!")
     done
 
