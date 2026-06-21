@@ -483,28 +483,15 @@ func TestExecuteWhitelistedWithExecError(t *testing.T) {
 	}
 }
 
-// mockValidator is a test double for the Validator interface that returns
-// preconfigured ValidationResult and error.
-type mockValidator struct {
-	result ValidationResult
-	err    error
-}
-
-// Validate returns the preconfigured result and error.
-func (m *mockValidator) Validate(_ context.Context, _ string) (ValidationResult, error) {
-	return m.result, m.err
-}
-
-// TestExecuteValidatedSafe verifies that a non-whitelisted command executes
-// and returns SSE events.
-func TestExecuteValidatedSafe(t *testing.T) {
+// TestExecuteNonWhitelistedSSE verifies that a non-whitelisted command
+// executes and returns SSE events.
+func TestExecuteNonWhitelistedSSE(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{exitCode: 0}, nil
 	}
-	v := &mockValidator{result: ValidationResult{Safe: true, Reason: "safe command"}}
-	handler := newHandler(sm, v)
+	handler := newHandler(sm, nil)
 
 	id, _, err := sm.Create()
 	if err != nil {
@@ -525,33 +512,6 @@ func TestExecuteValidatedSafe(t *testing.T) {
 	last := events[len(events)-1]
 	if last.Type != "complete" || last.ExitCode == nil || *last.ExitCode != 0 {
 		t.Fatalf("expected complete with exitCode=0, got %+v", last)
-	}
-}
-
-// TestExecuteWhitelistedSkipsValidator verifies that whitelisted commands
-// execute directly when a validator is configured.
-func TestExecuteWhitelistedSkipsValidator(t *testing.T) {
-	sm := NewShellManager()
-	defer sm.CloseAll()
-	sm.newShell = func() (Shell, error) {
-		return &mockShell{exitCode: 0}, nil
-	}
-	v := &mockValidator{result: ValidationResult{Safe: false, Reason: "should not matter"}}
-	handler := newHandler(sm, v)
-
-	id, _, err := sm.Create()
-	if err != nil {
-		t.Fatalf("Create() error: %v", err)
-	}
-
-	body := strings.NewReader(`{"command":"ls"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
-	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 }
 

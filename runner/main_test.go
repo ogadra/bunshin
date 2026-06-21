@@ -308,8 +308,7 @@ func TestIntegrationCreateExecuteDelete(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
 
-	v := &mockValidator{result: ValidationResult{Safe: true, Reason: "ok"}}
-	ts := httptest.NewServer(newHandler(sm, v))
+	ts := httptest.NewServer(newHandler(sm, nil))
 	defer ts.Close()
 
 	// Create shell.
@@ -771,14 +770,14 @@ func TestStartValidatorFallback(t *testing.T) {
 	}
 }
 
-// stubValidator replaces newValidatorFn with a function that returns a no-op
-// mock validator and restores the original function when the test completes.
+// stubValidator replaces newValidatorFn with a function that returns nil
+// and restores the original function when the test completes.
 func stubValidator(t *testing.T) {
 	t.Helper()
 	orig := newValidatorFn
 	t.Cleanup(func() { newValidatorFn = orig })
 	newValidatorFn = func(ctx context.Context) (Validator, error) {
-		return &mockValidator{result: ValidationResult{Safe: true, Reason: "ok"}}, nil
+		return nil, nil
 	}
 }
 

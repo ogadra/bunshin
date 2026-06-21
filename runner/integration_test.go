@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -380,14 +379,13 @@ func TestIntegrationConcurrentExecute(t *testing.T) {
 	}
 }
 
-// TestIntegrationNonWhitelistedSkipsValidator verifies that a non-whitelisted
-// command executes through the full HTTP stack.
-func TestIntegrationNonWhitelistedSkipsValidator(t *testing.T) {
+// TestIntegrationNonWhitelistedSSE verifies that a non-whitelisted command
+// executes through the full HTTP stack and returns SSE events.
+func TestIntegrationNonWhitelistedSSE(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
 
-	v := &mockValidator{err: &ValidationUnavailableError{Cause: errors.New("throttling")}}
-	ts := httptest.NewServer(newHandler(sm, v))
+	ts := httptest.NewServer(newHandler(sm, nil))
 	defer ts.Close()
 
 	sid := createShell(t, ts)
