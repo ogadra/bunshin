@@ -43,9 +43,7 @@ type sseEvent struct {
 
 // newHandler creates a gin.Engine with all API routes registered.
 // The returned engine handles GET /health, POST /api/shell, DELETE /api/shell, and POST /api/execute.
-// The Validator v is used to judge non-whitelisted commands via LLM; it may be nil
-// in which case all non-whitelisted commands are rejected with 403.
-func newHandler(sm *ShellManager, v Validator) *gin.Engine {
+func newHandler(sm *ShellManager, _ Validator) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.SetTrustedProxies([]string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"})
@@ -53,7 +51,7 @@ func newHandler(sm *ShellManager, v Validator) *gin.Engine {
 	r.GET("/health", handleHealth())
 	r.POST("/api/shell", handleCreateShell(sm))
 	r.DELETE("/api/shell", handleDeleteShell(sm))
-	r.POST("/api/execute", handleExecute(sm, v))
+	r.POST("/api/execute", handleExecute(sm))
 	return r
 }
 
@@ -104,10 +102,8 @@ func handleDeleteShell(sm *ShellManager) gin.HandlerFunc {
 }
 
 // handleExecute returns a gin handler for POST /api/execute.
-// It classifies the command: whitelisted commands execute immediately,
-// validated commands are checked by the Validator before execution,
-// and commands that fail validation are rejected with 403.
-func handleExecute(sm *ShellManager, v Validator) gin.HandlerFunc {
+// It classifies the command for audit logging and executes it in the shell.
+func handleExecute(sm *ShellManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, err := c.Cookie(shellIDCookie)
 		if err != nil || id == "" {
@@ -131,28 +127,6 @@ func handleExecute(sm *ShellManager, v Validator) gin.HandlerFunc {
 		class := classifyCommand(req.Command)
 		remote := clientIP(c)
 		auditLog(id, remote, class, req.Command, nil, nil)
-
-		if class == "validated" {
-			if v == nil {
-				c.JSON(http.StatusForbidden, errorResponse{Error: "command not allowed"})
-				return
-			}
-			result, err := v.Validate(c.Request.Context(), req.Command)
-			if err != nil {
-				var unavail *ValidationUnavailableError
-				if errors.As(err, &unavail) {
-					auditLog(id, remote, "validation-skipped", req.Command, nil, err)
-				} else {
-					auditLog(id, remote, class, req.Command, nil, err)
-					c.JSON(http.StatusForbidden, errorResponse{Error: "command not allowed"})
-					return
-				}
-			} else if !result.Safe {
-				auditLog(id, remote, "rejected", req.Command, nil, fmt.Errorf("reason: %s", result.Reason))
-				c.JSON(http.StatusForbidden, errorResponse{Error: fmt.Sprintf("command not allowed: %s", result.Reason)})
-				return
-			}
-		}
 
 		c.Header("Content-Type", "text/event-stream")
 		c.Header("Cache-Control", "no-cache")

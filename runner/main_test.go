@@ -349,7 +349,7 @@ func TestIntegrationCreateExecuteDelete(t *testing.T) {
 		t.Fatal("validator should not be called for whitelisted command")
 	}
 
-	// Execute validated command; validator should be called.
+	// Execute non-whitelisted command; validator should not be called.
 	v.called = false
 	body2 := strings.NewReader(`{"command":"curl -s http://localhost"}`)
 	req2, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/execute", body2)
@@ -363,8 +363,8 @@ func TestIntegrationCreateExecuteDelete(t *testing.T) {
 	if resp4.StatusCode != http.StatusOK {
 		t.Fatalf("validated status = %d, want %d", resp4.StatusCode, http.StatusOK)
 	}
-	if !v.called {
-		t.Fatal("validator should be called for non-whitelisted command")
+	if v.called {
+		t.Fatal("validator should not be called for non-whitelisted command")
 	}
 
 	// Delete shell.

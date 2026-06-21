@@ -149,9 +149,9 @@ func TestIntegrationExecuteSSEResponse(t *testing.T) {
 	}
 }
 
-// TestIntegrationRejectedCommand verifies that a non-whitelisted command
-// returns 403 Forbidden through the full HTTP stack.
-func TestIntegrationRejectedCommand(t *testing.T) {
+// TestIntegrationNonWhitelistedCommand verifies that a non-whitelisted command
+// executes through the full HTTP stack.
+func TestIntegrationNonWhitelistedCommand(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
 
@@ -172,8 +172,21 @@ func TestIntegrationRejectedCommand(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusForbidden)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var buf strings.Builder
+	if _, err := io.Copy(&buf, resp.Body); err != nil {
+		t.Fatalf("read body error: %v", err)
+	}
+	events := parseIntegrationSSEEvents(t, buf.String())
+	if len(events) == 0 {
+		t.Fatal("expected at least 1 SSE event, got 0")
+	}
+	last := events[len(events)-1]
+	if last.Type != "complete" || last.ExitCode == nil {
+		t.Fatalf("last event = %+v, want complete with exitCode", last)
 	}
 }
 
@@ -367,10 +380,9 @@ func TestIntegrationConcurrentExecute(t *testing.T) {
 	}
 }
 
-// TestIntegrationValidationUnavailableFailOpen verifies that when the validator
-// returns a ValidationUnavailableError the command executes through the full
-// HTTP stack instead of being rejected.
-func TestIntegrationValidationUnavailableFailOpen(t *testing.T) {
+// TestIntegrationNonWhitelistedSkipsValidator verifies that a non-whitelisted
+// command executes through the full HTTP stack without calling the validator.
+func TestIntegrationNonWhitelistedSkipsValidator(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
 
@@ -407,6 +419,9 @@ func TestIntegrationValidationUnavailableFailOpen(t *testing.T) {
 	last := events[len(events)-1]
 	if last.Type != "complete" || last.ExitCode == nil || *last.ExitCode != 0 {
 		t.Fatalf("last event = %+v, want complete with exitCode=0", last)
+	}
+	if v.called {
+		t.Fatal("validator should not be called")
 	}
 }
 

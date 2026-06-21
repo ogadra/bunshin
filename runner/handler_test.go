@@ -193,11 +193,14 @@ func TestExecuteWhitelisted(t *testing.T) {
 	}
 }
 
-// TestExecuteRejected verifies that POST /api/execute with a non-whitelisted command
-// returns 403 Forbidden without executing the command.
-func TestExecuteRejected(t *testing.T) {
+// TestExecuteNonWhitelisted verifies that POST /api/execute with a
+// non-whitelisted command executes it.
+func TestExecuteNonWhitelisted(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
+	sm.newShell = func() (Shell, error) {
+		return &mockShell{exitCode: 0}, nil
+	}
 	handler := newHandler(sm, nil)
 
 	id, _, err := sm.Create()
@@ -211,24 +214,19 @@ func TestExecuteRejected(t *testing.T) {
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d", w.Code, http.StatusForbidden)
-	}
-
-	var errResp errorResponse
-	if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
-		t.Fatalf("decode error: %v", err)
-	}
-	if !strings.Contains(errResp.Error, "command not allowed") {
-		t.Fatalf("error = %q, want to contain %q", errResp.Error, "command not allowed")
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 }
 
-// TestExecuteRejectedWithArgs verifies that a non-whitelisted command with arguments
-// is rejected with 403 when no validator is configured.
-func TestExecuteRejectedWithArgs(t *testing.T) {
+// TestExecuteNonWhitelistedWithArgs verifies that a non-whitelisted command
+// with arguments executes it.
+func TestExecuteNonWhitelistedWithArgs(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
+	sm.newShell = func() (Shell, error) {
+		return &mockShell{exitCode: 0}, nil
+	}
 	handler := newHandler(sm, nil)
 
 	id, _, err := sm.Create()
@@ -242,8 +240,8 @@ func TestExecuteRejectedWithArgs(t *testing.T) {
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d", w.Code, http.StatusForbidden)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 }
 
@@ -499,8 +497,8 @@ func (m *mockValidator) Validate(_ context.Context, _ string) (ValidationResult,
 	return m.result, m.err
 }
 
-// TestExecuteValidatedSafe verifies that a non-whitelisted command judged safe
-// by the validator is executed and returns SSE events.
+// TestExecuteValidatedSafe verifies that a non-whitelisted command executes
+// without calling the validator.
 func TestExecuteValidatedSafe(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
@@ -530,97 +528,8 @@ func TestExecuteValidatedSafe(t *testing.T) {
 	if last.Type != "complete" || last.ExitCode == nil || *last.ExitCode != 0 {
 		t.Fatalf("expected complete with exitCode=0, got %+v", last)
 	}
-}
-
-// TestExecuteValidatedUnsafe verifies that a non-whitelisted command judged unsafe
-// by the validator returns 403 with the reason.
-func TestExecuteValidatedUnsafe(t *testing.T) {
-	sm := NewShellManager()
-	defer sm.CloseAll()
-	v := &mockValidator{result: ValidationResult{Safe: false, Reason: "destructive"}}
-	handler := newHandler(sm, v)
-
-	id, _, err := sm.Create()
-	if err != nil {
-		t.Fatalf("Create() error: %v", err)
-	}
-
-	body := strings.NewReader(`{"command":"rm -rf /"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
-	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d", w.Code, http.StatusForbidden)
-	}
-	var errResp errorResponse
-	if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
-		t.Fatalf("decode error: %v", err)
-	}
-	if !strings.Contains(errResp.Error, "destructive") {
-		t.Fatalf("error = %q, want to contain reason", errResp.Error)
-	}
-}
-
-// TestExecuteValidatorError verifies that a non-API validator error such as
-// a parse failure results in 403 fail-closed behavior.
-func TestExecuteValidatorError(t *testing.T) {
-	sm := NewShellManager()
-	defer sm.CloseAll()
-	v := &mockValidator{err: errors.New("retries exhausted: no expected tool use block in response")}
-	handler := newHandler(sm, v)
-
-	id, _, err := sm.Create()
-	if err != nil {
-		t.Fatalf("Create() error: %v", err)
-	}
-
-	body := strings.NewReader(`{"command":"curl https://example.com"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
-	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d", w.Code, http.StatusForbidden)
-	}
-}
-
-// TestExecuteValidatorUnavailableSkipsValidation verifies that when the
-// validator returns a ValidationUnavailableError the command executes
-// instead of being rejected with 403.
-func TestExecuteValidatorUnavailableSkipsValidation(t *testing.T) {
-	sm := NewShellManager()
-	defer sm.CloseAll()
-	sm.newShell = func() (Shell, error) {
-		return &mockShell{exitCode: 0}, nil
-	}
-	v := &mockValidator{err: &ValidationUnavailableError{Cause: errors.New("429")}}
-	handler := newHandler(sm, v)
-
-	id, _, err := sm.Create()
-	if err != nil {
-		t.Fatalf("Create() error: %v", err)
-	}
-
-	body := strings.NewReader(`{"command":"curl https://example.com"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
-	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
-	}
-
-	events := parseSSEEvents(t, w.Body.String())
-	if len(events) == 0 {
-		t.Fatal("expected at least 1 SSE event, got 0")
-	}
-	last := events[len(events)-1]
-	if last.Type != "complete" || last.ExitCode == nil || *last.ExitCode != 0 {
-		t.Fatalf("expected complete with exitCode=0, got %+v", last)
+	if v.called {
+		t.Fatal("validator should not be called")
 	}
 }
 
