@@ -17,10 +17,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/gin-gonic/gin"
-	"github.com/ogadra/20260327-cli-demo/broker/handler"
-	"github.com/ogadra/20260327-cli-demo/broker/healthcheck"
-	"github.com/ogadra/20260327-cli-demo/broker/service"
-	"github.com/ogadra/20260327-cli-demo/broker/store"
+	"github.com/ogadra/bunshin/broker/handler"
+	"github.com/ogadra/bunshin/broker/healthcheck"
+	"github.com/ogadra/bunshin/broker/service"
+	"github.com/ogadra/bunshin/broker/store"
 )
 
 // newRouter は broker の HTTP ルーティングを構成した gin.Engine を返す。

@@ -1,4 +1,4 @@
-module github.com/ogadra/20260327-cli-demo/broker
+module github.com/ogadra/bunshin/broker
 
 go 1.26.1
 

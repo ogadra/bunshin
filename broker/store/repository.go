@@ -6,7 +6,7 @@ import (
 	"errors"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/ogadra/20260327-cli-demo/broker/model"
+	"github.com/ogadra/bunshin/broker/model"
 )
 
 // ErrNotFound は指定された runner が存在しない場合に返される。

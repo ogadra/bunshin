@@ -10,8 +10,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/ogadra/20260327-cli-demo/broker/service"
-	"github.com/ogadra/20260327-cli-demo/broker/store"
+	"github.com/ogadra/bunshin/broker/service"
+	"github.com/ogadra/bunshin/broker/store"
 )
 
 // mockService は service.Service のモック実装。

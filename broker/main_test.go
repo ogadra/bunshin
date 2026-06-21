@@ -15,10 +15,10 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/ogadra/20260327-cli-demo/broker/handler"
-	"github.com/ogadra/20260327-cli-demo/broker/healthcheck"
-	"github.com/ogadra/20260327-cli-demo/broker/service"
-	"github.com/ogadra/20260327-cli-demo/broker/store"
+	"github.com/ogadra/bunshin/broker/handler"
+	"github.com/ogadra/bunshin/broker/healthcheck"
+	"github.com/ogadra/bunshin/broker/service"
+	"github.com/ogadra/bunshin/broker/store"
 )
 
 // saveAndRestore は全てのパッケージレベル変数を退避し、テスト終了時に復元する。
