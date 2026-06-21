@@ -5,6 +5,7 @@ front/dist/
 .codex
 __pycache__/
 .env
+!.env.example
 .takt/
 .terraform/
 terraform/*.tfstate
