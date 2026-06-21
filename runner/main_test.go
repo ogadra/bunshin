@@ -613,7 +613,6 @@ func TestStartRegisterCanceledBySignal(t *testing.T) {
 // TestStartRegisterReceivesBrokerURL verifies that the broker URL from
 // the environment is passed to the register function.
 func TestStartRegisterReceivesBrokerURL(t *testing.T) {
-
 	broker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 	}))

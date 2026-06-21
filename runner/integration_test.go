@@ -420,7 +420,6 @@ func TestIntegrationNonWhitelistedSSE(t *testing.T) {
 	}
 }
 
-
 // unexpectedStatusError is returned when an HTTP response has an unexpected status code.
 type unexpectedStatusError struct {
 	got int

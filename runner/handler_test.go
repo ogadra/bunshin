@@ -515,7 +515,6 @@ func TestExecuteNonWhitelistedSSE(t *testing.T) {
 	}
 }
 
-
 // TestHealth verifies that GET /health returns 200 OK with body "ok\n".
 func TestHealth(t *testing.T) {
 	sm := NewShellManager()
