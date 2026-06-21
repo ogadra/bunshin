@@ -1,4 +1,5 @@
 # trivy:ignore:AVD-AWS-0089 -- Access logs are not required until static delivery logging is defined
+# trivy:ignore:AVD-AWS-0132 -- AWS managed encryption is sufficient for static assets
 resource "aws_s3_bucket" "static" {
   # checkov:skip=CKV_AWS_18:Access logs are not required until static delivery logging is defined
   # checkov:skip=CKV_AWS_144:Replication is configured from the primary static bucket
@@ -22,18 +23,6 @@ resource "aws_s3_bucket_public_access_block" "static" {
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
-}
-
-# trivy:ignore:AVD-AWS-0132 -- AWS managed encryption is sufficient for static assets
-resource "aws_s3_bucket_server_side_encryption_configuration" "static" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  bucket = aws_s3_bucket.static.id
-
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
-    }
-  }
 }
 
 resource "aws_s3_bucket_versioning" "static" {
