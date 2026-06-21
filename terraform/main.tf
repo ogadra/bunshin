@@ -1,7 +1,7 @@
 module "apne1" {
   source = "./apne1"
 
-  alb_certificate_arn                                     = var.alb_certificate_arns.apne1
+  alb_certificate_arn                                     = data.aws_acm_certificate.apne1_alb.arn
   bunshin_stacks                                          = local.bunshin_stacks
   cloudfront_distribution_arn                             = aws_cloudfront_distribution.main.arn
   domain_name                                             = var.domain_name
@@ -24,7 +24,7 @@ module "apne1" {
 module "apne3" {
   source = "./apne3"
 
-  alb_certificate_arn         = var.alb_certificate_arns.apne3
+  alb_certificate_arn         = data.aws_acm_certificate.apne3_alb.arn
   bunshin_stacks              = local.bunshin_stacks
   cloudfront_distribution_arn = aws_cloudfront_distribution.main.arn
   domain_name                 = var.domain_name

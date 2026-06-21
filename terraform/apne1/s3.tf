@@ -8,7 +8,7 @@ resource "aws_s3_bucket" "static" {
   bucket_namespace = "account-regional"
 
   tags = merge(local.common_tags, {
-    Name    = aws_s3_bucket.static.bucket
+    Name    = format("bunshin-static-%s-%s-an", data.aws_caller_identity.current.account_id, data.aws_region.current.id)
     Service = "static"
   })
 }
