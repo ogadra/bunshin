@@ -1,5 +1,12 @@
 local core = require("resolve_core")
 
+local function mark_reassigned()
+    ngx.var.session_reassigned = "true"
+    if ngx.req.get_method() ~= "POST" or ngx.var.uri ~= "/api/shell" then
+        ngx.var.resolve_expire_shell_cookie = "shell_id=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Strict"
+    end
+end
+
 local res = ngx.location.capture("/_resolve_reassigned")
 local invalid = core.validate_resolve_response(res)
 if invalid then
@@ -19,6 +26,7 @@ if action.exit then
 end
 
 if action.forward_host then
+    mark_reassigned()
     ngx.var.forward_host = action.forward_host
     ngx.var.fwd_fallback_stack = action.fallback_stack
     ngx.var.fwd_fallback_remaining = action.fallback_remaining
@@ -30,7 +38,7 @@ if action.forward_host then
         " target_host=", tostring(action.forward_host),
         " uri=", tostring(ngx.var.request_uri)
     )
-    return ngx.exec("@forward_fallback")
+    return ngx.exec("@forward_reassigned_fallback")
 end
 
 if action.set_cookie then
@@ -40,10 +48,7 @@ else
     return ngx.exit(500)
 end
 ngx.var.runner_url = action.runner_url
-ngx.var.session_reassigned = "true"
-if ngx.req.get_method() ~= "POST" or ngx.var.uri ~= "/api/shell" then
-    ngx.var.resolve_expire_shell_cookie = "shell_id=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Strict"
-end
+mark_reassigned()
 
 ngx.log(
     ngx.WARN,

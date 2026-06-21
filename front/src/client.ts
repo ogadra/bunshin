@@ -29,7 +29,7 @@ export async function* execute(command: string, signal?: AbortSignal): AsyncGene
     body: JSON.stringify({ command }),
     signal,
   });
-  if (res.headers?.get("X-Session-Reassigned") === "true") {
+  if (res.headers.get("X-Session-Reassigned") === "true") {
     throw new SessionReassignedError();
   }
   if (!res.ok) throw new Error(`Failed to execute: ${res.status}`);

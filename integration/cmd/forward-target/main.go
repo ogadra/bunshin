@@ -2,11 +2,11 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"sync"
 )
 
@@ -58,8 +58,8 @@ func (r *recorder) setStatus(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "missing code", http.StatusBadRequest)
 		return
 	}
-	var status int
-	if _, err := fmt.Sscanf(code, "%d", &status); err != nil || status < 100 || status > 599 {
+	status, err := strconv.Atoi(code)
+	if err != nil || status < 100 || status > 599 {
 		http.Error(w, "invalid code", http.StatusBadRequest)
 		return
 	}
