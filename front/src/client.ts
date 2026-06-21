@@ -9,6 +9,13 @@ export type SseEvent =
   | { type: typeof SseEventType.STDERR; data: string }
   | { type: typeof SseEventType.COMPLETE; exitCode: number };
 
+export class SessionReassignedError extends Error {
+  constructor() {
+    super("Session reassigned");
+    this.name = "SessionReassignedError";
+  }
+}
+
 export const createShell = async (signal?: AbortSignal): Promise<void> => {
   const res = await fetch("/api/shell", { method: "POST", signal });
   if (!res.ok) throw new Error(`Failed to create shell: ${res.status}`);
@@ -27,6 +34,9 @@ export async function* execute(command: string, signal?: AbortSignal): AsyncGene
     body: JSON.stringify({ command }),
     signal,
   });
+  if (res.headers?.get("X-Session-Reassigned") === "true") {
+    throw new SessionReassignedError();
+  }
   if (!res.ok) throw new Error(`Failed to execute: ${res.status}`);
   if (!res.body) throw new Error("No response body");
 

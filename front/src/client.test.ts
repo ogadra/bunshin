@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { createShell, deleteShell, execute, SseEventType } from "./client";
+import { createShell, deleteShell, execute, SessionReassignedError, SseEventType } from "./client";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -81,6 +81,16 @@ describe("execute", () => {
     mockFetch.mockResolvedValue({ ok: false, status: 403 });
     const gen = execute("ls");
     await expect(gen.next()).rejects.toThrow("Failed to execute: 403");
+  });
+
+  test("throws reassigned error when response has reassigned header", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 400,
+      headers: { get: (name: string) => (name === "X-Session-Reassigned" ? "true" : null) },
+    });
+    const gen = execute("ls");
+    await expect(gen.next()).rejects.toBeInstanceOf(SessionReassignedError);
   });
 
   test("throws on missing body", async () => {
