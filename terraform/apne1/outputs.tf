@@ -47,3 +47,8 @@ output "nginx_security_group_id" {
   description = "ID of the nginx security group"
   value       = aws_security_group.nginx.id
 }
+
+output "static_bucket_regional_domain_name" {
+  description = "Regional domain name of the static asset bucket"
+  value       = aws_s3_bucket.static.bucket_regional_domain_name
+}

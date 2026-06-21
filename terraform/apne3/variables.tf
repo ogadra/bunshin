@@ -14,6 +14,11 @@ variable "domain_name" {
   type        = string
 }
 
+variable "cloudfront_distribution_arn" {
+  description = "CloudFront distribution ARN allowed to read static assets"
+  type        = string
+}
+
 variable "bunshin_stacks" {
   description = "Bunshin stack regions shared by every broker"
   type        = list(string)
