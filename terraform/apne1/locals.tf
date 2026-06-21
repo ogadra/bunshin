@@ -21,11 +21,6 @@ locals {
     service => "arn:aws:ecr:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:repository/bunshin/${service}"
   }
 
-  jp_cris_destination_regions = [
-    "ap-northeast-1",
-    "ap-northeast-3",
-  ]
-
   common_tags = {
     Project   = "Bunshin"
     ManagedBy = "terraform"

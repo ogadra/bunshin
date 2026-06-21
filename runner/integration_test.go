@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -128,7 +127,7 @@ func TestIntegrationExecuteSSEResponse(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
 
-	ts := httptest.NewServer(newHandler(sm, nil))
+	ts := httptest.NewServer(newHandler(sm))
 	defer ts.Close()
 
 	sid := createShell(t, ts)
@@ -149,13 +148,13 @@ func TestIntegrationExecuteSSEResponse(t *testing.T) {
 	}
 }
 
-// TestIntegrationRejectedCommand verifies that a non-whitelisted command
-// returns 403 Forbidden through the full HTTP stack.
-func TestIntegrationRejectedCommand(t *testing.T) {
+// TestIntegrationNonWhitelistedCommand verifies that a non-whitelisted command
+// executes through the full HTTP stack.
+func TestIntegrationNonWhitelistedCommand(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
 
-	ts := httptest.NewServer(newHandler(sm, nil))
+	ts := httptest.NewServer(newHandler(sm))
 	defer ts.Close()
 
 	sid := createShell(t, ts)
@@ -172,8 +171,21 @@ func TestIntegrationRejectedCommand(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusForbidden)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var buf strings.Builder
+	if _, err := io.Copy(&buf, resp.Body); err != nil {
+		t.Fatalf("read body error: %v", err)
+	}
+	events := parseIntegrationSSEEvents(t, buf.String())
+	if len(events) == 0 {
+		t.Fatal("expected at least 1 SSE event, got 0")
+	}
+	last := events[len(events)-1]
+	if last.Type != "complete" || last.ExitCode == nil {
+		t.Fatalf("last event = %+v, want complete with exitCode", last)
 	}
 }
 
@@ -183,7 +195,7 @@ func TestIntegrationExecuteAfterDelete(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
 
-	ts := httptest.NewServer(newHandler(sm, nil))
+	ts := httptest.NewServer(newHandler(sm))
 	defer ts.Close()
 
 	sid := createShell(t, ts)
@@ -223,7 +235,7 @@ func TestIntegrationShellIsolation(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
 
-	ts := httptest.NewServer(newHandler(sm, nil))
+	ts := httptest.NewServer(newHandler(sm))
 	defer ts.Close()
 
 	sid1 := createShell(t, ts)
@@ -252,7 +264,7 @@ func TestIntegrationCreateDeleteLifecycle(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
 
-	ts := httptest.NewServer(newHandler(sm, nil))
+	ts := httptest.NewServer(newHandler(sm))
 	defer ts.Close()
 
 	// Create.
@@ -307,7 +319,7 @@ func TestIntegrationConcurrentExecute(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
 
-	ts := httptest.NewServer(newHandler(sm, nil))
+	ts := httptest.NewServer(newHandler(sm))
 	defer ts.Close()
 
 	sid := createShell(t, ts)
@@ -367,15 +379,13 @@ func TestIntegrationConcurrentExecute(t *testing.T) {
 	}
 }
 
-// TestIntegrationValidationUnavailableFailOpen verifies that when the validator
-// returns a ValidationUnavailableError the command executes through the full
-// HTTP stack instead of being rejected.
-func TestIntegrationValidationUnavailableFailOpen(t *testing.T) {
+// TestIntegrationNonWhitelistedSSE verifies that a non-whitelisted command
+// executes through the full HTTP stack and returns SSE events.
+func TestIntegrationNonWhitelistedSSE(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
 
-	v := &mockValidator{err: &ValidationUnavailableError{Cause: errors.New("throttling")}}
-	ts := httptest.NewServer(newHandler(sm, v))
+	ts := httptest.NewServer(newHandler(sm))
 	defer ts.Close()
 
 	sid := createShell(t, ts)

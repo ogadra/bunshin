@@ -9,7 +9,6 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 )
@@ -19,7 +18,7 @@ import (
 func TestCreateShell(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/shell", nil)
 	w := httptest.NewRecorder()
@@ -66,7 +65,7 @@ func TestCreateShell(t *testing.T) {
 func TestDeleteShell(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {
@@ -102,7 +101,7 @@ func TestDeleteShell(t *testing.T) {
 // shell_id cookie returns 400 Bad Request.
 func TestDeleteShellMissingCookie(t *testing.T) {
 	sm := NewShellManager()
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/shell", nil)
 	w := httptest.NewRecorder()
@@ -117,7 +116,7 @@ func TestDeleteShellMissingCookie(t *testing.T) {
 // shell ID returns 404 Not Found.
 func TestDeleteShellNotFound(t *testing.T) {
 	sm := NewShellManager()
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/shell", nil)
 	req.AddCookie(&http.Cookie{Name: "shell_id", Value: "nonexistent"})
@@ -136,7 +135,7 @@ func TestDeleteShellCloseError(t *testing.T) {
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{closeErr: errors.New("close failed")}, nil
 	}
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {
@@ -158,7 +157,7 @@ func TestDeleteShellCloseError(t *testing.T) {
 func TestExecuteWhitelisted(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {
@@ -193,12 +192,15 @@ func TestExecuteWhitelisted(t *testing.T) {
 	}
 }
 
-// TestExecuteRejected verifies that POST /api/execute with a non-whitelisted command
-// returns 403 Forbidden without executing the command.
-func TestExecuteRejected(t *testing.T) {
+// TestExecuteNonWhitelisted verifies that POST /api/execute with a
+// non-whitelisted command executes it.
+func TestExecuteNonWhitelisted(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
-	handler := newHandler(sm, nil)
+	sm.newShell = func() (Shell, error) {
+		return &mockShell{exitCode: 0}, nil
+	}
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {
@@ -211,25 +213,20 @@ func TestExecuteRejected(t *testing.T) {
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d", w.Code, http.StatusForbidden)
-	}
-
-	var errResp errorResponse
-	if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
-		t.Fatalf("decode error: %v", err)
-	}
-	if !strings.Contains(errResp.Error, "command not allowed") {
-		t.Fatalf("error = %q, want to contain %q", errResp.Error, "command not allowed")
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 }
 
-// TestExecuteRejectedWithArgs verifies that a non-whitelisted command with arguments
-// is rejected with 403 when no validator is configured.
-func TestExecuteRejectedWithArgs(t *testing.T) {
+// TestExecuteNonWhitelistedWithArgs verifies that a non-whitelisted command
+// with arguments executes it.
+func TestExecuteNonWhitelistedWithArgs(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
-	handler := newHandler(sm, nil)
+	sm.newShell = func() (Shell, error) {
+		return &mockShell{exitCode: 0}, nil
+	}
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {
@@ -242,8 +239,8 @@ func TestExecuteRejectedWithArgs(t *testing.T) {
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d", w.Code, http.StatusForbidden)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 }
 
@@ -251,7 +248,7 @@ func TestExecuteRejectedWithArgs(t *testing.T) {
 // shell_id cookie returns 400 Bad Request.
 func TestExecuteMissingShellCookie(t *testing.T) {
 	sm := NewShellManager()
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	body := strings.NewReader(`{"command":"ls"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
@@ -267,7 +264,7 @@ func TestExecuteMissingShellCookie(t *testing.T) {
 // shell ID returns 404 Not Found.
 func TestExecuteShellNotFound(t *testing.T) {
 	sm := NewShellManager()
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	body := strings.NewReader(`{"command":"ls"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
@@ -285,7 +282,7 @@ func TestExecuteShellNotFound(t *testing.T) {
 func TestExecuteInvalidJSON(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {
@@ -308,7 +305,7 @@ func TestExecuteInvalidJSON(t *testing.T) {
 func TestExecuteEmptyCommand(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {
@@ -330,7 +327,7 @@ func TestExecuteEmptyCommand(t *testing.T) {
 // /api/shell return 405 Method Not Allowed.
 func TestShellMethodNotAllowed(t *testing.T) {
 	sm := NewShellManager()
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/shell", nil)
 	w := httptest.NewRecorder()
@@ -345,7 +342,7 @@ func TestShellMethodNotAllowed(t *testing.T) {
 // /api/execute return 405 Method Not Allowed.
 func TestExecuteMethodNotAllowed(t *testing.T) {
 	sm := NewShellManager()
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/execute", nil)
 	w := httptest.NewRecorder()
@@ -363,7 +360,7 @@ func TestCreateShellError(t *testing.T) {
 	sm.newShell = func() (Shell, error) {
 		return nil, errors.New("shell broken")
 	}
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/shell", nil)
 	w := httptest.NewRecorder()
@@ -402,7 +399,7 @@ func TestExecuteWhitelistedWithStderr(t *testing.T) {
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{exitCode: 0, stderr: "warning: something"}, nil
 	}
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {
@@ -439,7 +436,7 @@ func TestExecuteWhitelistedNonZeroExit(t *testing.T) {
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{exitCode: 2}, nil
 	}
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {
@@ -467,7 +464,7 @@ func TestExecuteWhitelistedWithExecError(t *testing.T) {
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{exitCode: -1, err: errors.New("broken")}, nil
 	}
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {
@@ -485,30 +482,54 @@ func TestExecuteWhitelistedWithExecError(t *testing.T) {
 	}
 }
 
-// mockValidator is a test double for the Validator interface that returns
-// preconfigured ValidationResult and error, and tracks whether it was called.
-type mockValidator struct {
-	result ValidationResult
-	err    error
-	called bool
-}
+// TestExecuteNonWhitelistedAuditLog verifies that executing a non-whitelisted
+// command logs the "unclassified" class and the command string to the audit log.
+func TestExecuteNonWhitelistedAuditLog(t *testing.T) {
+	var buf bytes.Buffer
+	oldOutput := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(oldOutput) })
 
-// Validate records that it was called and returns the preconfigured result and error.
-func (m *mockValidator) Validate(_ context.Context, _ string) (ValidationResult, error) {
-	m.called = true
-	return m.result, m.err
-}
-
-// TestExecuteValidatedSafe verifies that a non-whitelisted command judged safe
-// by the validator is executed and returns SSE events.
-func TestExecuteValidatedSafe(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{exitCode: 0}, nil
 	}
-	v := &mockValidator{result: ValidationResult{Safe: true, Reason: "safe command"}}
-	handler := newHandler(sm, v)
+	handler := newHandler(sm)
+
+	id, _, err := sm.Create()
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+
+	body := strings.NewReader(`{"command":"curl https://example.com"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
+	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	logOutput := buf.String()
+	if !strings.Contains(logOutput, "class=unclassified") {
+		t.Fatalf("expected audit log to contain class=unclassified, got:\n%s", logOutput)
+	}
+	if !strings.Contains(logOutput, `command="curl https://example.com"`) {
+		t.Fatalf("expected audit log to contain the command, got:\n%s", logOutput)
+	}
+}
+
+// TestExecuteNonWhitelistedSSE verifies that a non-whitelisted command
+// executes and returns SSE events.
+func TestExecuteNonWhitelistedSSE(t *testing.T) {
+	sm := NewShellManager()
+	defer sm.CloseAll()
+	sm.newShell = func() (Shell, error) {
+		return &mockShell{exitCode: 0}, nil
+	}
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {
@@ -529,136 +550,13 @@ func TestExecuteValidatedSafe(t *testing.T) {
 	last := events[len(events)-1]
 	if last.Type != "complete" || last.ExitCode == nil || *last.ExitCode != 0 {
 		t.Fatalf("expected complete with exitCode=0, got %+v", last)
-	}
-}
-
-// TestExecuteValidatedUnsafe verifies that a non-whitelisted command judged unsafe
-// by the validator returns 403 with the reason.
-func TestExecuteValidatedUnsafe(t *testing.T) {
-	sm := NewShellManager()
-	defer sm.CloseAll()
-	v := &mockValidator{result: ValidationResult{Safe: false, Reason: "destructive"}}
-	handler := newHandler(sm, v)
-
-	id, _, err := sm.Create()
-	if err != nil {
-		t.Fatalf("Create() error: %v", err)
-	}
-
-	body := strings.NewReader(`{"command":"rm -rf /"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
-	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d", w.Code, http.StatusForbidden)
-	}
-	var errResp errorResponse
-	if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
-		t.Fatalf("decode error: %v", err)
-	}
-	if !strings.Contains(errResp.Error, "destructive") {
-		t.Fatalf("error = %q, want to contain reason", errResp.Error)
-	}
-}
-
-// TestExecuteValidatorError verifies that a non-API validator error such as
-// a parse failure results in 403 fail-closed behavior.
-func TestExecuteValidatorError(t *testing.T) {
-	sm := NewShellManager()
-	defer sm.CloseAll()
-	v := &mockValidator{err: errors.New("retries exhausted: no expected tool use block in response")}
-	handler := newHandler(sm, v)
-
-	id, _, err := sm.Create()
-	if err != nil {
-		t.Fatalf("Create() error: %v", err)
-	}
-
-	body := strings.NewReader(`{"command":"curl https://example.com"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
-	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d", w.Code, http.StatusForbidden)
-	}
-}
-
-// TestExecuteValidatorUnavailableSkipsValidation verifies that when the
-// validator returns a ValidationUnavailableError the command executes
-// instead of being rejected with 403.
-func TestExecuteValidatorUnavailableSkipsValidation(t *testing.T) {
-	sm := NewShellManager()
-	defer sm.CloseAll()
-	sm.newShell = func() (Shell, error) {
-		return &mockShell{exitCode: 0}, nil
-	}
-	v := &mockValidator{err: &ValidationUnavailableError{Cause: errors.New("429")}}
-	handler := newHandler(sm, v)
-
-	id, _, err := sm.Create()
-	if err != nil {
-		t.Fatalf("Create() error: %v", err)
-	}
-
-	body := strings.NewReader(`{"command":"curl https://example.com"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
-	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
-	}
-
-	events := parseSSEEvents(t, w.Body.String())
-	if len(events) == 0 {
-		t.Fatal("expected at least 1 SSE event, got 0")
-	}
-	last := events[len(events)-1]
-	if last.Type != "complete" || last.ExitCode == nil || *last.ExitCode != 0 {
-		t.Fatalf("expected complete with exitCode=0, got %+v", last)
-	}
-}
-
-// TestExecuteWhitelistedSkipsValidator verifies that whitelisted commands
-// bypass the validator entirely and execute directly.
-func TestExecuteWhitelistedSkipsValidator(t *testing.T) {
-	sm := NewShellManager()
-	defer sm.CloseAll()
-	sm.newShell = func() (Shell, error) {
-		return &mockShell{exitCode: 0}, nil
-	}
-	// Validator that would reject if called.
-	v := &mockValidator{result: ValidationResult{Safe: false, Reason: "should not be called"}}
-	handler := newHandler(sm, v)
-
-	id, _, err := sm.Create()
-	if err != nil {
-		t.Fatalf("Create() error: %v", err)
-	}
-
-	body := strings.NewReader(`{"command":"ls"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/execute", body)
-	req.AddCookie(&http.Cookie{Name: "shell_id", Value: id})
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
-	}
-	if v.called {
-		t.Fatal("validator should not be called for whitelisted commands")
 	}
 }
 
 // TestHealth verifies that GET /health returns 200 OK with body "ok\n".
 func TestHealth(t *testing.T) {
 	sm := NewShellManager()
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
@@ -677,15 +575,16 @@ func TestHealth(t *testing.T) {
 // in audit logs to support client identification behind MAP-E or DS-Lite.
 func TestExecuteCloudFrontViewerAddress(t *testing.T) {
 	var buf bytes.Buffer
+	oldOutput := log.Writer()
 	log.SetOutput(&buf)
-	defer log.SetOutput(os.Stderr)
+	t.Cleanup(func() { log.SetOutput(oldOutput) })
 
 	sm := NewShellManager()
 	defer sm.CloseAll()
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{exitCode: 0}, nil
 	}
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {
@@ -713,15 +612,16 @@ func TestExecuteCloudFrontViewerAddress(t *testing.T) {
 // header is absent, handleExecute falls back to c.ClientIP for the remote field.
 func TestExecuteFallbackClientIP(t *testing.T) {
 	var buf bytes.Buffer
+	oldOutput := log.Writer()
 	log.SetOutput(&buf)
-	defer log.SetOutput(os.Stderr)
+	t.Cleanup(func() { log.SetOutput(oldOutput) })
 
 	sm := NewShellManager()
 	defer sm.CloseAll()
 	sm.newShell = func() (Shell, error) {
 		return &mockShell{exitCode: 0}, nil
 	}
-	handler := newHandler(sm, nil)
+	handler := newHandler(sm)
 
 	id, _, err := sm.Create()
 	if err != nil {

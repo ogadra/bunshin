@@ -5,8 +5,8 @@ import (
 	"strings"
 )
 
-// whitelistedExactCommands is the set of command strings that are allowed
-// without LLM validation when the trimmed input matches exactly.
+// whitelistedExactCommands is the set of command strings classified as
+// whitelisted when the trimmed input matches exactly.
 // This covers both bare commands (no arguments) and specific full commands.
 var whitelistedExactCommands = map[string]bool{
 	// Bare commands — no arguments allowed.
@@ -27,9 +27,9 @@ var whitelistedExactCommands = map[string]bool{
 	`nix develop --command sh -c "figlet 'Nix' | cowsay -n | lolcat -f"`: true,
 }
 
-// whitelistedPrefixCommands is the set of commands that are allowed without LLM
-// validation when invoked bare or with arguments, as long as no shell
-// metacharacters are present.
+// whitelistedPrefixCommands is the set of commands classified as whitelisted
+// when invoked bare or with arguments, as long as no shell metacharacters are
+// present.
 var whitelistedPrefixCommands = map[string]bool{
 	"cd":       true,
 	"echo":     true,
@@ -58,7 +58,7 @@ var shellMetaChars = regexp.MustCompile(`[;|&<>\t\n\r` + "`" + `]|\$\(`)
 //   - prefix matches in whitelistedPrefixCommands (bare or with args, no shell metacharacters),
 //   - "nix run nixpkgs#..." invocations without shell metacharacters.
 //
-// Otherwise it returns "validated".
+// Otherwise it returns "unclassified".
 func classifyCommand(cmd string) string {
 	trimmed := strings.TrimSpace(cmd)
 	if whitelistedExactCommands[trimmed] {
@@ -74,5 +74,5 @@ func classifyCommand(cmd string) string {
 			return "whitelisted"
 		}
 	}
-	return "validated"
+	return "unclassified"
 }

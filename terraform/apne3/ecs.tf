@@ -195,7 +195,6 @@ resource "aws_ecs_task_definition" "runner" {
     environment = [
       { name = "RUNNER_PORT", value = tostring(local.ecs_services["runner"].port) },
       { name = "BROKER_URL", value = "http://${aws_service_discovery_service.broker.name}.${aws_service_discovery_private_dns_namespace.internal.name}:${local.ecs_services["broker"].port}" },
-      { name = "AWS_REGION", value = data.aws_region.current.id },
     ]
 
     logConfiguration = {
@@ -222,7 +221,6 @@ resource "aws_ecs_service" "runner" {
   depends_on = [
     aws_iam_role_policy.execution_ecr["runner"],
     aws_iam_role_policy.execution_logs["runner"],
-    aws_iam_role_policy.runner_bedrock,
   ]
 
   network_configuration {

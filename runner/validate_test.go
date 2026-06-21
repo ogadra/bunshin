@@ -83,7 +83,7 @@ func TestClassifyPrefixWhitelisted(t *testing.T) {
 }
 
 // TestClassifyPrefixWithMetachars verifies that prefix-whitelisted commands containing
-// shell metacharacters are classified as "validated".
+// shell metacharacters are classified as "unclassified".
 func TestClassifyPrefixWithMetachars(t *testing.T) {
 	cases := []struct {
 		cmd  string
@@ -102,15 +102,15 @@ func TestClassifyPrefixWithMetachars(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got := classifyCommand(tc.cmd)
-			if got != "validated" {
-				t.Errorf("classifyCommand(%q) = %q, want %q", tc.cmd, got, "validated")
+			if got != "unclassified" {
+				t.Errorf("classifyCommand(%q) = %q, want %q", tc.cmd, got, "unclassified")
 			}
 		})
 	}
 }
 
 // TestClassifyExactWhitelistedVariation verifies that variations of exact whitelisted
-// commands with different arguments are classified as "validated".
+// commands with different arguments are classified as "unclassified".
 func TestClassifyExactWhitelistedVariation(t *testing.T) {
 	cases := []struct {
 		cmd  string
@@ -123,8 +123,8 @@ func TestClassifyExactWhitelistedVariation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got := classifyCommand(tc.cmd)
-			if got != "validated" {
-				t.Errorf("classifyCommand(%q) = %q, want %q", tc.cmd, got, "validated")
+			if got != "unclassified" {
+				t.Errorf("classifyCommand(%q) = %q, want %q", tc.cmd, got, "unclassified")
 			}
 		})
 	}
@@ -151,7 +151,7 @@ func TestClassifyWhitelistedWithSurroundingSpaces(t *testing.T) {
 }
 
 // TestClassifyBareWhitelistedWithArgs verifies that bare-only whitelisted commands
-// with arguments are classified as "validated" because arguments can be abused.
+// with arguments are classified as "unclassified" because arguments can be abused.
 func TestClassifyBareWhitelistedWithArgs(t *testing.T) {
 	cases := []struct {
 		cmd  string
@@ -165,16 +165,16 @@ func TestClassifyBareWhitelistedWithArgs(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got := classifyCommand(tc.cmd)
-			if got != "validated" {
-				t.Errorf("classifyCommand(%q) = %q, want %q", tc.cmd, got, "validated")
+			if got != "unclassified" {
+				t.Errorf("classifyCommand(%q) = %q, want %q", tc.cmd, got, "unclassified")
 			}
 		})
 	}
 }
 
-// TestClassifyValidated verifies that commands not in the whitelist
-// are classified as "validated".
-func TestClassifyValidated(t *testing.T) {
+// TestClassifyUnclassified verifies that commands not in the whitelist
+// are classified as "unclassified".
+func TestClassifyUnclassified(t *testing.T) {
 	cases := []struct {
 		cmd  string
 		name string
@@ -193,8 +193,8 @@ func TestClassifyValidated(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got := classifyCommand(tc.cmd)
-			if got != "validated" {
-				t.Errorf("classifyCommand(%q) = %q, want %q", tc.cmd, got, "validated")
+			if got != "unclassified" {
+				t.Errorf("classifyCommand(%q) = %q, want %q", tc.cmd, got, "unclassified")
 			}
 		})
 	}
@@ -222,9 +222,9 @@ func TestClassifyNixRunWhitelisted(t *testing.T) {
 	}
 }
 
-// TestClassifyNixRunValidated verifies that nix run commands targeting non-nixpkgs
-// flake refs or containing shell metacharacters are classified as "validated".
-func TestClassifyNixRunValidated(t *testing.T) {
+// TestClassifyNixRunUnclassified verifies that nix run commands targeting non-nixpkgs
+// flake refs or containing shell metacharacters are classified as "unclassified".
+func TestClassifyNixRunUnclassified(t *testing.T) {
 	cases := []struct {
 		cmd  string
 		name string
@@ -245,15 +245,15 @@ func TestClassifyNixRunValidated(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got := classifyCommand(tc.cmd)
-			if got != "validated" {
-				t.Errorf("classifyCommand(%q) = %q, want %q", tc.cmd, got, "validated")
+			if got != "unclassified" {
+				t.Errorf("classifyCommand(%q) = %q, want %q", tc.cmd, got, "unclassified")
 			}
 		})
 	}
 }
 
 // TestClassifyChainedCommands verifies that chained commands using shell operators
-// are classified as "validated" because the full string does not match a bare command.
+// are classified as "unclassified" because the full string does not match a bare command.
 func TestClassifyChainedCommands(t *testing.T) {
 	cases := []struct {
 		cmd  string
@@ -267,27 +267,27 @@ func TestClassifyChainedCommands(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got := classifyCommand(tc.cmd)
-			if got != "validated" {
-				t.Errorf("classifyCommand(%q) = %q, want %q", tc.cmd, got, "validated")
+			if got != "unclassified" {
+				t.Errorf("classifyCommand(%q) = %q, want %q", tc.cmd, got, "unclassified")
 			}
 		})
 	}
 }
 
 // TestClassifyEmptyCommand verifies that an empty command string
-// is classified as "validated".
+// is classified as "unclassified".
 func TestClassifyEmptyCommand(t *testing.T) {
 	got := classifyCommand("")
-	if got != "validated" {
-		t.Errorf("classifyCommand(%q) = %q, want %q", "", got, "validated")
+	if got != "unclassified" {
+		t.Errorf("classifyCommand(%q) = %q, want %q", "", got, "unclassified")
 	}
 }
 
 // TestClassifyWhitespaceOnly verifies that a whitespace-only command string
-// is classified as "validated".
+// is classified as "unclassified".
 func TestClassifyWhitespaceOnly(t *testing.T) {
 	got := classifyCommand("   ")
-	if got != "validated" {
-		t.Errorf("classifyCommand(%q) = %q, want %q", "   ", got, "validated")
+	if got != "unclassified" {
+		t.Errorf("classifyCommand(%q) = %q, want %q", "   ", got, "unclassified")
 	}
 }
