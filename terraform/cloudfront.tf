@@ -131,7 +131,7 @@ resource "aws_cloudfront_distribution" "main" {
   }
 
   viewer_certificate {
-    acm_certificate_arn      = var.cloudfront_certificate_arn
+    acm_certificate_arn      = data.aws_acm_certificate.cloudfront.arn
     minimum_protocol_version = "TLSv1.2_2021"
     ssl_support_method       = "sni-only"
   }
