@@ -179,7 +179,7 @@ func auditLog(shell, remote, class, command string, exitCode *int, err error) {
 	if err != nil {
 		msg += fmt.Sprintf(" error=%v", err)
 	}
-	log.New(log.Writer(), "", 0).Print(msg)
+	fmt.Fprintln(log.Writer(), msg)
 }
 
 // writeSSE marshals an sseEvent to JSON and writes it as a Server-Sent Event line.

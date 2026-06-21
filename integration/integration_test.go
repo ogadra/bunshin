@@ -339,7 +339,7 @@ func assertForwardedClientAddress(t *testing.T, got forwardedRequest, want strin
 		t.Fatalf("X-Bunshin-Client-Address = %q, want ip:port: %v", values[0], err)
 	}
 	if values[0] != want {
-		t.Fatalf("X-Bunshin-Client-Address = %q, want [%s]", values, want)
+		t.Fatalf("X-Bunshin-Client-Address = %q, want %q", values[0], want)
 	}
 }
 
