@@ -83,6 +83,7 @@ check("arrival nil for own stack", core.decide_arrival("ap-northeast-1_x", "ap-n
 r = core.decide_arrival("ap-northeast-3_deadbeef", "ap-northeast-1", STACKS, "example.com")
 check("arrival forwards foreign stack host", r.forward_host == "ap-northeast-3.example.com")
 check("arrival forwards foreign stack no exit", r.exit == nil)
+check("arrival forwards foreign stack owner", r.owner_stack == "ap-northeast-3")
 
 -- decide_arrival: allowlist 外の prefix は 500 で遮断
 r = core.decide_arrival("evilhost_x", "ap-northeast-1", STACKS, "example.com")

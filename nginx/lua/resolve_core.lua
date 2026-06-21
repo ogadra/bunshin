@@ -85,7 +85,7 @@ function _M.decide_arrival(session_id, stack, stacks, domain, fallback_stack)
     if host == nil then
         return { exit = HTTP_INTERNAL_ERROR, log = "resolve: unknown stack in session_id: " .. tostring(owner) }
     end
-    return { forward_host = host }
+    return { forward_host = host, owner_stack = owner }
 end
 
 function _M.validate_resolve_response(res)
