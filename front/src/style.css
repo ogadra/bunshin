@@ -7,7 +7,8 @@
 body {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100dvh;
+  font-size: 16px;
   background: #1e1e1e;
   color: #d4d4d4;
   font-family: monospace;
@@ -37,7 +38,7 @@ body {
 
 .input-bar {
   display: flex;
-  border-top: 1px solid #333;
+  border-bottom: 1px solid #333;
 }
 
 .input-bar input {
@@ -47,7 +48,7 @@ body {
   background: #2d2d2d;
   color: #d4d4d4;
   font-family: monospace;
-  font-size: inherit;
+  font-size: 16px;
 }
 
 .input-bar button {
@@ -56,6 +57,7 @@ body {
   background: #0e639c;
   color: #fff;
   font-family: monospace;
+  font-size: 16px;
   cursor: pointer;
 }
 
