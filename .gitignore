@@ -10,7 +10,7 @@ __pycache__/
 .takt/
 .terraform/
 terraform/*.tfstate
-terraform/*.tfstate.backup
+terraform/*.tfstate.*
 terraform/*_override.tf
 terraform/environments/*.tfvars
 k6-output.log
