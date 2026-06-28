@@ -15,10 +15,10 @@ locals {
   runner_desired_count = var.runner_desired_count
   ecs_subnet_ids       = slice(aws_subnet.apne3_private[*].id, 0, 2)
 
-  ecr_registry = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.id}.amazonaws.com"
+  ecr_registry = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.region}.amazonaws.com"
   ecr_repository_arns = {
     for service in keys(local.ecs_services) :
-    service => "arn:aws:ecr:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:repository/bunshin/${service}"
+    service => "arn:aws:ecr:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:repository/bunshin/${service}"
   }
 
   common_tags = {

@@ -6,11 +6,11 @@ resource "aws_s3_bucket" "static" {
   # checkov:skip=CKV2_AWS_61:Lifecycle policy is not required until static deploy retention is defined
   # checkov:skip=CKV2_AWS_62:Event notifications are not required for static asset serving
   # checkov:skip=CKV_AWS_145:AWS managed encryption is sufficient for static assets
-  bucket           = format("bunshin-static-%s-%s-an", data.aws_caller_identity.current.account_id, data.aws_region.current.id)
+  bucket           = format("bunshin-static-%s-%s-an", data.aws_caller_identity.current.account_id, data.aws_region.current.region)
   bucket_namespace = "account-regional"
 
   tags = merge(local.common_tags, {
-    Name    = format("bunshin-static-%s-%s-an", data.aws_caller_identity.current.account_id, data.aws_region.current.id)
+    Name    = format("bunshin-static-%s-%s-an", data.aws_caller_identity.current.account_id, data.aws_region.current.region)
     Service = "static"
   })
 }
