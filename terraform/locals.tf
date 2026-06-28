@@ -6,8 +6,8 @@ locals {
   }
 
   bunshin_stacks = [
-    data.aws_region.apne1.id,
-    data.aws_region.apne3.id,
+    data.aws_region.apne1.region,
+    data.aws_region.apne3.region,
   ]
 
   common_tags = {

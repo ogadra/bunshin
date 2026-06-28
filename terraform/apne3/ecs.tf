@@ -40,7 +40,7 @@ resource "aws_ecs_task_definition" "nginx" {
     }]
 
     environment = [
-      { name = "STACK_NAME", value = data.aws_region.current.id },
+      { name = "STACK_NAME", value = data.aws_region.current.region },
       { name = "INTERNAL_DOMAIN", value = var.domain_name },
       { name = "BUNSHIN_STACKS", value = join(",", var.bunshin_stacks) },
     ]
@@ -49,7 +49,7 @@ resource "aws_ecs_task_definition" "nginx" {
       logDriver = "awslogs"
       options = {
         "awslogs-group"         = aws_cloudwatch_log_group.ecs["nginx"].name
-        "awslogs-region"        = data.aws_region.current.id
+        "awslogs-region"        = data.aws_region.current.region
         "awslogs-stream-prefix" = "nginx"
       }
     }
@@ -122,7 +122,7 @@ resource "aws_ecs_task_definition" "broker" {
     }]
 
     environment = [
-      { name = "AWS_REGION", value = data.aws_region.current.id },
+      { name = "AWS_REGION", value = data.aws_region.current.region },
       { name = "BUNSHIN_STACKS", value = join(",", var.bunshin_stacks) },
     ]
 
@@ -130,7 +130,7 @@ resource "aws_ecs_task_definition" "broker" {
       logDriver = "awslogs"
       options = {
         "awslogs-group"         = aws_cloudwatch_log_group.ecs["broker"].name
-        "awslogs-region"        = data.aws_region.current.id
+        "awslogs-region"        = data.aws_region.current.region
         "awslogs-stream-prefix" = "broker"
       }
     }
@@ -193,7 +193,7 @@ resource "aws_ecs_task_definition" "runner" {
     }]
 
     environment = [
-      { name = "AWS_REGION", value = data.aws_region.current.id },
+      { name = "AWS_REGION", value = data.aws_region.current.region },
       { name = "RUNNER_PORT", value = tostring(local.ecs_services["runner"].port) },
       { name = "BROKER_URL", value = "http://${aws_service_discovery_service.broker.name}.${aws_service_discovery_private_dns_namespace.internal.name}:${local.ecs_services["broker"].port}" },
     ]
@@ -202,7 +202,7 @@ resource "aws_ecs_task_definition" "runner" {
       logDriver = "awslogs"
       options = {
         "awslogs-group"         = aws_cloudwatch_log_group.ecs["runner"].name
-        "awslogs-region"        = data.aws_region.current.id
+        "awslogs-region"        = data.aws_region.current.region
         "awslogs-stream-prefix" = "runner"
       }
     }

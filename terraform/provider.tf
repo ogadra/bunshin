@@ -1,11 +1,11 @@
 # Terraform と AWS プロバイダのバージョン制約
 terraform {
-  required_version = ">= 1.14"
+  required_version = ">= 1.15"
 
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 6.41"
+      version = "~> 6.52"
     }
   }
 }

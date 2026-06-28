@@ -1,9 +1,9 @@
 resource "aws_route53_zone" "internal" {
-  name = "${data.aws_region.current.id}.${var.domain_name}"
+  name = "${data.aws_region.current.region}.${var.domain_name}"
 
   vpc {
     vpc_id     = aws_vpc.apne3.id
-    vpc_region = data.aws_region.current.id
+    vpc_region = data.aws_region.current.region
   }
 
   vpc {
