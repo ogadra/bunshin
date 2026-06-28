@@ -10,6 +10,7 @@
         inherit system;
         config.allowUnfreePredicate = pkg:
           builtins.elem (nixpkgs.lib.getName pkg) [ "terraform" ];
+        config.permittedInsecurePackages = [ "python3.13-ecdsa-0.19.2" ];
       };
     in
     {
