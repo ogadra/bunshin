@@ -4,9 +4,10 @@
 _validate-env env:
     @if [ "{{env}}" != "stg" ] && [ "{{env}}" != "prd" ]; then echo "Error: env must be 'stg' or 'prd', got '{{env}}'"; exit 1; fi
 
-# Initialize terraform
-init:
-    terraform -chdir=terraform init
+# Initialize terraform with environment-specific S3 backend config
+# Requires TF_BACKEND_BUCKET to be set (e.g. via direnv / .env)
+init env: (_validate-env env)
+    terraform -chdir=terraform init -reconfigure -backend-config="bucket=${TF_BACKEND_BUCKET}" -backend-config="key=bunshin/{{env}}.tfstate"
 
 # Plan changes for the specified environment
 plan env: (_validate-env env)
