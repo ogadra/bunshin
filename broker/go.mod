@@ -7,7 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.25
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.24
 	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.20.48
-	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.59.0
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.59.1
 	github.com/gin-gonic/gin v1.12.0
 )
 
