@@ -36,7 +36,7 @@ RUN set -euxo pipefail; \
     apk fetch --recursive -o /tmp/apks \
         bash=5.3.9-r1 \
         ca-certificates=20260611-r0 \
-        curl=8.20.0-r1; \
+        curl=8.21.0-r0; \
     apk verify /tmp/apks/*.apk; \
     find /tmp/apks -type f -name '*.apk' -exec basename {} \; | sort > /tmp/apks.actual; \
     awk '{print $2}' /tmp/apks.sha256 | sort > /tmp/apks.expected; \
