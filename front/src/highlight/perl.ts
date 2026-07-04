@@ -2,11 +2,9 @@
  * Tokenization logic ported from the CodeMirror legacy-modes Perl mode
  * (https://github.com/codemirror/legacy-modes/blob/main/mode/perl.js),
  * MIT License, Copyright (C) 2018-2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others.
- *
- * Keyword list derived from highlight.js src/languages/perl.js
- * (https://github.com/highlightjs/highlight.js/blob/main/src/languages/perl.js),
- * BSD 3-Clause License, Copyright (c) 2006, Ivan Sagalaev. All rights reserved.
  */
+
+import { KEYWORDS } from "./keywords";
 
 export const TokenType = {
   PLAIN: "plain",
@@ -21,41 +19,6 @@ export const TokenType = {
 export type TokenType = (typeof TokenType)[keyof typeof TokenType];
 
 export type Token = { type: TokenType; text: string };
-
-// prettier-ignore
-const KEYWORDS = new Set([
-  "abs", "accept", "alarm", "and", "atan2", "bind", "binmode", "bless", "break",
-  "caller", "chdir", "chmod", "chomp", "chop", "chown", "chr", "chroot", "class",
-  "close", "closedir", "cmp", "connect", "continue", "cos", "crypt", "dbmclose",
-  "dbmopen", "defined", "delete", "die", "do", "dump", "each", "else", "elsif",
-  "endgrent", "endhostent", "endnetent", "endprotoent", "endpwent", "endservent",
-  "eof", "eq", "eval", "exec", "exists", "exit", "exp", "fcntl", "field",
-  "fileno", "flock", "for", "foreach", "fork", "format", "formline", "ge",
-  "getc", "getgrent", "getgrgid", "getgrnam", "gethostbyaddr", "gethostbyname",
-  "gethostent", "getlogin", "getnetbyaddr", "getnetbyname", "getnetent",
-  "getpeername", "getpgrp", "getpriority", "getprotobyname", "getprotobynumber",
-  "getprotoent", "getpwent", "getpwnam", "getpwuid", "getservbyname",
-  "getservbyport", "getservent", "getsockname", "getsockopt", "given", "glob",
-  "gmtime", "goto", "grep", "gt", "hex", "if", "index", "int", "ioctl", "join",
-  "keys", "kill", "last", "lc", "lcfirst", "le", "length", "link", "listen",
-  "local", "localtime", "log", "lstat", "lt", "map", "method", "mkdir",
-  "msgctl", "msgget", "msgrcv", "msgsnd", "my", "ne", "next", "no", "not",
-  "oct", "open", "opendir", "or", "ord", "our", "pack", "package", "pipe",
-  "pop", "pos", "print", "printf", "prototype", "push", "q", "qq", "quotemeta",
-  "qw", "qx", "rand", "read", "readdir", "readline", "readlink", "readpipe",
-  "recv", "redo", "ref", "rename", "require", "reset", "return", "reverse",
-  "rewinddir", "rindex", "rmdir", "say", "scalar", "seek", "seekdir", "select",
-  "semctl", "semget", "semop", "send", "setgrent", "sethostent", "setnetent",
-  "setpgrp", "setpriority", "setprotoent", "setpwent", "setservent",
-  "setsockopt", "shift", "shmctl", "shmget", "shmread", "shmwrite", "shutdown",
-  "sin", "sleep", "socket", "socketpair", "sort", "splice", "split", "sprintf",
-  "sqrt", "srand", "stat", "state", "study", "sub", "substr", "symlink",
-  "syscall", "sysopen", "sysread", "sysseek", "system", "syswrite", "tell",
-  "telldir", "tie", "tied", "time", "times", "tr", "truncate", "uc", "ucfirst",
-  "umask", "undef", "unless", "unlink", "unpack", "unshift", "untie", "until",
-  "use", "utime", "values", "vec", "wait", "waitpid", "wantarray", "warn",
-  "when", "while", "write", "x", "xor", "y",
-]);
 
 const NAME_KEYWORDS = new Set(["sub", "package", "method", "class"]);
 
