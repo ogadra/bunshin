@@ -34,6 +34,11 @@ describe("invariants", () => {
     ["an unclosed ${", "${unclosed"],
     ["only newlines", "\n\n\n"],
     ["non-ascii text", "print 'こんにちは'; # 日本語"],
+    ["an unclosed quote-like operator", "s{unclosed"],
+    ["a heredoc without terminator", 'my $t = <<"EOF";\nbody'],
+    ["a heredoc declared at end of input", "my $t = <<EOF;"],
+    ["POD without =cut", "=pod\nstill pod"],
+    ["unclosed nested delimiters", "q{a{b}"],
   ];
 
   test.each(inputs)("concatenated token texts equal the input for %s", (_, code) => {
@@ -273,5 +278,147 @@ describe("declared names", () => {
 
   test("a comment between sub and its name is skipped like whitespace", () => {
     expect(textsOf("sub # note\nfoo { }", TokenType.FUNCTION)).toEqual(["foo"]);
+  });
+});
+
+describe("quote-like operators", () => {
+  test.each([
+    ["q(a b)"],
+    ["qq{hi there}"],
+    ["qw(a b c)"],
+    ["qx(ls -l)"],
+    ["q!bang!"],
+    ["q^caret^"],
+  ])("%s is a string", (quoted) => {
+    expect(textsOf(`my $x = ${quoted};`, TokenType.STRING)).toEqual([quoted]);
+  });
+
+  test("paired delimiters nest", () => {
+    expect(textsOf("my $x = q{a{b}c};", TokenType.STRING)).toEqual(["q{a{b}c}"]);
+  });
+
+  test("escaped delimiter stays inside", () => {
+    expect(textsOf("q(a\\)b)", TokenType.STRING)).toEqual(["q(a\\)b)"]);
+  });
+
+  test("q before a fat comma is a plain hash key context", () => {
+    expect(textsOf("my %h = (q => 1);", TokenType.STRING)).toEqual([]);
+  });
+
+  test("unclosed operator runs to the end of input", () => {
+    expect(textsOf("my $x = q{oops", TokenType.STRING)).toEqual(["q{oops"]);
+  });
+});
+
+describe("regexp operators", () => {
+  test.each([
+    ["m/\\d+/"],
+    ["m{pat}i"],
+    ["qr/^a.*z$/ms"],
+    ["s/foo/bar/g"],
+    ["s{foo}{bar}g"],
+    ["tr/a-z/A-Z/"],
+    ["y/abc/xyz/"],
+  ])("%s is a regexp", (re) => {
+    expect(textsOf(`$x =~ ${re};`, TokenType.REGEXP)).toEqual([re]);
+  });
+
+  test("bare slashes after a binding operator are a regexp", () => {
+    expect(textsOf("$x =~ /foo/i;", TokenType.REGEXP)).toEqual(["/foo/i"]);
+  });
+
+  test("a pattern after split is a regexp", () => {
+    expect(textsOf("split /,/, $line;", TokenType.REGEXP)).toEqual(["/,/"]);
+  });
+
+  test("paired two-part substitution allows whitespace between parts", () => {
+    expect(textsOf("s{foo}\n  {bar}g;", TokenType.REGEXP)).toEqual(["s{foo}\n  {bar}g"]);
+  });
+
+  test("slash after a variable is division", () => {
+    expect(textsOf("$a / $b", TokenType.REGEXP)).toEqual([]);
+  });
+
+  test("slash after a number is division", () => {
+    expect(textsOf("10 / 2", TokenType.REGEXP)).toEqual([]);
+  });
+
+  test("slash after a closing paren is division", () => {
+    expect(textsOf("f() / 2", TokenType.REGEXP)).toEqual([]);
+  });
+
+  test("defined-or after a variable is not a regexp", () => {
+    expect(textsOf("$x // 5", TokenType.REGEXP)).toEqual([]);
+  });
+
+  test("s as a hash key is not a substitution", () => {
+    expect(textsOf("$h{s}", TokenType.REGEXP)).toEqual([]);
+  });
+
+  test("s as a method name is not a substitution", () => {
+    expect(textsOf("$obj->s(2)", TokenType.REGEXP)).toEqual([]);
+  });
+});
+
+describe("heredocs", () => {
+  test("body up to the terminator line is a string", () => {
+    const code = "my $t = <<EOF;\nline1\nline2\nEOF\nprint;";
+    expect(textsOf(code, TokenType.STRING)).toEqual(["<<EOF", "line1\nline2\nEOF\n"]);
+    expect(textsOf(code, TokenType.KEYWORD)).toContain("print");
+  });
+
+  test("indented terminator closes <<~", () => {
+    const code = "my $t = <<~EOF;\n  text\n  EOF\n";
+    expect(textsOf(code, TokenType.STRING)).toEqual(["<<~EOF", "  text\n  EOF\n"]);
+  });
+
+  test.each([['<<"EOF"'], ["<<'EOF'"]])("%s declares a heredoc", (marker) => {
+    const code = `my $t = ${marker};\nbody\nEOF\n`;
+    expect(textsOf(code, TokenType.STRING)).toEqual([marker, "body\nEOF\n"]);
+  });
+
+  test("two heredocs on one line are consumed in order", () => {
+    const code = "print <<A, <<B;\naaa\nA\nbbb\nB\nsay;";
+    expect(textsOf(code, TokenType.STRING)).toEqual(["<<A", "<<B", "aaa\nA\nbbb\nB\n"]);
+    expect(textsOf(code, TokenType.KEYWORD)).toContain("say");
+  });
+
+  test("heredoc without terminator runs to the end of input", () => {
+    expect(textsOf("my $t = <<EOF;\nbody", TokenType.STRING)).toEqual(["<<EOF", "body"]);
+  });
+
+  test("left shift is not a heredoc", () => {
+    expect(textsOf("$a << 2;\nrest\n", TokenType.STRING)).toEqual([]);
+  });
+});
+
+describe("POD and data sections", () => {
+  test("=pod through =cut is a comment", () => {
+    const code = "=pod\ndocs here\n=cut trailing\nmy $x;";
+    expect(textsOf(code, TokenType.COMMENT)).toEqual(["=pod\ndocs here\n=cut trailing"]);
+    expect(textsOf(code, TokenType.KEYWORD)).toEqual(["my"]);
+  });
+
+  test("any =word directive opens POD", () => {
+    expect(textsOf("=head1 TITLE\nprose\n=cut\n", TokenType.COMMENT)).toEqual([
+      "=head1 TITLE\nprose\n=cut",
+    ]);
+  });
+
+  test("POD without =cut runs to the end of input", () => {
+    expect(textsOf("=pod\nstill pod", TokenType.COMMENT)).toEqual(["=pod\nstill pod"]);
+  });
+
+  test("mid-line = is not POD", () => {
+    expect(textsOf("my $x = 1;", TokenType.COMMENT)).toEqual([]);
+  });
+
+  test.each([["__END__"], ["__DATA__"]])("%s comments out the rest of the file", (marker) => {
+    const code = `my $x;\n${marker}\nanything "goes" here`;
+    expect(textsOf(code, TokenType.COMMENT)).toEqual([`${marker}\nanything "goes" here`]);
+  });
+
+  test("__END__ not at line start is a plain word", () => {
+    expect(textsOf("foo __END__ bar", TokenType.COMMENT)).toEqual([]);
   });
 });

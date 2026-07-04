@@ -11,6 +11,7 @@ export const TokenType = {
   PLAIN: "plain",
   COMMENT: "comment",
   STRING: "string",
+  REGEXP: "regexp",
   VARIABLE: "variable",
   NUMBER: "number",
   KEYWORD: "keyword",
@@ -67,10 +68,32 @@ export const bracedVariableEnd = (code: string, from: number, sigil: string): nu
   return null;
 };
 
+const QUOTE_OPS: Record<string, { type: TokenType; parts: 1 | 2; modifiers: boolean }> = {
+  q: { type: TokenType.STRING, parts: 1, modifiers: false },
+  qq: { type: TokenType.STRING, parts: 1, modifiers: false },
+  qw: { type: TokenType.STRING, parts: 1, modifiers: false },
+  qx: { type: TokenType.STRING, parts: 1, modifiers: false },
+  qr: { type: TokenType.REGEXP, parts: 1, modifiers: true },
+  m: { type: TokenType.REGEXP, parts: 1, modifiers: true },
+  s: { type: TokenType.REGEXP, parts: 2, modifiers: true },
+  tr: { type: TokenType.REGEXP, parts: 2, modifiers: true },
+  y: { type: TokenType.REGEXP, parts: 2, modifiers: true },
+};
+
+// CodeMirror perl mode と同じ限定集合。=> の = などをデリミタと誤認しないため任意の記号は許可しない
+const DELIM_OPEN_RE = /[\^'"!~/([{<]/;
+const PAIRED_CLOSE: Record<string, string> = { "(": ")", "[": "]", "{": "}", "<": ">" };
+const AMBIGUOUS_QUOTE_OPS = new Set(["m", "s", "tr", "y"]);
+
+const HEREDOC_RE = /<<(~?)(?:([A-Za-z_]\w*)|"([A-Za-z_]\w*)"|'([A-Za-z_]\w*)'|`([A-Za-z_]\w*)`)/y;
+const POD_CUT_RE = /\n=cut(?!\w)[^\n]*/g;
+
 export const tokenizePerl = (code: string): Token[] => {
   const tokens: Token[] = [];
   let pos = 0;
   let expectName = false;
+  let prev: { type: TokenType; last: string } | null = null;
+  const heredocQueue: { tag: string; indented: boolean }[] = [];
 
   const push = (type: TokenType, end: number): void => {
     const text = code.slice(pos, end);
@@ -79,6 +102,10 @@ export const tokenizePerl = (code: string): Token[] => {
       last.text += text;
     } else {
       tokens.push({ type, text });
+    }
+    const trimmed = text.trimEnd();
+    if (type !== TokenType.COMMENT && trimmed !== "") {
+      prev = { type, last: trimmed[trimmed.length - 1] ?? "" };
     }
     pos = end;
   };
@@ -89,6 +116,17 @@ export const tokenizePerl = (code: string): Token[] => {
     return m === null ? null : m[0];
   };
 
+  // 直前のトークンから、/ がパターン開始になり得る文脈（項が来る位置）かを判定する
+  const regexAllowed = (): boolean => {
+    if (prev === null) return true;
+    if (prev.type === TokenType.KEYWORD) return true;
+    if (prev.type === TokenType.PLAIN || prev.type === TokenType.FUNCTION) {
+      // 末尾 / は // や /= の演算子の一部であり、続く / はパターン開始ではない
+      return !/[)\]}\w"'/]/.test(prev.last);
+    }
+    return false;
+  };
+
   const quotedEnd = (quote: string): number => {
     for (let i = pos + 1; i < code.length; i++) {
       if (code[i] === "\\") i++;
@@ -97,6 +135,43 @@ export const tokenizePerl = (code: string): Token[] => {
     // null や例外を返すと編集途中の入力でハイライトが丸ごと消えるため、
     // 閉じていない引用符は末尾までを文字列とみなす
     return code.length;
+  };
+
+  const delimitedEnd = (open: string, from: number): number => {
+    const close = PAIRED_CLOSE[open];
+    let depth = 1;
+    for (let i = from; i < code.length; i++) {
+      const c = code[i];
+      if (c === "\\") i++;
+      else if (close !== undefined && c === open) depth++;
+      else if (c === (close ?? open)) {
+        depth--;
+        if (depth === 0) return i + 1;
+      }
+    }
+    return code.length;
+  };
+
+  const podEnd = (): number => {
+    if (code.startsWith("=cut", pos) && !/\w/.test(code[pos + 4] ?? "")) {
+      const nl = code.indexOf("\n", pos);
+      return nl === -1 ? code.length : nl;
+    }
+    POD_CUT_RE.lastIndex = pos;
+    const m = POD_CUT_RE.exec(code);
+    return m === null ? code.length : m.index + m[0].length;
+  };
+
+  const heredocBodyEnd = (tag: string, indented: boolean): number => {
+    for (let search = pos; ; ) {
+      const nl = code.indexOf("\n", search);
+      const line = code.slice(search, nl === -1 ? code.length : nl);
+      if ((indented ? line.trimStart() : line) === tag) {
+        return nl === -1 ? code.length : nl + 1;
+      }
+      if (nl === -1) return code.length;
+      search = nl + 1;
+    }
   };
 
   const variableEnd = (): number | null => {
@@ -124,6 +199,22 @@ export const tokenizePerl = (code: string): Token[] => {
 
   while (pos < code.length) {
     const ch = code[pos] ?? "";
+    const atLineStart = pos === 0 || code[pos - 1] === "\n";
+    if (ch === "\n" && heredocQueue.length > 0) {
+      push(TokenType.PLAIN, pos + 1);
+      while (pos < code.length && heredocQueue.length > 0) {
+        const h = heredocQueue.shift();
+        if (h === undefined) break;
+        const end = heredocBodyEnd(h.tag, h.indented);
+        if (end > pos) push(TokenType.STRING, end);
+      }
+      continue;
+    }
+    if (atLineStart && ch === "=" && /[A-Za-z]/.test(code[pos + 1] ?? "")) {
+      push(TokenType.COMMENT, podEnd());
+      // POD もコメントと同様に空白扱いなので expectName を維持する
+      continue;
+    }
     if (ch === "#") {
       const nl = code.indexOf("\n", pos);
       push(TokenType.COMMENT, nl === -1 ? code.length : nl);
@@ -135,6 +226,16 @@ export const tokenizePerl = (code: string): Token[] => {
       expectName = false;
       continue;
     }
+    if (ch === "<" && code[pos + 1] === "<") {
+      HEREDOC_RE.lastIndex = pos;
+      const m = HEREDOC_RE.exec(code);
+      if (m !== null) {
+        heredocQueue.push({ tag: m[2] ?? m[3] ?? m[4] ?? m[5] ?? "", indented: m[1] === "~" });
+        push(TokenType.STRING, pos + m[0].length);
+        expectName = false;
+        continue;
+      }
+    }
     if (ch === "$" || ch === "@" || ch === "%" || ch === "&") {
       const end = variableEnd();
       if (end !== null) {
@@ -142,6 +243,13 @@ export const tokenizePerl = (code: string): Token[] => {
         expectName = false;
         continue;
       }
+    }
+    if (ch === "/" && regexAllowed()) {
+      let end = delimitedEnd("/", pos + 1);
+      while (end < code.length && /[a-z]/.test(code[end] ?? "")) end++;
+      push(TokenType.REGEXP, end);
+      expectName = false;
+      continue;
     }
     // 範囲演算子 .. の直後の桁は先頭ドット付き小数 (.5) と解釈しない
     if (/\d/.test(ch) || (ch === "." && code[pos - 1] !== "." && /\d/.test(code[pos + 1] ?? ""))) {
@@ -157,7 +265,37 @@ export const tokenizePerl = (code: string): Token[] => {
       if (expectName) {
         push(TokenType.FUNCTION, pos + word.length);
         expectName = false;
-      } else if (KEYWORDS.has(word)) {
+        continue;
+      }
+      const op = QUOTE_OPS[word];
+      if (op !== undefined) {
+        const d = code[pos + word.length] ?? "";
+        // $obj->s(...) のようなメソッド呼び出しをクォート演算子と誤認しない
+        const allowed = !AMBIGUOUS_QUOTE_OPS.has(word) || (regexAllowed() && prev?.last !== ">");
+        if (allowed && DELIM_OPEN_RE.test(d)) {
+          let end = delimitedEnd(d, pos + word.length + 1);
+          if (op.parts === 2) {
+            if (PAIRED_CLOSE[d] !== undefined) {
+              let j = end;
+              while (j < code.length && /\s/.test(code[j] ?? "")) j++;
+              const d2 = code[j] ?? "";
+              if (DELIM_OPEN_RE.test(d2)) end = delimitedEnd(d2, j + 1);
+            } else {
+              end = delimitedEnd(d, end);
+            }
+          }
+          if (op.modifiers) {
+            while (end < code.length && /[a-z]/.test(code[end] ?? "")) end++;
+          }
+          push(op.type, end);
+          continue;
+        }
+      }
+      if (atLineStart && (word === "__END__" || word === "__DATA__")) {
+        push(TokenType.COMMENT, code.length);
+        continue;
+      }
+      if (KEYWORDS.has(word)) {
         push(TokenType.KEYWORD, pos + word.length);
         expectName = NAME_KEYWORDS.has(word);
       } else {
