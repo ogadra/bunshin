@@ -2,6 +2,7 @@
  * Tokenization logic ported from the CodeMirror legacy-modes Perl mode
  * (https://github.com/codemirror/legacy-modes/blob/main/mode/perl.js),
  * MIT License, Copyright (C) 2018-2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others.
+ * See front/THIRD_PARTY_NOTICES for the full license text.
  */
 
 import { KEYWORDS } from "./keywords";
@@ -20,7 +21,7 @@ export type TokenType = (typeof TokenType)[keyof typeof TokenType];
 
 export type Token = { type: TokenType; text: string };
 
-const NAME_KEYWORDS = new Set(["sub", "package", "method", "class"]);
+const NAME_KEYWORDS = new Set(["sub", "package"]);
 
 const NUMBER_RE =
   /0x[\da-f][\da-f_]*|0b[01][01_]*|(?:\d[\d_]*)?\.\d[\d_]*(?:e[+-]?\d+)?|\d[\d_]*(?:\.\d[\d_]*)?(?:e[+-]?\d+)?/iy;
@@ -56,7 +57,8 @@ export const tokenizePerl = (code: string): Token[] => {
       if (code[i] === "\\") i++;
       else if (code[i] === quote) return i + 1;
     }
-    // 閉じ引用符のない編集途中の入力も末尾まで文字列として表示し切る
+    // null や例外を返すと編集途中の入力でハイライトが丸ごと消えるため、
+    // 閉じていない引用符は末尾までを文字列とみなす
     return code.length;
   };
 
@@ -83,7 +85,15 @@ export const tokenizePerl = (code: string): Token[] => {
       if (code[k] === "^") k++;
       const start = k;
       while (k < code.length && /\w/.test(code[k] ?? "")) k++;
+      while (code[k] === ":" && code[k + 1] === ":" && /[A-Za-z_]/.test(code[k + 2] ?? "")) {
+        k += 2;
+        while (k < code.length && /\w/.test(code[k] ?? "")) k++;
+      }
       if (k > start && code[k] === "}") return k + 1;
+      if (k === start && sigil === "$") {
+        const c = code[k] ?? "";
+        if (c !== "" && SPECIAL_SCALAR_CHARS.includes(c) && code[k + 1] === "}") return k + 2;
+      }
     }
     if (/[A-Za-z_]/.test(code[j] ?? "")) {
       let k = j;
@@ -107,7 +117,7 @@ export const tokenizePerl = (code: string): Token[] => {
     if (ch === "#") {
       const nl = code.indexOf("\n", pos);
       push(TokenType.COMMENT, nl === -1 ? code.length : nl);
-      expectName = false;
+      // sub # note\nfoo のようにコメントは宣言と名前の間に挟めるため expectName を維持する
       continue;
     }
     if (ch === "'" || ch === '"' || ch === "`") {

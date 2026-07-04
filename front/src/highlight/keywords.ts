@@ -2,6 +2,7 @@
  * Keyword list derived from highlight.js src/languages/perl.js
  * (https://github.com/highlightjs/highlight.js/blob/main/src/languages/perl.js),
  * BSD 3-Clause License, Copyright (c) 2006, Ivan Sagalaev. All rights reserved.
+ * See front/THIRD_PARTY_NOTICES for the full license text.
  */
 
 // prettier-ignore

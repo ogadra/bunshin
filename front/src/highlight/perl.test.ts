@@ -40,8 +40,8 @@ describe("invariants", () => {
     expect(rejoin(code)).toBe(code);
   });
 
-  test("never emits two consecutive tokens of the same type", () => {
-    const tokens = tokenizePerl(SAMPLE);
+  test.each(inputs)("never emits two consecutive tokens of the same type for %s", (_, code) => {
+    const tokens = tokenizePerl(code);
     for (let i = 1; i < tokens.length; i++) {
       expect(tokens[i]!.type).not.toBe(tokens[i - 1]!.type);
     }
@@ -128,6 +128,14 @@ describe("variables", () => {
     expect(textsOf("$Foo::Bar::baz", TokenType.VARIABLE)).toEqual(["$Foo::Bar::baz"]);
   });
 
+  test("braced package-qualified name", () => {
+    expect(textsOf("${Foo::Bar::baz}", TokenType.VARIABLE)).toEqual(["${Foo::Bar::baz}"]);
+  });
+
+  test("braced punctuation variable", () => {
+    expect(textsOf("${!}", TokenType.VARIABLE)).toEqual(["${!}"]);
+  });
+
   test("% is an operator when not followed by an identifier", () => {
     expect(textsOf("5 % 2", TokenType.VARIABLE)).toEqual([]);
   });
@@ -190,5 +198,9 @@ describe("declared names", () => {
 
   test("anonymous sub declares no name", () => {
     expect(textsOf("my $f = sub { 1 };", TokenType.FUNCTION)).toEqual([]);
+  });
+
+  test("a comment between sub and its name is skipped like whitespace", () => {
+    expect(textsOf("sub # note\nfoo { }", TokenType.FUNCTION)).toEqual(["foo"]);
   });
 });
