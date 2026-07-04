@@ -30,6 +30,43 @@ const WORD_RE = /[A-Za-z_]\w*(?:::\w+)*/y;
 
 const SPECIAL_SCALAR_CHARS = "&`'+/\\,;.<>@!$?:=~^|%\"-";
 
+// $1 / $^W / 単体の $# など、$ サジル固有の特殊スカラーの終端
+export const specialScalarEnd = (code: string, pos: number): number | null => {
+  const c = code[pos + 1] ?? "";
+  if (/\d/.test(c)) {
+    let j = pos + 2;
+    while (j < code.length && /\d/.test(code[j] ?? "")) j++;
+    return j;
+  }
+  if (c === "^" && /[A-Z]/.test(code[pos + 2] ?? "")) return pos + 3;
+  if (c === "#" && !/[A-Za-z_{$]/.test(code[pos + 2] ?? "")) return pos + 2;
+  return null;
+};
+
+// \w の並びを :: 連結込みで進める。${2} を許すため数字始まりをここでは拒否しない
+export const wordPathEnd = (code: string, from: number): number => {
+  let k = from;
+  while (k < code.length && /\w/.test(code[k] ?? "")) k++;
+  while (code[k] === ":" && code[k + 1] === ":" && /[A-Za-z_]/.test(code[k + 2] ?? "")) {
+    k += 2;
+    while (k < code.length && /\w/.test(code[k] ?? "")) k++;
+  }
+  return k;
+};
+
+// from は "{" の位置。${name} ${Foo::Bar} ${^NAME} と、$ に限り ${!} を受理する
+export const bracedVariableEnd = (code: string, from: number, sigil: string): number | null => {
+  let k = from + 1;
+  if (code[k] === "^") k++;
+  const end = wordPathEnd(code, k);
+  if (end > k && code[end] === "}") return end + 1;
+  if (end === k && sigil === "$") {
+    const c = code[end] ?? "";
+    if (c !== "" && SPECIAL_SCALAR_CHARS.includes(c) && code[end + 1] === "}") return end + 2;
+  }
+  return null;
+};
+
 export const tokenizePerl = (code: string): Token[] => {
   const tokens: Token[] = [];
   let pos = 0;
@@ -63,47 +100,20 @@ export const tokenizePerl = (code: string): Token[] => {
   };
 
   const variableEnd = (): number | null => {
-    const sigil = code[pos];
+    const sigil = code[pos] ?? "";
     let i = pos + 1;
     if (sigil === "$") {
-      const c = code[i] ?? "";
-      if (/\d/.test(c)) {
-        let j = i + 1;
-        while (j < code.length && /\d/.test(code[j] ?? "")) j++;
-        return j;
-      }
-      if (c === "^" && /[A-Z]/.test(code[i + 1] ?? "")) return i + 2;
-      if (c === "#") {
-        if (/[A-Za-z_{$]/.test(code[i + 1] ?? "")) i++;
-        else return i + 1;
-      }
+      const special = specialScalarEnd(code, pos);
+      if (special !== null) return special;
+      if (code[i] === "#") i++;
     }
     let j = i;
     while (code[j] === "$") j++;
     if (code[j] === "{") {
-      let k = j + 1;
-      if (code[k] === "^") k++;
-      const start = k;
-      while (k < code.length && /\w/.test(code[k] ?? "")) k++;
-      while (code[k] === ":" && code[k + 1] === ":" && /[A-Za-z_]/.test(code[k + 2] ?? "")) {
-        k += 2;
-        while (k < code.length && /\w/.test(code[k] ?? "")) k++;
-      }
-      if (k > start && code[k] === "}") return k + 1;
-      if (k === start && sigil === "$") {
-        const c = code[k] ?? "";
-        if (c !== "" && SPECIAL_SCALAR_CHARS.includes(c) && code[k + 1] === "}") return k + 2;
-      }
+      const braced = bracedVariableEnd(code, j, sigil);
+      if (braced !== null) return braced;
     }
-    if (/[A-Za-z_]/.test(code[j] ?? "")) {
-      let k = j;
-      while (k < code.length && /\w/.test(code[k] ?? "")) k++;
-      while (code[k] === ":" && code[k + 1] === ":" && /[A-Za-z_]/.test(code[k + 2] ?? "")) {
-        k += 2;
-        while (k < code.length && /\w/.test(code[k] ?? "")) k++;
-      }
-      return k;
-    }
+    if (/[A-Za-z_]/.test(code[j] ?? "")) return wordPathEnd(code, j);
     if (sigil === "$") {
       if (j > i) return i + 1;
       const c = code[i] ?? "";

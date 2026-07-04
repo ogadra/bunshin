@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { tokenizePerl, TokenType } from "./perl";
+import { bracedVariableEnd, specialScalarEnd, tokenizePerl, TokenType, wordPathEnd } from "./perl";
 
 const rejoin = (code: string): string =>
   tokenizePerl(code)
@@ -146,6 +146,77 @@ describe("variables", () => {
 
   test("&name is a function-call sigil", () => {
     expect(textsOf("&run()", TokenType.VARIABLE)).toEqual(["&run"]);
+  });
+});
+
+describe("specialScalarEnd", () => {
+  test("consumes digit variables like $22", () => {
+    expect(specialScalarEnd("$22;", 0)).toBe(3);
+  });
+
+  test("consumes caret variables like $^W", () => {
+    expect(specialScalarEnd("$^W", 0)).toBe(3);
+  });
+
+  test("consumes a bare $#", () => {
+    expect(specialScalarEnd("$# ", 0)).toBe(2);
+  });
+
+  test("leaves $#array to the identifier path", () => {
+    expect(specialScalarEnd("$#array", 0)).toBeNull();
+  });
+
+  test("leaves named variables to the identifier path", () => {
+    expect(specialScalarEnd("$name", 0)).toBeNull();
+  });
+});
+
+describe("wordPathEnd", () => {
+  test("consumes a word", () => {
+    expect(wordPathEnd("foo+bar", 0)).toBe(3);
+  });
+
+  test("consumes :: chains", () => {
+    expect(wordPathEnd("Foo::Bar::baz;", 0)).toBe(13);
+  });
+
+  test("stops before a trailing ::", () => {
+    expect(wordPathEnd("foo::", 0)).toBe(3);
+  });
+
+  test("starts from the given offset", () => {
+    expect(wordPathEnd("${name}", 2)).toBe(6);
+  });
+
+  test("allows digit-leading names for braced forms", () => {
+    expect(wordPathEnd("2x", 0)).toBe(2);
+  });
+});
+
+describe("bracedVariableEnd", () => {
+  test("consumes ${name}", () => {
+    expect(bracedVariableEnd("${name}", 1, "$")).toBe(7);
+  });
+
+  test("consumes ${Foo::Bar}", () => {
+    expect(bracedVariableEnd("${Foo::Bar}", 1, "$")).toBe(11);
+  });
+
+  test("consumes caret names like ${^GLOBAL_PHASE}", () => {
+    expect(bracedVariableEnd("${^GLOBAL_PHASE}", 1, "$")).toBe(16);
+  });
+
+  test("accepts punctuation specials only for the $ sigil", () => {
+    expect(bracedVariableEnd("${!}", 1, "$")).toBe(4);
+    expect(bracedVariableEnd("@{!}", 1, "@")).toBeNull();
+  });
+
+  test("rejects an unclosed brace", () => {
+    expect(bracedVariableEnd("${unclosed", 1, "$")).toBeNull();
+  });
+
+  test("rejects empty braces", () => {
+    expect(bracedVariableEnd("${}", 1, "$")).toBeNull();
   });
 });
 
