@@ -289,8 +289,21 @@ describe("quote-like operators", () => {
     ["qx(ls -l)"],
     ["q!bang!"],
     ["q^caret^"],
+    ["q#hash#"],
+    ["q|pipe|"],
+    ["q=equals="],
+    ["q.dot."],
   ])("%s is a string", (quoted) => {
     expect(textsOf(`my $x = ${quoted};`, TokenType.STRING)).toEqual([quoted]);
+  });
+
+  test("whitespace may separate the operator from its delimiter", () => {
+    expect(textsOf("my $x = q (a b);", TokenType.STRING)).toEqual(["q (a b)"]);
+  });
+
+  test("a hash delimiter must follow the operator immediately", () => {
+    expect(textsOf("q #comment", TokenType.STRING)).toEqual([]);
+    expect(textsOf("q #comment", TokenType.COMMENT)).toEqual(["#comment"]);
   });
 
   test("paired delimiters nest", () => {
@@ -314,13 +327,33 @@ describe("regexp operators", () => {
   test.each([
     ["m/\\d+/"],
     ["m{pat}i"],
+    ["m|pat|i"],
     ["qr/^a.*z$/ms"],
     ["s/foo/bar/g"],
     ["s{foo}{bar}g"],
+    ["s {foo} {bar}g"],
     ["tr/a-z/A-Z/"],
+    ["tr [a-z] [A-Z]"],
     ["y/abc/xyz/"],
   ])("%s is a regexp", (re) => {
     expect(textsOf(`$x =~ ${re};`, TokenType.REGEXP)).toEqual([re]);
+  });
+
+  test("a substitution as a fat comma value is recognized", () => {
+    expect(textsOf("my %h = (a => s/foo/bar/g);", TokenType.REGEXP)).toEqual(["s/foo/bar/g"]);
+  });
+
+  test("a substitution after a comparison is recognized", () => {
+    expect(textsOf("$count > s{foo}{bar}g;", TokenType.REGEXP)).toEqual(["s{foo}{bar}g"]);
+  });
+
+  test("a missing second part does not swallow the following word", () => {
+    expect(textsOf("s{foo}bar;", TokenType.REGEXP)).toEqual(["s{foo}"]);
+  });
+
+  test("a word run containing non-modifier letters is not consumed as modifiers", () => {
+    expect(textsOf("$x =~ /foo/if 1;", TokenType.REGEXP)).toEqual(["/foo/"]);
+    expect(textsOf("$x =~ /foo/if 1;", TokenType.KEYWORD)).toContain("if");
   });
 
   test("bare slashes after a binding operator are a regexp", () => {
@@ -372,9 +405,25 @@ describe("heredocs", () => {
     expect(textsOf(code, TokenType.STRING)).toEqual(["<<~EOF", "  text\n  EOF\n"]);
   });
 
-  test.each([['<<"EOF"'], ["<<'EOF'"]])("%s declares a heredoc", (marker) => {
+  test.each([['<<"EOF"'], ["<<'EOF'"], ["<<`EOF`"]])("%s declares a heredoc", (marker) => {
     const code = `my $t = ${marker};\nbody\nEOF\n`;
     expect(textsOf(code, TokenType.STRING)).toEqual([marker, "body\nEOF\n"]);
+  });
+
+  test('indented terminator closes the quoted form <<~"EOF"', () => {
+    const code = 'my $t = <<~"EOF";\n  body\n  EOF\n';
+    expect(textsOf(code, TokenType.STRING)).toEqual(['<<~"EOF"', "  body\n  EOF\n"]);
+  });
+
+  test("CRLF line endings still close the heredoc", () => {
+    const code = "my $t = <<EOF;\r\nbody\r\nEOF\r\nprint;";
+    expect(textsOf(code, TokenType.STRING)).toEqual(["<<EOF", "body\r\nEOF\r\n"]);
+    expect(textsOf(code, TokenType.KEYWORD)).toContain("print");
+  });
+
+  test("a pattern on the line after the terminator is a regexp", () => {
+    const code = "my $t = <<EOF;\nbody\nEOF\n/pat/;";
+    expect(textsOf(code, TokenType.REGEXP)).toEqual(["/pat/"]);
   });
 
   test("two heredocs on one line are consumed in order", () => {
