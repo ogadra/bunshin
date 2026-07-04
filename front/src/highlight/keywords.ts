@@ -5,7 +5,6 @@
  * See front/THIRD_PARTY_NOTICES for the full license text.
  */
 
-// prettier-ignore
 export const KEYWORDS = new Set([
   "abs",
   "accept",
