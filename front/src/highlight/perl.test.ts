@@ -468,6 +468,6 @@ describe("POD and data sections", () => {
   });
 
   test("__END__ not at line start is a plain word", () => {
-    expect(textsOf("foo __END__ bar", TokenType.COMMENT)).toEqual([]);
+    expect(textsOf("foo __END__ bar", TokenType.PLAIN)).toEqual(["foo __END__ bar"]);
   });
 });
