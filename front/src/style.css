@@ -72,3 +72,75 @@ body {
   color: #666;
   cursor: not-allowed;
 }
+
+.editor {
+  position: relative;
+  height: 40dvh;
+  border-top: 1px solid #333;
+}
+
+/* pre と textarea のフォント・余白が 1px でもずれるとキャレット位置が狂うため、
+   メトリクスに関わるルールは必ず両者同時に指定する */
+.editor-highlight,
+.editor-input {
+  position: absolute;
+  inset: 0;
+  padding: 8px 12px;
+  font-family: monospace;
+  font-size: 16px;
+  line-height: 1.4;
+  white-space: pre;
+  tab-size: 4;
+  overflow: auto;
+  border: none;
+}
+
+.editor-highlight {
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.editor-input {
+  background: transparent;
+  color: transparent;
+  caret-color: #d4d4d4;
+  resize: none;
+}
+
+.editor-input:focus-visible {
+  outline: 2px solid #4fc3f7;
+  outline-offset: -2px;
+}
+
+.editor-input::selection {
+  background: rgba(79, 195, 247, 0.35);
+  color: transparent;
+}
+
+.hl-comment {
+  color: #6a9955;
+}
+
+.hl-string {
+  color: #ce9178;
+}
+
+.hl-regexp {
+  color: #d16969;
+}
+
+.hl-variable {
+  color: #9cdcfe;
+}
+
+.hl-number {
+  color: #b5cea8;
+}
+
+.hl-keyword {
+  color: #569cd6;
+}
+
+.hl-function {
+  color: #dcdcaa;
+}

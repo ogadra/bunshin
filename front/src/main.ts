@@ -1,5 +1,7 @@
 import { createShell, deleteShell, execute, SseEventType } from "./client";
+import { createPerlEditor } from "./editor";
 import { SessionReassignedError } from "./errors/SessionReassignedError";
+import { samplePerl } from "./samplePerl";
 import "./style.css";
 
 const status = document.getElementById("status")!;
@@ -111,3 +113,5 @@ form.addEventListener("submit", (e) => {
   e.preventDefault();
   void run();
 });
+
+createPerlEditor(document.getElementById("editor")!, samplePerl);
