@@ -143,7 +143,7 @@ export const tokenizePerl = (code: string): Token[] => {
     return code.length;
   };
 
-  const delimitedEnd = (open: string, from: number): number => {
+  const delimitedSpan = (open: string, from: number): { end: number; closed: boolean } => {
     const close = PAIRED_CLOSE[open];
     let depth = 1;
     for (let i = from; i < code.length; i++) {
@@ -152,10 +152,40 @@ export const tokenizePerl = (code: string): Token[] => {
       else if (close !== undefined && c === open) depth++;
       else if (c === (close ?? open)) {
         depth--;
-        if (depth === 0) return i + 1;
+        if (depth === 0) return { end: i + 1, closed: true };
       }
     }
-    return code.length;
+    // 閉じデリミタのない編集途中の入力は末尾までを中身として扱う
+    return { end: code.length, closed: false };
+  };
+
+  const pushDelimitedPart = (type: TokenType, open: string, from: number): number => {
+    const span = delimitedSpan(open, from + 1);
+    push(TokenType.PLAIN, from + 1);
+    const contentEnd = span.closed ? span.end - 1 : span.end;
+    if (contentEnd > pos) push(type, contentEnd);
+    if (span.closed) push(TokenType.PLAIN, span.end);
+    return span.end;
+  };
+
+  const pushTailPart = (type: TokenType, delim: string, from: number): number => {
+    const span = delimitedSpan(delim, from);
+    const contentEnd = span.closed ? span.end - 1 : span.end;
+    if (contentEnd > pos) push(type, contentEnd);
+    if (span.closed) push(TokenType.PLAIN, span.end);
+    return span.end;
+  };
+
+  const pushModifiers = (from: number): void => {
+    const modEnd = modifierEnd(from);
+    if (modEnd > from) push(TokenType.KEYWORD, modEnd);
+  };
+
+  // 分割 push で prev に残るのは閉じデリミタ(plain)や修飾子(keyword)だが、
+  // そのままだと直後の / が除算ではなくパターン開始と誤判定される (q!a!/2 等)。
+  // 構成全体を1つの項として文脈に記録し直す
+  const endQuoteTerm = (contentType: TokenType): void => {
+    prev = { type: contentType, tail: code.slice(pos - 1, pos) };
   };
 
   const modifierEnd = (from: number): number => {
@@ -280,8 +310,9 @@ export const tokenizePerl = (code: string): Token[] => {
       }
     }
     if (ch === "/" && regexAllowed()) {
-      const end = modifierEnd(delimitedEnd("/", pos + 1));
-      push(TokenType.REGEXP, end);
+      const end = pushDelimitedPart(TokenType.REGEXP, "/", pos);
+      pushModifiers(end);
+      endQuoteTerm(TokenType.REGEXP);
       expectName = false;
       continue;
     }
@@ -308,17 +339,22 @@ export const tokenizePerl = (code: string): Token[] => {
         const dAt = allowed ? findQuoteDelimiter(pos + word.length) : null;
         if (dAt !== null) {
           const d = code[dAt] ?? "";
-          let end = delimitedEnd(d, dAt + 1);
+          push(TokenType.KEYWORD, pos + word.length);
+          if (dAt > pos) push(TokenType.PLAIN, dAt);
+          let end = pushDelimitedPart(op.type, d, dAt);
           if (op.parts === 2) {
             if (PAIRED_CLOSE[d] !== undefined) {
               const d2At = findQuoteDelimiter(end);
-              if (d2At !== null) end = delimitedEnd(code[d2At] ?? "", d2At + 1);
+              if (d2At !== null) {
+                if (d2At > pos) push(TokenType.PLAIN, d2At);
+                end = pushDelimitedPart(op.type, code[d2At] ?? "", d2At);
+              }
             } else {
-              end = delimitedEnd(d, end);
+              end = pushTailPart(op.type, d, end);
             }
           }
-          if (op.modifiers) end = modifierEnd(end);
-          push(op.type, end);
+          if (op.modifiers) pushModifiers(end);
+          endQuoteTerm(op.type);
           continue;
         }
       }
