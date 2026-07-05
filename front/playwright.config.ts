@@ -5,10 +5,6 @@ export default defineConfig({
   testMatch: /.*\.e2e\.ts/,
   use: {
     baseURL: "http://localhost:4273",
-    // Playwright 同梱ブラウザを実行できない環境 (NixOS 等) ではシステムのブラウザを指定する
-    launchOptions: process.env.PLAYWRIGHT_BROWSER_PATH
-      ? { executablePath: process.env.PLAYWRIGHT_BROWSER_PATH }
-      : {},
   },
   webServer: {
     command: "pnpm build && pnpm preview --port 4273 --strictPort",

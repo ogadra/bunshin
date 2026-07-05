@@ -31,6 +31,15 @@
           graphviz
           uv
         ];
+        env = {
+          # Playwright 同梱ブラウザは NixOS で実行できないため nix 提供のものを使う。
+          # front/package.json の @playwright/test は playwright-driver と同一バージョンに固定すること
+          PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers.override {
+            withFirefox = false;
+            withWebkit = false;
+          }}";
+          PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
+        };
       };
     };
 }
