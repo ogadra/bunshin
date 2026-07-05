@@ -159,7 +159,6 @@ export const tokenizePerl = (code: string): Token[] => {
     return { end: code.length, closed: false };
   };
 
-  // 開きデリミタ位置 from から、開き(plain)・中身(type)・閉じ(plain) を push する
   const pushDelimitedPart = (type: TokenType, open: string, from: number): number => {
     const span = delimitedSpan(open, from + 1);
     push(TokenType.PLAIN, from + 1);
@@ -169,7 +168,6 @@ export const tokenizePerl = (code: string): Token[] => {
     return span.end;
   };
 
-  // s/a/b/ の2部目: 中間デリミタの直後 from から閉じデリミタまで
   const pushTailPart = (type: TokenType, delim: string, from: number): number => {
     const span = delimitedSpan(delim, from);
     const contentEnd = span.closed ? span.end - 1 : span.end;
@@ -178,14 +176,16 @@ export const tokenizePerl = (code: string): Token[] => {
     return span.end;
   };
 
-  // 修飾子は keyword として push するが、文脈上は項の末尾。
-  // prev を KEYWORD のままにすると直後の / が除算ではなくパターン扱いになる
-  const pushModifiers = (contentType: TokenType, from: number): void => {
+  const pushModifiers = (from: number): void => {
     const modEnd = modifierEnd(from);
-    if (modEnd > from) {
-      push(TokenType.KEYWORD, modEnd);
-      prev = { type: contentType, tail: code.slice(modEnd - 1, modEnd) };
-    }
+    if (modEnd > from) push(TokenType.KEYWORD, modEnd);
+  };
+
+  // 分割 push で prev に残るのは閉じデリミタ(plain)や修飾子(keyword)だが、
+  // そのままだと直後の / が除算ではなくパターン開始と誤判定される (q!a!/2 等)。
+  // 構成全体を1つの項として文脈に記録し直す
+  const endQuoteTerm = (contentType: TokenType): void => {
+    prev = { type: contentType, tail: code.slice(pos - 1, pos) };
   };
 
   const modifierEnd = (from: number): number => {
@@ -311,7 +311,8 @@ export const tokenizePerl = (code: string): Token[] => {
     }
     if (ch === "/" && regexAllowed()) {
       const end = pushDelimitedPart(TokenType.REGEXP, "/", pos);
-      pushModifiers(TokenType.REGEXP, end);
+      pushModifiers(end);
+      endQuoteTerm(TokenType.REGEXP);
       expectName = false;
       continue;
     }
@@ -352,7 +353,8 @@ export const tokenizePerl = (code: string): Token[] => {
               end = pushTailPart(op.type, d, end);
             }
           }
-          if (op.modifiers) pushModifiers(op.type, end);
+          if (op.modifiers) pushModifiers(end);
+          endQuoteTerm(op.type);
           continue;
         }
       }

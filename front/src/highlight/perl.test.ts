@@ -297,13 +297,90 @@ describe("quote-like operators", () => {
     expect(textsOf(`my $x = ${quoted};`, TokenType.STRING)).toEqual([content]);
   });
 
-  test("the operator name is a keyword and delimiters stay plain", () => {
-    expect(tokenizePerl("qw(a b)")).toEqual([
-      { type: TokenType.KEYWORD, text: "qw" },
-      { type: TokenType.PLAIN, text: "(" },
-      { type: TokenType.STRING, text: "a b" },
-      { type: TokenType.PLAIN, text: ")" },
-    ]);
+  test.each([
+    [
+      "qw(a b)",
+      [
+        { type: TokenType.KEYWORD, text: "qw" },
+        { type: TokenType.PLAIN, text: "(" },
+        { type: TokenType.STRING, text: "a b" },
+        { type: TokenType.PLAIN, text: ")" },
+      ],
+    ],
+    [
+      "q (a b)",
+      [
+        { type: TokenType.KEYWORD, text: "q" },
+        { type: TokenType.PLAIN, text: " (" },
+        { type: TokenType.STRING, text: "a b" },
+        { type: TokenType.PLAIN, text: ")" },
+      ],
+    ],
+    [
+      "m|pat|i",
+      [
+        { type: TokenType.KEYWORD, text: "m" },
+        { type: TokenType.PLAIN, text: "|" },
+        { type: TokenType.REGEXP, text: "pat" },
+        { type: TokenType.PLAIN, text: "|" },
+        { type: TokenType.KEYWORD, text: "i" },
+      ],
+    ],
+    [
+      "qr/x/ms",
+      [
+        { type: TokenType.KEYWORD, text: "qr" },
+        { type: TokenType.PLAIN, text: "/" },
+        { type: TokenType.REGEXP, text: "x" },
+        { type: TokenType.PLAIN, text: "/" },
+        { type: TokenType.KEYWORD, text: "ms" },
+      ],
+    ],
+    [
+      "s{foo}{bar}g",
+      [
+        { type: TokenType.KEYWORD, text: "s" },
+        { type: TokenType.PLAIN, text: "{" },
+        { type: TokenType.REGEXP, text: "foo" },
+        { type: TokenType.PLAIN, text: "}{" },
+        { type: TokenType.REGEXP, text: "bar" },
+        { type: TokenType.PLAIN, text: "}" },
+        { type: TokenType.KEYWORD, text: "g" },
+      ],
+    ],
+    [
+      "tr/a-z/A-Z/",
+      [
+        { type: TokenType.KEYWORD, text: "tr" },
+        { type: TokenType.PLAIN, text: "/" },
+        { type: TokenType.REGEXP, text: "a-z" },
+        { type: TokenType.PLAIN, text: "/" },
+        { type: TokenType.REGEXP, text: "A-Z" },
+        { type: TokenType.PLAIN, text: "/" },
+      ],
+    ],
+    [
+      "y/abc/xyz/",
+      [
+        { type: TokenType.KEYWORD, text: "y" },
+        { type: TokenType.PLAIN, text: "/" },
+        { type: TokenType.REGEXP, text: "abc" },
+        { type: TokenType.PLAIN, text: "/" },
+        { type: TokenType.REGEXP, text: "xyz" },
+        { type: TokenType.PLAIN, text: "/" },
+      ],
+    ],
+    [
+      "/pat/i",
+      [
+        { type: TokenType.PLAIN, text: "/" },
+        { type: TokenType.REGEXP, text: "pat" },
+        { type: TokenType.PLAIN, text: "/" },
+        { type: TokenType.KEYWORD, text: "i" },
+      ],
+    ],
+  ])("%s tokenizes into its exact shape", (codeStr, expected) => {
+    expect(tokenizePerl(codeStr)).toEqual(expected);
   });
 
   test("whitespace may separate the operator from its delimiter", () => {
@@ -354,6 +431,15 @@ describe("regexp operators", () => {
 
   test("slash right after modifiers is division", () => {
     expect(textsOf("s/a/b/g / 2;", TokenType.REGEXP)).toEqual(["a", "b"]);
+  });
+
+  test.each([
+    ["q!a!/2", []],
+    ["q<a>/2", []],
+    ["m!a!/2", ["a"]],
+    ["qr!a!/2", ["a"]],
+  ])("slash right after %s is division", (expr, regexps) => {
+    expect(textsOf(`my $x = ${expr};`, TokenType.REGEXP)).toEqual(regexps);
   });
 
   test("a substitution as a fat comma value is recognized", () => {
