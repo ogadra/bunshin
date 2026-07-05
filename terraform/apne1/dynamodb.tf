@@ -18,7 +18,7 @@ resource "aws_dynamodb_table" "runners_apne1" {
   }
 
   attribute {
-    name = "idleBucket"
+    name = "idleShard"
     type = "S"
   }
 
@@ -37,8 +37,13 @@ resource "aws_dynamodb_table" "runners_apne1" {
     projection_type = "ALL"
 
     key_schema {
-      attribute_name = "idleBucket"
+      attribute_name = "idleShard"
       key_type       = "HASH"
+    }
+
+    key_schema {
+      attribute_name = "runnerId"
+      key_type       = "RANGE"
     }
   }
 
