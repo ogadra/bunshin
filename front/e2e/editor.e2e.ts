@@ -71,21 +71,39 @@ test("Tab right after Escape keeps its forward focus move", async ({ page }) => 
   expect(await input(page).inputValue()).toBe(before);
 });
 
+// 縦横どちらもスクロールさせるため、長い行を大量に流し込む
+const OVERFLOWING_CODE = `my $line = "${"x".repeat(500)}";\n`.repeat(200);
+
 test("the highlight layer tracks textarea scrolling", async ({ page }) => {
-  const scroll = await page.evaluate(() => {
-    const el = document.querySelector<HTMLTextAreaElement>(".editor-input");
-    if (el === null) throw new Error(".editor-input is missing");
-    // 縦横ともに確実にオーバーフローさせてからスクロールする
-    el.value = `my $line = "${"x".repeat(500)}";\n`.repeat(200);
+  await input(page).evaluate((el: HTMLTextAreaElement, code) => {
+    el.value = code;
     el.dispatchEvent(new Event("input"));
     el.scrollTop = 60;
     el.scrollLeft = 15;
     el.dispatchEvent(new Event("scroll"));
-    const hl = document.querySelector<HTMLElement>(".editor-highlight");
-    if (hl === null) throw new Error(".editor-highlight is missing");
-    return { top: hl.scrollTop, left: hl.scrollLeft };
-  });
+  }, OVERFLOWING_CODE);
+  const scroll = await highlight(page).evaluate((el) => ({
+    top: el.scrollTop,
+    left: el.scrollLeft,
+  }));
   expect(scroll).toEqual({ top: 60, left: 15 });
+});
+
+test("both layers lay out lines at the same vertical extent", async ({ page }) => {
+  await input(page).evaluate((el: HTMLTextAreaElement, code) => {
+    el.value = code;
+    el.dispatchEvent(new Event("input"));
+  }, OVERFLOWING_CODE);
+  // 行の縦位置がずれるとキャレットと色付き文字が合わなくなるため scrollHeight の一致を確認する。
+  // scrollWidth は textarea の縦スクロールバー分だけ差が出るが、各グリフの x 座標は
+  // padding と scrollLeft から決まりレイヤ間で一致するので、横のずれには繋がらない
+  const height = await page.evaluate(() => {
+    const ta = document.querySelector<HTMLTextAreaElement>(".editor-input");
+    const hl = document.querySelector<HTMLElement>(".editor-highlight");
+    if (ta === null || hl === null) throw new Error("editor layers are missing");
+    return [ta.scrollHeight, hl.scrollHeight];
+  });
+  expect(height[0]).toBe(height[1]);
 });
 
 test("both layers share identical geometry", async ({ page }) => {
