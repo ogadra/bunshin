@@ -237,34 +237,41 @@ func TestRegister_PutItemError(t *testing.T) {
 	}
 }
 
-// assertStateIdxQuery は state-index query の KeyConditionExpression・開始位置・Limit を検証する。
-func assertStateIdxQuery(t *testing.T, params *dynamodb.QueryInput, wantStart string, wantLimit int32) {
+// assertStateIdxRange は state-index query の KeyConditionExpression・区間 [lo, hi]・Limit を検証する。
+func assertStateIdxRange(t *testing.T, params *dynamodb.QueryInput, wantLo, wantHi string) {
 	t.Helper()
 	if params.IndexName == nil || *params.IndexName != "state-index" {
 		t.Fatalf("IndexName = %v, want state-index", params.IndexName)
 	}
-	if *params.KeyConditionExpression != "#s = :s AND runnerId >= :r" {
+	if *params.KeyConditionExpression != "#s = :s AND runnerId BETWEEN :lo AND :hi" {
 		t.Errorf("KeyConditionExpression = %q", *params.KeyConditionExpression)
 	}
 	if got := params.ExpressionAttributeValues[":s"].(*types.AttributeValueMemberS).Value; got != string(model.StateIdle) {
 		t.Errorf(":s = %q, want %q", got, model.StateIdle)
 	}
-	if got := params.ExpressionAttributeValues[":r"].(*types.AttributeValueMemberS).Value; got != wantStart {
-		t.Errorf(":r = %q, want %q", got, wantStart)
+	if got := params.ExpressionAttributeValues[":lo"].(*types.AttributeValueMemberS).Value; got != wantLo {
+		t.Errorf(":lo = %q, want %q", got, wantLo)
 	}
-	if params.Limit == nil || *params.Limit != wantLimit {
-		t.Errorf("Limit = %v, want %d", params.Limit, wantLimit)
+	if got := params.ExpressionAttributeValues[":hi"].(*types.AttributeValueMemberS).Value; got != wantHi {
+		t.Errorf(":hi = %q, want %q", got, wantHi)
+	}
+	if params.Limit == nil || *params.Limit != acquireQueryLimit {
+		t.Errorf("Limit = %v, want %d", params.Limit, acquireQueryLimit)
 	}
 }
 
-// TestAcquireIdle_Success は full window (>= acquireQueryLimit 件) が返るとき単一 query で idle runner を確保することを検証する。
+// testStart は AcquireIdle テストで固定するランダム開始 runnerId。区間 [start, max] と [min, start] が
+// どちらも非空になるよう中間の 32 hex を使う。
+const testStart = "88888888888888888888888888888888"
+
+// TestAcquireIdle_Success は最初の区間 [start, max] の先頭ページで idle runner を確保できることを検証する。
 func TestAcquireIdle_Success(t *testing.T) {
 	t.Parallel()
 	queryCount := 0
 	mock := &mockDynamoDBAPI{
 		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
 			queryCount++
-			assertStateIdxQuery(t, params, "0000000000000000", acquireQueryLimit)
+			assertStateIdxRange(t, params, testStart, maxRunnerID)
 			return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{
 				idleItem("r1"), idleItem("r2"), idleItem("r3"), idleItem("r4"), idleItem("r5"),
 			}}, nil
@@ -283,7 +290,7 @@ func TestAcquireIdle_Success(t *testing.T) {
 		},
 	}
 	repo := NewDynamoRepository(mock, "t")
-	repo.randHexFn = func() string { return "0000000000000000" }
+	repo.randHexFn = func() string { return testStart }
 
 	runner, err := repo.AcquireIdle(context.Background(), "sess-1")
 	if err != nil {
@@ -299,80 +306,44 @@ func TestAcquireIdle_Success(t *testing.T) {
 		t.Errorf("expected runner to be busy, state = %q", runner.State)
 	}
 	if queryCount != 1 {
-		t.Errorf("queryCount = %d, want 1 (full window, no top-up)", queryCount)
+		t.Errorf("queryCount = %d, want 1 (found in first segment)", queryCount)
 	}
 }
 
-// TestAcquireIdle_TopUpFromHead はランダム開始位置の候補が acquireQueryLimit 未満のとき
-// partition 先頭から不足分だけ補い、重複を除いて確保することを検証する。
-func TestAcquireIdle_TopUpFromHead(t *testing.T) {
+// TestAcquireIdle_SecondSegment は最初の区間 [start, max] が空のとき、次の区間 [min, start] で確保することを検証する。
+func TestAcquireIdle_SecondSegment(t *testing.T) {
 	t.Parallel()
 	queryCount := 0
 	mock := &mockDynamoDBAPI{
 		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
 			queryCount++
 			if queryCount == 1 {
-				assertStateIdxQuery(t, params, "ffffffffffffffff", acquireQueryLimit)
-				return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{idleItem("r-high")}}, nil
-			}
-			// idle 総数が少ないため head query は r-high を含む全 idle を返し、候補が重複する。
-			assertStateIdxQuery(t, params, minRunnerID, acquireQueryLimit-1)
-			return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{idleItem("r-low"), idleItem("r-high")}}, nil
-		},
-		updateItemFn: func(_ context.Context, params *dynamodb.UpdateItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error) {
-			return &dynamodb.UpdateItemOutput{}, nil
-		},
-	}
-	repo := NewDynamoRepository(mock, "t")
-	repo.randHexFn = func() string { return "ffffffffffffffff" }
-
-	runner, err := repo.AcquireIdle(context.Background(), "sess-1")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	// ランダム開始候補 r-high を先頭に試すため、重複除去後も r-high が確保される。
-	if runner.RunnerID != "r-high" {
-		t.Errorf("runnerID = %q, want %q", runner.RunnerID, "r-high")
-	}
-	if queryCount != 2 {
-		t.Errorf("queryCount = %d, want 2 (random + top-up)", queryCount)
-	}
-}
-
-// TestAcquireIdle_WrapFromHead は random start が空の場合に partition 先頭から limit いっぱいで補って取得できることを検証する。
-func TestAcquireIdle_WrapFromHead(t *testing.T) {
-	t.Parallel()
-	queryCount := 0
-	mock := &mockDynamoDBAPI{
-		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			queryCount++
-			if queryCount == 1 {
-				assertStateIdxQuery(t, params, "ffffffffffffffff", acquireQueryLimit)
+				assertStateIdxRange(t, params, testStart, maxRunnerID)
 				return &dynamodb.QueryOutput{Items: nil}, nil
 			}
-			assertStateIdxQuery(t, params, minRunnerID, acquireQueryLimit)
-			return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{idleItem("r-first")}}, nil
+			assertStateIdxRange(t, params, minRunnerID, testStart)
+			return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{idleItem("r-low")}}, nil
 		},
 		updateItemFn: func(_ context.Context, _ *dynamodb.UpdateItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error) {
 			return &dynamodb.UpdateItemOutput{}, nil
 		},
 	}
 	repo := NewDynamoRepository(mock, "t")
-	repo.randHexFn = func() string { return "ffffffffffffffff" }
+	repo.randHexFn = func() string { return testStart }
 
 	runner, err := repo.AcquireIdle(context.Background(), "sess-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if runner.RunnerID != "r-first" {
-		t.Errorf("runnerID = %q, want %q", runner.RunnerID, "r-first")
+	if runner.RunnerID != "r-low" {
+		t.Errorf("runnerID = %q, want %q", runner.RunnerID, "r-low")
 	}
 	if queryCount != 2 {
-		t.Errorf("queryCount = %d, want 2", queryCount)
+		t.Errorf("queryCount = %d, want 2 (segment [start,max] + [min,start])", queryCount)
 	}
 }
 
-// TestAcquireIdle_NoIdleRunner は全クエリが空の場合に ErrNoIdleRunner を返すことを検証する。
+// TestAcquireIdle_NoIdleRunner は両区間が空の場合に 2 query で ErrNoIdleRunner を返すことを検証する。
 func TestAcquireIdle_NoIdleRunner(t *testing.T) {
 	t.Parallel()
 	queryCount := 0
@@ -383,20 +354,19 @@ func TestAcquireIdle_NoIdleRunner(t *testing.T) {
 		},
 	}
 	repo := NewDynamoRepository(mock, "t")
-	repo.randHexFn = func() string { return "0000000000000000" }
+	repo.randHexFn = func() string { return testStart }
 
 	_, err := repo.AcquireIdle(context.Background(), "sess-1")
 	if !errors.Is(err, ErrNoIdleRunner) {
 		t.Fatalf("expected ErrNoIdleRunner, got: %v", err)
 	}
-	// random + top-up (fast path) + backstop scan の 3 query で枯渇確定。
-	if queryCount != 3 {
-		t.Errorf("queryCount = %d, want 3 (random + top-up + backstop)", queryCount)
+	if queryCount != 2 {
+		t.Errorf("queryCount = %d, want 2 (both segments)", queryCount)
 	}
 }
 
-// TestAcquireIdle_RandomQueryError は random start の Query エラー時にエラーを返すことを検証する。
-func TestAcquireIdle_RandomQueryError(t *testing.T) {
+// TestAcquireIdle_QueryError は Query エラー時にエラーを返すことを検証する。
+func TestAcquireIdle_QueryError(t *testing.T) {
 	t.Parallel()
 	mock := &mockDynamoDBAPI{
 		queryFn: func(_ context.Context, _ *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
@@ -404,7 +374,7 @@ func TestAcquireIdle_RandomQueryError(t *testing.T) {
 		},
 	}
 	repo := NewDynamoRepository(mock, "t")
-	repo.randHexFn = func() string { return "0000000000000000" }
+	repo.randHexFn = func() string { return testStart }
 
 	_, err := repo.AcquireIdle(context.Background(), "sess-1")
 	if err == nil {
@@ -412,29 +382,7 @@ func TestAcquireIdle_RandomQueryError(t *testing.T) {
 	}
 }
 
-// TestAcquireIdle_WrapQueryError は wrap query の Query エラー時にエラーを返すことを検証する。
-func TestAcquireIdle_WrapQueryError(t *testing.T) {
-	t.Parallel()
-	queryCount := 0
-	mock := &mockDynamoDBAPI{
-		queryFn: func(_ context.Context, _ *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			queryCount++
-			if queryCount == 1 {
-				return &dynamodb.QueryOutput{Items: nil}, nil
-			}
-			return nil, errors.New("wrap query error")
-		},
-	}
-	repo := NewDynamoRepository(mock, "t")
-	repo.randHexFn = func() string { return "0000000000000000" }
-
-	_, err := repo.AcquireIdle(context.Background(), "sess-1")
-	if err == nil {
-		t.Fatal("expected error")
-	}
-}
-
-// TestAcquireIdle_RetryWithinBatch はバッチ内で条件失敗した候補をスキップし次を試行することを検証する。
+// TestAcquireIdle_RetryWithinBatch はページ内で条件失敗した候補をスキップし次を試行することを検証する。
 func TestAcquireIdle_RetryWithinBatch(t *testing.T) {
 	t.Parallel()
 	queryCount := 0
@@ -456,7 +404,7 @@ func TestAcquireIdle_RetryWithinBatch(t *testing.T) {
 		},
 	}
 	repo := NewDynamoRepository(mock, "t")
-	repo.randHexFn = func() string { return "0000000000000000" }
+	repo.randHexFn = func() string { return testStart }
 
 	runner, err := repo.AcquireIdle(context.Background(), "sess-1")
 	if err != nil {
@@ -466,34 +414,32 @@ func TestAcquireIdle_RetryWithinBatch(t *testing.T) {
 		t.Errorf("runnerID = %q, want %q", runner.RunnerID, "r2")
 	}
 	if queryCount != 1 {
-		t.Errorf("queryCount = %d, want 1 (full window, no top-up)", queryCount)
+		t.Errorf("queryCount = %d, want 1 (found in first page)", queryCount)
 	}
 	if updateCount != 2 {
 		t.Errorf("updateCount = %d, want 2", updateCount)
 	}
 }
 
-// TestAcquireIdle_BackstopReachesMaskedIdle は fast path の窓が stale item で満杯になり
-// runnerId の小さい idle が窓外に隠れていても、backstop の head 全走査 (ページング含む) で
-// 確保できることを検証する。旧 bucket 全巡回に対する可用性リグレッションへの回帰テスト。
-func TestAcquireIdle_BackstopReachesMaskedIdle(t *testing.T) {
+// TestAcquireIdle_SecondSegmentReachesMaskedIdle は最初の区間 [start, max] が stale item で満杯になり
+// runnerId の小さい idle が隠れていても、次区間 [min, start] のページングで確保できることを検証する。
+// 旧 bucket 全巡回に対する可用性リグレッションへの回帰テスト。
+func TestAcquireIdle_SecondSegmentReachesMaskedIdle(t *testing.T) {
 	t.Parallel()
 	stale := []map[string]types.AttributeValue{
 		idleItem("s1"), idleItem("s2"), idleItem("s3"), idleItem("s4"), idleItem("s5"),
 	}
 	cursor := map[string]types.AttributeValue{"runnerId": &types.AttributeValueMemberS{Value: "s5"}}
-	fastQueries, scanQueries := 0, 0
+	seg1Queries, seg2Queries := 0, 0
 	mock := &mockDynamoDBAPI{
 		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			start := params.ExpressionAttributeValues[":r"].(*types.AttributeValueMemberS).Value
-			if start != minRunnerID { // fast path: random 窓は stale で満杯 (top-up は発火しない)
-				fastQueries++
-				assertStateIdxQuery(t, params, "ffffffffffffffffffffffffffffffff", acquireQueryLimit)
+			if params.ExpressionAttributeValues[":lo"].(*types.AttributeValueMemberS).Value != minRunnerID {
+				seg1Queries++ // 区間 [start, max]: stale で満杯、全 conflict
+				assertStateIdxRange(t, params, testStart, maxRunnerID)
 				return &dynamodb.QueryOutput{Items: stale}, nil
 			}
-			// backstop scan (先頭固定): 先頭ページは tried 済み stale のみ、続きに masked idle。
-			scanQueries++
-			assertStateIdxQuery(t, params, minRunnerID, acquireQueryLimit)
+			seg2Queries++ // 区間 [min, start]: 先頭ページは tried 済み stale、続きに masked idle
+			assertStateIdxRange(t, params, minRunnerID, testStart)
 			if params.ExclusiveStartKey == nil {
 				return &dynamodb.QueryOutput{Items: stale, LastEvaluatedKey: cursor}, nil
 			}
@@ -507,7 +453,7 @@ func TestAcquireIdle_BackstopReachesMaskedIdle(t *testing.T) {
 		},
 	}
 	repo := NewDynamoRepository(mock, "t")
-	repo.randHexFn = func() string { return "ffffffffffffffffffffffffffffffff" }
+	repo.randHexFn = func() string { return testStart }
 
 	runner, err := repo.AcquireIdle(context.Background(), "sess-1")
 	if err != nil {
@@ -516,15 +462,16 @@ func TestAcquireIdle_BackstopReachesMaskedIdle(t *testing.T) {
 	if runner.RunnerID != "x-low" {
 		t.Errorf("runnerID = %q, want %q", runner.RunnerID, "x-low")
 	}
-	if fastQueries != 1 {
-		t.Errorf("fastQueries = %d, want 1 (full window, no top-up)", fastQueries)
+	if seg1Queries != 1 {
+		t.Errorf("seg1Queries = %d, want 1", seg1Queries)
 	}
-	if scanQueries != 2 {
-		t.Errorf("scanQueries = %d, want 2 (paginated backstop)", scanQueries)
+	if seg2Queries != 2 {
+		t.Errorf("seg2Queries = %d, want 2 (paginated)", seg2Queries)
 	}
 }
 
-// TestAcquireIdle_StaleGSI は stale item を返し続ける GSI に対しても tried set で有限時間で ErrNoIdleRunner に収束することを検証する。
+// TestAcquireIdle_StaleGSI は stale item を返し続ける GSI でも tried set で両区間を走査し切り
+// 有限時間で ErrNoIdleRunner に収束することを検証する。
 func TestAcquireIdle_StaleGSI(t *testing.T) {
 	t.Parallel()
 	queryCount := 0
@@ -538,20 +485,20 @@ func TestAcquireIdle_StaleGSI(t *testing.T) {
 		},
 	}
 	repo := NewDynamoRepository(mock, "t")
-	repo.randHexFn = func() string { return "0000000000000000" }
+	repo.randHexFn = func() string { return testStart }
 
 	_, err := repo.AcquireIdle(context.Background(), "sess-1")
 	if !errors.Is(err, ErrNoIdleRunner) {
 		t.Fatalf("expected ErrNoIdleRunner, got: %v", err)
 	}
-	// fast path (random + top-up): r-stale → conflict → tried に追加
-	// backstop scan: r-stale は tried で除外 → 未試行 idle なし → ErrNoIdleRunner
-	if queryCount != 3 {
-		t.Errorf("queryCount = %d, want 3 (random + top-up + backstop)", queryCount)
+	// 区間1: r-stale → conflict → tried に追加。
+	// 区間2: r-stale は tried で除外 → 未試行 idle なし → ErrNoIdleRunner。
+	if queryCount != 2 {
+		t.Errorf("queryCount = %d, want 2 (both segments)", queryCount)
 	}
 }
 
-// TestAcquireIdle_UpdateError は UpdateItem の予期せぬエラーを検証する。
+// TestAcquireIdle_UpdateError は UpdateItem の条件失敗以外のエラーを検証する。
 func TestAcquireIdle_UpdateError(t *testing.T) {
 	t.Parallel()
 	mock := &mockDynamoDBAPI{
@@ -563,7 +510,7 @@ func TestAcquireIdle_UpdateError(t *testing.T) {
 		},
 	}
 	repo := NewDynamoRepository(mock, "t")
-	repo.randHexFn = func() string { return "0000000000000000" }
+	repo.randHexFn = func() string { return testStart }
 
 	_, err := repo.AcquireIdle(context.Background(), "sess-1")
 	if err == nil {
@@ -584,53 +531,7 @@ func TestAcquireIdle_UnmarshalError(t *testing.T) {
 		},
 	}
 	repo := NewDynamoRepository(mock, "t")
-	repo.randHexFn = func() string { return "0000000000000000" }
-
-	_, err := repo.AcquireIdle(context.Background(), "sess-1")
-	if err == nil {
-		t.Fatal("expected unmarshal error")
-	}
-}
-
-// TestAcquireIdle_BackstopScanError は backstop 走査の Query エラーを伝搬することを検証する。
-func TestAcquireIdle_BackstopScanError(t *testing.T) {
-	t.Parallel()
-	queryCount := 0
-	mock := &mockDynamoDBAPI{
-		queryFn: func(_ context.Context, _ *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			queryCount++
-			if queryCount <= 2 { // fast path (random + top-up) は空
-				return &dynamodb.QueryOutput{Items: nil}, nil
-			}
-			return nil, errors.New("scan error") // backstop
-		},
-	}
-	repo := NewDynamoRepository(mock, "t")
-	repo.randHexFn = func() string { return "0000000000000000" }
-
-	_, err := repo.AcquireIdle(context.Background(), "sess-1")
-	if err == nil {
-		t.Fatal("expected error")
-	}
-}
-
-// TestAcquireIdle_BackstopUnmarshalError は backstop 走査結果の unmarshal 失敗を伝搬することを検証する。
-func TestAcquireIdle_BackstopUnmarshalError(t *testing.T) {
-	t.Parallel()
-	queryCount := 0
-	mock := &mockDynamoDBAPI{
-		queryFn: func(_ context.Context, _ *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			queryCount++
-			if queryCount <= 2 { // fast path (random + top-up) は空
-				return &dynamodb.QueryOutput{Items: nil}, nil
-			}
-			return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{ // backstop
-				{"runnerId": &types.AttributeValueMemberL{Value: []types.AttributeValue{}}},
-			}}, nil
-		},
-	}
-	repo := NewDynamoRepository(mock, "t")
-	repo.randHexFn = func() string { return "0000000000000000" }
+	repo.randHexFn = func() string { return testStart }
 
 	_, err := repo.AcquireIdle(context.Background(), "sess-1")
 	if err == nil {

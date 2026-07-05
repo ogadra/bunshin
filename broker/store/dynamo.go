@@ -21,9 +21,12 @@ import (
 // stale item が混ざったときに再クエリせず手元の候補で試行を続けられる。
 const acquireQueryLimit = 5
 
-// minRunnerID は runnerId の辞書順最小値。runnerId は 32 hex なので全 item がこれ以上になり、
-// wrap query の開始位置として partition 先頭を表す。
-const minRunnerID = "00000000000000000000000000000000"
+// minRunnerID と maxRunnerID は runnerId の辞書順の下限・上限。runnerId は crypto/rand の 32 桁小文字 hex
+// なので全 runner がこの閉区間に収まり、AcquireIdle の [R, max]・[min, R] 走査が漏れなく全体を覆う。
+const (
+	minRunnerID = "00000000000000000000000000000000"
+	maxRunnerID = "ffffffffffffffffffffffffffffffff"
+)
 
 // DynamoRepository は DynamoDB を使った Repository の実装。
 type DynamoRepository struct {
@@ -91,40 +94,27 @@ func (r *DynamoRepository) Register(ctx context.Context, runnerID, privateURL st
 }
 
 // AcquireIdle は idle runner を 1 台確保し session を紐づける。
-// fast path として state-index (hash=state, range=runnerId) をランダムな runnerId から前方走査し、
-// acquireQueryLimit に満たなければ partition 先頭 (minRunnerID) から不足分を補って候補を埋める。
-// runnerId は crypto/rand hex で keyspace に一様分布するため、ランダム開始点の successor 自体が
-// idle 集合上で一様になり、最初に試す候補が分散して head のホットスポットを避けられる。
-// fast path の窓が stale (既 busy) item で埋まると小さい runnerId の idle を見落としうるため、
-// fast path で確保できなければ partition 先頭から idle を走査し、未試行 idle が存在しないことを
-// 確認してから ErrNoIdleRunner を返す。
-// tried set が走査済み候補を除外するので、stale index に対しても有限時間で枯渇判定に収束する。
+// state-index (hash=state, range=runnerId) を、ランダムな runnerId R を境に
+// [R, max] → [min, R] の 2 区間で先頭から走査する。R から始めることで最初の試行先が
+// keyspace 上に分散し (runnerId は crypto/rand hex で一様)、head のホットスポットを避ける。
+// 各区間を acquireQueryLimit 件ずつ辿り、確保できなければ次区間へ、R まで一周したら枯渇として
+// ErrNoIdleRunner を返す。tried set が走査済み候補を除外するので stale index でも有限で収束する。
 func (r *DynamoRepository) AcquireIdle(ctx context.Context, sessionID string) (*model.Runner, error) {
 	tried := map[string]struct{}{}
-
-	candidates, err := r.queryIdleFrom(ctx, r.randHexFn(), acquireQueryLimit)
-	if err != nil {
-		return nil, err
-	}
-	if len(candidates) < acquireQueryLimit {
-		head, err := r.queryIdleFrom(ctx, minRunnerID, acquireQueryLimit-len(candidates))
-		if err != nil {
-			return nil, err
+	start := r.randHexFn()
+	for _, seg := range [][2]string{{start, maxRunnerID}, {minRunnerID, start}} {
+		runner, err := r.acquireInRange(ctx, sessionID, seg[0], seg[1], nil, tried)
+		if runner != nil || err != nil {
+			return runner, err
 		}
-		candidates = append(candidates, head...)
 	}
-	if runner, err := r.assignFirst(ctx, sessionID, candidates, tried); runner != nil || err != nil {
-		return runner, err
-	}
-
-	return r.acquireFromHead(ctx, sessionID, nil, tried)
+	return nil, ErrNoIdleRunner
 }
 
-// acquireFromHead は idle partition を先頭から acquireQueryLimit 件ずつ走査し、未試行 idle を確保する。
-// 1 ページで確保できなければ続き (LastEvaluatedKey) を再帰的に辿り、続きが無ければ ErrNoIdleRunner を返す。
-// 枯渇間際は idle が少なく 1 ページで尽きるため、通常は 1 回の query で判定が終わる。
-func (r *DynamoRepository) acquireFromHead(ctx context.Context, sessionID string, exclusiveStart map[string]types.AttributeValue, tried map[string]struct{}) (*model.Runner, error) {
-	runners, next, err := r.scanIdlePage(ctx, exclusiveStart)
+// acquireInRange は state-index の runnerId ∈ [lo, hi] を acquireQueryLimit 件ずつ走査し、未試行 idle を確保する。
+// 1 ページで確保できなければ続き (LastEvaluatedKey) を再帰的に辿り、区間を走査し切ったら (nil, nil) を返す。
+func (r *DynamoRepository) acquireInRange(ctx context.Context, sessionID, lo, hi string, exclusiveStart map[string]types.AttributeValue, tried map[string]struct{}) (*model.Runner, error) {
+	runners, next, err := r.queryIdlePage(ctx, lo, hi, exclusiveStart)
 	if err != nil {
 		return nil, err
 	}
@@ -132,9 +122,9 @@ func (r *DynamoRepository) acquireFromHead(ctx context.Context, sessionID string
 		return runner, err
 	}
 	if len(next) == 0 {
-		return nil, ErrNoIdleRunner
+		return nil, nil
 	}
-	return r.acquireFromHead(ctx, sessionID, next, tried)
+	return r.acquireInRange(ctx, sessionID, lo, hi, next, tried)
 }
 
 // assignFirst は candidates のうち未試行のものを順に idle→busy へ遷移させ、最初に確保できた runner を返す。
@@ -160,43 +150,24 @@ func (r *DynamoRepository) assignFirst(ctx context.Context, sessionID string, ca
 	return nil, nil
 }
 
-// queryIdleFrom は state-index を state = "idle" かつ runnerId >= startKey で query し、
-// 辞書順に最大 limit 件を返す。partition 先頭から走査する場合は minRunnerID を渡す。
-func (r *DynamoRepository) queryIdleFrom(ctx context.Context, startKey string, limit int) ([]model.Runner, error) {
+// queryIdlePage は state-index を state = "idle" かつ runnerId ∈ [lo, hi] で acquireQueryLimit 件 query し、
+// runner 群と続きの LastEvaluatedKey を返す。exclusiveStart が nil なら区間先頭から走査する。
+func (r *DynamoRepository) queryIdlePage(ctx context.Context, lo, hi string, exclusiveStart map[string]types.AttributeValue) ([]model.Runner, map[string]types.AttributeValue, error) {
 	out, err := r.client.Query(ctx, &dynamodb.QueryInput{
 		TableName:                aws.String(r.tableName),
 		IndexName:                aws.String("state-index"),
-		KeyConditionExpression:   aws.String("#s = :s AND runnerId >= :r"),
+		KeyConditionExpression:   aws.String("#s = :s AND runnerId BETWEEN :lo AND :hi"),
 		ExpressionAttributeNames: map[string]string{"#s": "state"},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":s": &types.AttributeValueMemberS{Value: string(model.StateIdle)},
-			":r": &types.AttributeValueMemberS{Value: startKey},
-		},
-		Limit: aws.Int32(int32(limit)),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("query state-index: %w", err)
-	}
-	return unmarshalRunners(out.Items)
-}
-
-// scanIdlePage は idle partition を先頭 (minRunnerID) から acquireQueryLimit 件 query し、runner 群と
-// 続きの LastEvaluatedKey を返す。exclusiveStart が nil なら先頭ページから走査する。
-func (r *DynamoRepository) scanIdlePage(ctx context.Context, exclusiveStart map[string]types.AttributeValue) ([]model.Runner, map[string]types.AttributeValue, error) {
-	out, err := r.client.Query(ctx, &dynamodb.QueryInput{
-		TableName:                aws.String(r.tableName),
-		IndexName:                aws.String("state-index"),
-		KeyConditionExpression:   aws.String("#s = :s AND runnerId >= :r"),
-		ExpressionAttributeNames: map[string]string{"#s": "state"},
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":s": &types.AttributeValueMemberS{Value: string(model.StateIdle)},
-			":r": &types.AttributeValueMemberS{Value: minRunnerID},
+			":s":  &types.AttributeValueMemberS{Value: string(model.StateIdle)},
+			":lo": &types.AttributeValueMemberS{Value: lo},
+			":hi": &types.AttributeValueMemberS{Value: hi},
 		},
 		Limit:             aws.Int32(acquireQueryLimit),
 		ExclusiveStartKey: exclusiveStart,
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("scan state-index: %w", err)
+		return nil, nil, fmt.Errorf("query state-index: %w", err)
 	}
 	runners, err := unmarshalRunners(out.Items)
 	if err != nil {
