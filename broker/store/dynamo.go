@@ -92,33 +92,38 @@ func (r *DynamoRepository) Register(ctx context.Context, runnerID, privateURL st
 
 // AcquireIdle は idle runner を 1 台確保し session を紐づける。
 // state-index (hash=state, range=runnerId) をランダムな runnerId から前方走査し、
-// 空なら partition 先頭 (minRunnerID) から wrap query する。候補を条件付き更新で idle→busy に遷移させ、
-// 全候補が条件失敗なら乱数を作り直して再試行する。
+// acquireQueryLimit に満たなければ partition 先頭 (minRunnerID) から不足分を補って候補を埋める。
+// 候補を条件付き更新で idle→busy に遷移させ、全候補が条件失敗なら乱数を作り直して再試行する。
 // runnerId は crypto/rand hex で keyspace に一様分布するため、ランダム開始点の successor 自体が
 // idle 集合上で一様になり、最初に試す候補も分散する。よって候補内の shuffle は不要。
+// idle 総数が acquireQueryLimit 未満のときは 2 クエリの結果が重複しうるため seen set で除く。
 // tried set により走査済み候補を除外することで、stale index に対しても有限時間で ErrNoIdleRunner に収束する。
 func (r *DynamoRepository) AcquireIdle(ctx context.Context, sessionID string) (*model.Runner, error) {
 	tried := map[string]struct{}{}
 	for {
-		candidates, err := r.queryIdleFrom(ctx, r.randHexFn())
+		candidates, err := r.queryIdleFrom(ctx, r.randHexFn(), acquireQueryLimit)
 		if err != nil {
 			return nil, err
 		}
-		if len(candidates) == 0 {
-			candidates, err = r.queryIdleFrom(ctx, minRunnerID)
+		if len(candidates) < acquireQueryLimit {
+			head, err := r.queryIdleFrom(ctx, minRunnerID, acquireQueryLimit-len(candidates))
 			if err != nil {
 				return nil, err
 			}
-		}
-		if len(candidates) == 0 {
-			return nil, ErrNoIdleRunner
+			candidates = append(candidates, head...)
 		}
 
+		seen := make(map[string]struct{}, len(candidates))
 		fresh := candidates[:0]
 		for _, c := range candidates {
-			if _, seen := tried[c.RunnerID]; !seen {
-				fresh = append(fresh, c)
+			if _, dup := seen[c.RunnerID]; dup {
+				continue
 			}
+			seen[c.RunnerID] = struct{}{}
+			if _, done := tried[c.RunnerID]; done {
+				continue
+			}
+			fresh = append(fresh, c)
 		}
 		if len(fresh) == 0 {
 			return nil, ErrNoIdleRunner
@@ -126,7 +131,6 @@ func (r *DynamoRepository) AcquireIdle(ctx context.Context, sessionID string) (*
 
 		for i := range fresh {
 			runner := &fresh[i]
-			tried[runner.RunnerID] = struct{}{}
 			err := r.assignSession(ctx, runner.RunnerID, sessionID)
 			if err == nil {
 				runner.State = ""
@@ -136,13 +140,14 @@ func (r *DynamoRepository) AcquireIdle(ctx context.Context, sessionID string) (*
 			if !errors.Is(err, ErrConditionFailed) {
 				return nil, err
 			}
+			tried[runner.RunnerID] = struct{}{}
 		}
 	}
 }
 
 // queryIdleFrom は state-index を state = "idle" かつ runnerId >= startKey で query し、
-// 辞書順に最大 acquireQueryLimit 件を返す。partition 先頭から走査する場合は minRunnerID を渡す。
-func (r *DynamoRepository) queryIdleFrom(ctx context.Context, startKey string) ([]model.Runner, error) {
+// 辞書順に最大 limit 件を返す。partition 先頭から走査する場合は minRunnerID を渡す。
+func (r *DynamoRepository) queryIdleFrom(ctx context.Context, startKey string, limit int) ([]model.Runner, error) {
 	out, err := r.client.Query(ctx, &dynamodb.QueryInput{
 		TableName:                aws.String(r.tableName),
 		IndexName:                aws.String("state-index"),
@@ -152,7 +157,7 @@ func (r *DynamoRepository) queryIdleFrom(ctx context.Context, startKey string) (
 			":s": &types.AttributeValueMemberS{Value: string(model.StateIdle)},
 			":r": &types.AttributeValueMemberS{Value: startKey},
 		},
-		Limit: aws.Int32(acquireQueryLimit),
+		Limit: aws.Int32(int32(limit)),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("query state-index: %w", err)
