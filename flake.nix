@@ -18,6 +18,7 @@
         packages = with pkgs; [
           awscli2
           checkov
+          chromium
           gitleaks
           just
           go_1_26
@@ -32,11 +33,8 @@
           uv
         ];
         env = {
-          PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers.override {
-            withFirefox = false;
-            withWebkit = false;
-          }}";
-          PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
+          PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = "${pkgs.chromium}/bin/chromium";
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
         };
       };
     };
