@@ -14,69 +14,9 @@ body {
   font-family: monospace;
 }
 
-.status {
-  padding: 8px 12px;
-  background: #2d2d2d;
-  color: #888;
-}
-
-.output {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px 12px;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-.stderr {
-  color: #888;
-}
-
-.error {
-  color: #f44;
-}
-
-.input-bar {
-  display: flex;
-  border-bottom: 1px solid #333;
-}
-
-.input-bar input {
-  flex: 1;
-  padding: 8px 12px;
-  border: none;
-  background: #2d2d2d;
-  color: #d4d4d4;
-  font-family: monospace;
-  font-size: 16px;
-}
-
-.input-bar button {
-  padding: 8px 16px;
-  border: none;
-  background: #0e639c;
-  color: #fff;
-  font-family: monospace;
-  font-size: 16px;
-  cursor: pointer;
-}
-
-.input-bar input:focus-visible,
-.input-bar button:focus-visible {
-  outline: 2px solid #4fc3f7;
-  outline-offset: -2px;
-}
-
-.input-bar button:disabled {
-  background: #333;
-  color: #666;
-  cursor: not-allowed;
-}
-
 .editor {
   position: relative;
-  height: 40dvh;
-  border-top: 1px solid #333;
+  flex: 1;
 }
 
 /* pre と textarea のフォント・余白が 1px でもずれるとキャレット位置が狂うため、
