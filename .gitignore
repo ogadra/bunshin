@@ -1,6 +1,8 @@
 runner/server
 front/node_modules/
 front/dist/
+front/test-results/
+front/playwright-report/
 docs/.venv/
 .direnv/
 .codex
