@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 )
 
 // Identity holds the runner registration parameters resolved at startup.
@@ -22,13 +22,8 @@ type identityDeps struct {
 	getenv   func(string) string
 	hostname func() (string, error)
 	httpGet  func(ctx context.Context, url string) ([]byte, error)
+	randRead func([]byte) (int, error)
 	port     string
-}
-
-// ecsTaskMeta is the subset of fields from GET $ECS_CONTAINER_METADATA_URI_V4/task.
-type ecsTaskMeta struct {
-	// TaskARN is the full ARN of the ECS task.
-	TaskARN string `json:"TaskARN"`
 }
 
 // ecsNetwork represents a single network attachment in ECS container metadata.
@@ -43,62 +38,62 @@ type ecsContainerMeta struct {
 	Networks []ecsNetwork `json:"Networks"`
 }
 
-// resolveIdentity determines the runner identity using a fallback chain:
-// 1. ECS Task Metadata V4 when ECS_CONTAINER_METADATA_URI_V4 is set
-// 2. Docker Compose hostname-based defaults
+// resolveIdentity generates a runnerID via crypto/rand and resolves the
+// privateURL from ECS container metadata (when ECS_CONTAINER_METADATA_URI_V4
+// is set) or from the container hostname.
 func resolveIdentity(ctx context.Context, deps identityDeps) (Identity, error) {
-	ecsURI := deps.getenv("ECS_CONTAINER_METADATA_URI_V4")
-	if ecsURI != "" {
-		return resolveFromECS(ctx, deps, ecsURI)
+	runnerID, err := generateRunnerID(deps.randRead)
+	if err != nil {
+		return Identity{}, err
 	}
-	return resolveFromHostname(deps)
+	privateURL, err := resolvePrivateURL(ctx, deps)
+	if err != nil {
+		return Identity{}, err
+	}
+	return Identity{RunnerID: runnerID, PrivateURL: privateURL}, nil
 }
 
-// resolveFromECS resolves identity from ECS Task Metadata V4 endpoint.
-func resolveFromECS(ctx context.Context, deps identityDeps, ecsURI string) (Identity, error) {
-	taskBody, err := deps.httpGet(ctx, ecsURI+"/task")
-	if err != nil {
-		return Identity{}, fmt.Errorf("fetch ECS task metadata: %w", err)
+// generateRunnerID reads 16 random bytes and returns them as a 32-char hex string.
+func generateRunnerID(randRead func([]byte) (int, error)) (string, error) {
+	var buf [16]byte
+	if _, err := randRead(buf[:]); err != nil {
+		return "", fmt.Errorf("generate runner id: %w", err)
 	}
-	var task ecsTaskMeta
-	if err := json.Unmarshal(taskBody, &task); err != nil {
-		return Identity{}, fmt.Errorf("parse ECS task metadata: %w", err)
-	}
-	idx := strings.LastIndex(task.TaskARN, "/")
-	if idx < 0 || idx == len(task.TaskARN)-1 {
-		return Identity{}, fmt.Errorf("invalid TaskARN: %s", task.TaskARN)
-	}
-	runnerID := task.TaskARN[idx+1:]
+	return hex.EncodeToString(buf[:]), nil
+}
 
-	containerBody, err := deps.httpGet(ctx, ecsURI)
+// resolvePrivateURL determines the privateURL using ECS container metadata
+// when available, otherwise falling back to the container hostname.
+func resolvePrivateURL(ctx context.Context, deps identityDeps) (string, error) {
+	if ecsURI := deps.getenv("ECS_CONTAINER_METADATA_URI_V4"); ecsURI != "" {
+		return privateURLFromECS(ctx, deps, ecsURI)
+	}
+	return privateURLFromHostname(deps)
+}
+
+// privateURLFromECS reads the container IPv4 address from ECS container metadata.
+func privateURLFromECS(ctx context.Context, deps identityDeps, ecsURI string) (string, error) {
+	body, err := deps.httpGet(ctx, ecsURI)
 	if err != nil {
-		return Identity{}, fmt.Errorf("fetch ECS container metadata: %w", err)
+		return "", fmt.Errorf("fetch ECS container metadata: %w", err)
 	}
 	var container ecsContainerMeta
-	if err := json.Unmarshal(containerBody, &container); err != nil {
-		return Identity{}, fmt.Errorf("parse ECS container metadata: %w", err)
+	if err := json.Unmarshal(body, &container); err != nil {
+		return "", fmt.Errorf("parse ECS container metadata: %w", err)
 	}
 	if len(container.Networks) == 0 || len(container.Networks[0].IPv4Addresses) == 0 {
-		return Identity{}, fmt.Errorf("no IPv4 address in ECS container metadata")
+		return "", fmt.Errorf("no IPv4 address in ECS container metadata")
 	}
-	ip := container.Networks[0].IPv4Addresses[0]
-
-	return Identity{
-		RunnerID:   runnerID,
-		PrivateURL: "http://" + ip + ":" + deps.port,
-	}, nil
+	return "http://" + container.Networks[0].IPv4Addresses[0] + ":" + deps.port, nil
 }
 
-// resolveFromHostname resolves identity from the container hostname.
-func resolveFromHostname(deps identityDeps) (Identity, error) {
+// privateURLFromHostname builds the privateURL from os.Hostname.
+func privateURLFromHostname(deps identityDeps) (string, error) {
 	host, err := deps.hostname()
 	if err != nil {
-		return Identity{}, fmt.Errorf("get hostname: %w", err)
+		return "", fmt.Errorf("get hostname: %w", err)
 	}
-	return Identity{
-		RunnerID:   host,
-		PrivateURL: "http://" + host + ":" + deps.port,
-	}, nil
+	return "http://" + host + ":" + deps.port, nil
 }
 
 // defaultHTTPGet performs an HTTP GET request and returns the response body.
