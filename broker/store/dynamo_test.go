@@ -485,13 +485,15 @@ func TestAcquireIdle_BackstopReachesMaskedIdle(t *testing.T) {
 	fastQueries, scanQueries := 0, 0
 	mock := &mockDynamoDBAPI{
 		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			if params.Limit != nil { // fast path: random 窓は stale で満杯 (top-up は発火しない)
+			start := params.ExpressionAttributeValues[":r"].(*types.AttributeValueMemberS).Value
+			if start != minRunnerID { // fast path: random 窓は stale で満杯 (top-up は発火しない)
 				fastQueries++
 				assertStateIdxQuery(t, params, "ffffffffffffffffffffffffffffffff", acquireQueryLimit)
 				return &dynamodb.QueryOutput{Items: stale}, nil
 			}
-			// backstop scan: 先頭ページは tried 済み stale のみ、続きに masked idle。
+			// backstop scan (先頭固定): 先頭ページは tried 済み stale のみ、続きに masked idle。
 			scanQueries++
+			assertStateIdxQuery(t, params, minRunnerID, acquireQueryLimit)
 			if params.ExclusiveStartKey == nil {
 				return &dynamodb.QueryOutput{Items: stale, LastEvaluatedKey: cursor}, nil
 			}
@@ -593,12 +595,14 @@ func TestAcquireIdle_UnmarshalError(t *testing.T) {
 // TestAcquireIdle_BackstopScanError は backstop 走査の Query エラーを伝搬することを検証する。
 func TestAcquireIdle_BackstopScanError(t *testing.T) {
 	t.Parallel()
+	queryCount := 0
 	mock := &mockDynamoDBAPI{
-		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			if params.Limit == nil { // backstop scan
-				return nil, errors.New("scan error")
+		queryFn: func(_ context.Context, _ *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
+			queryCount++
+			if queryCount <= 2 { // fast path (random + top-up) は空
+				return &dynamodb.QueryOutput{Items: nil}, nil
 			}
-			return &dynamodb.QueryOutput{Items: nil}, nil // fast path は空
+			return nil, errors.New("scan error") // backstop
 		},
 	}
 	repo := NewDynamoRepository(mock, "t")
@@ -613,14 +617,16 @@ func TestAcquireIdle_BackstopScanError(t *testing.T) {
 // TestAcquireIdle_BackstopUnmarshalError は backstop 走査結果の unmarshal 失敗を伝搬することを検証する。
 func TestAcquireIdle_BackstopUnmarshalError(t *testing.T) {
 	t.Parallel()
+	queryCount := 0
 	mock := &mockDynamoDBAPI{
-		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			if params.Limit == nil { // backstop scan
-				return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{
-					{"runnerId": &types.AttributeValueMemberL{Value: []types.AttributeValue{}}},
-				}}, nil
+		queryFn: func(_ context.Context, _ *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
+			queryCount++
+			if queryCount <= 2 { // fast path (random + top-up) は空
+				return &dynamodb.QueryOutput{Items: nil}, nil
 			}
-			return &dynamodb.QueryOutput{Items: nil}, nil // fast path は空
+			return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{ // backstop
+				{"runnerId": &types.AttributeValueMemberL{Value: []types.AttributeValue{}}},
+			}}, nil
 		},
 	}
 	repo := NewDynamoRepository(mock, "t")

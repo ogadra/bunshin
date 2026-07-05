@@ -96,8 +96,8 @@ func (r *DynamoRepository) Register(ctx context.Context, runnerID, privateURL st
 // runnerId は crypto/rand hex で keyspace に一様分布するため、ランダム開始点の successor 自体が
 // idle 集合上で一様になり、最初に試す候補が分散して head のホットスポットを避けられる。
 // fast path の窓が stale (既 busy) item で埋まると小さい runnerId の idle を見落としうるため、
-// fast path で確保できなければ partition 先頭から LastEvaluatedKey で idle 全体を走査し、
-// 未試行 idle が存在しないことを確認してから ErrNoIdleRunner を返す。
+// fast path で確保できなければ partition 先頭から idle を走査し、未試行 idle が存在しないことを
+// 確認してから ErrNoIdleRunner を返す。
 // tried set が走査済み候補を除外するので、stale index に対しても有限時間で枯渇判定に収束する。
 func (r *DynamoRepository) AcquireIdle(ctx context.Context, sessionID string) (*model.Runner, error) {
 	tried := map[string]struct{}{}
@@ -117,20 +117,24 @@ func (r *DynamoRepository) AcquireIdle(ctx context.Context, sessionID string) (*
 		return runner, err
 	}
 
-	var startKey map[string]types.AttributeValue
-	for {
-		runners, next, err := r.scanIdlePage(ctx, startKey)
-		if err != nil {
-			return nil, err
-		}
-		if runner, err := r.assignFirst(ctx, sessionID, runners, tried); runner != nil || err != nil {
-			return runner, err
-		}
-		if len(next) == 0 {
-			return nil, ErrNoIdleRunner
-		}
-		startKey = next
+	return r.acquireFromHead(ctx, sessionID, nil, tried)
+}
+
+// acquireFromHead は idle partition を先頭から acquireQueryLimit 件ずつ走査し、未試行 idle を確保する。
+// 1 ページで確保できなければ続き (LastEvaluatedKey) を再帰的に辿り、続きが無ければ ErrNoIdleRunner を返す。
+// 枯渇間際は idle が少なく 1 ページで尽きるため、通常は 1 回の query で判定が終わる。
+func (r *DynamoRepository) acquireFromHead(ctx context.Context, sessionID string, exclusiveStart map[string]types.AttributeValue, tried map[string]struct{}) (*model.Runner, error) {
+	runners, next, err := r.scanIdlePage(ctx, exclusiveStart)
+	if err != nil {
+		return nil, err
 	}
+	if runner, err := r.assignFirst(ctx, sessionID, runners, tried); runner != nil || err != nil {
+		return runner, err
+	}
+	if len(next) == 0 {
+		return nil, ErrNoIdleRunner
+	}
+	return r.acquireFromHead(ctx, sessionID, next, tried)
 }
 
 // assignFirst は candidates のうち未試行のものを順に idle→busy へ遷移させ、最初に確保できた runner を返す。
@@ -176,8 +180,8 @@ func (r *DynamoRepository) queryIdleFrom(ctx context.Context, startKey string, l
 	return unmarshalRunners(out.Items)
 }
 
-// scanIdlePage は idle partition を先頭 (minRunnerID) から 1 ページ query し、runner 群と続きの
-// LastEvaluatedKey を返す。exclusiveStart が nil なら先頭ページから走査する。
+// scanIdlePage は idle partition を先頭 (minRunnerID) から acquireQueryLimit 件 query し、runner 群と
+// 続きの LastEvaluatedKey を返す。exclusiveStart が nil なら先頭ページから走査する。
 func (r *DynamoRepository) scanIdlePage(ctx context.Context, exclusiveStart map[string]types.AttributeValue) ([]model.Runner, map[string]types.AttributeValue, error) {
 	out, err := r.client.Query(ctx, &dynamodb.QueryInput{
 		TableName:                aws.String(r.tableName),
@@ -188,6 +192,7 @@ func (r *DynamoRepository) scanIdlePage(ctx context.Context, exclusiveStart map[
 			":s": &types.AttributeValueMemberS{Value: string(model.StateIdle)},
 			":r": &types.AttributeValueMemberS{Value: minRunnerID},
 		},
+		Limit:             aws.Int32(acquireQueryLimit),
 		ExclusiveStartKey: exclusiveStart,
 	})
 	if err != nil {
