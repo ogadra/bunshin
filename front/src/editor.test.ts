@@ -76,3 +76,53 @@ describe("createPerlEditor", () => {
     expect(input.wrap).toBe("off");
   });
 });
+
+describe("Tab handling", () => {
+  const pressKey = (input: HTMLTextAreaElement, key: string, shiftKey = false): KeyboardEvent => {
+    const event = new KeyboardEvent("keydown", { key, shiftKey, cancelable: true });
+    input.dispatchEvent(event);
+    return event;
+  };
+
+  test("Tab inserts an indent at the caret instead of moving focus", () => {
+    const { highlight, input } = setup("my $x;");
+    input.selectionStart = input.selectionEnd = 0;
+    const event = pressKey(input, "Tab");
+    expect(event.defaultPrevented).toBe(true);
+    expect(input.value).toBe("    my $x;");
+    expect(input.selectionStart).toBe(4);
+    expect(highlight.textContent).toBe("    my $x;\n");
+  });
+
+  test("Tab replaces the selected range", () => {
+    const { input } = setup("abcdef");
+    input.selectionStart = 1;
+    input.selectionEnd = 5;
+    pressKey(input, "Tab");
+    expect(input.value).toBe("a    f");
+  });
+
+  test("Shift+Tab keeps its focus-moving default", () => {
+    const { input } = setup("my $x;");
+    const event = pressKey(input, "Tab", true);
+    expect(event.defaultPrevented).toBe(false);
+    expect(input.value).toBe("my $x;");
+  });
+
+  test("Tab right after Escape keeps its focus-moving default", () => {
+    const { input } = setup("my $x;");
+    pressKey(input, "Escape");
+    const event = pressKey(input, "Tab");
+    expect(event.defaultPrevented).toBe(false);
+    expect(input.value).toBe("my $x;");
+  });
+
+  test("the Escape bypass lasts only for the next key", () => {
+    const { input } = setup("");
+    pressKey(input, "Escape");
+    pressKey(input, "a");
+    const event = pressKey(input, "Tab");
+    expect(event.defaultPrevented).toBe(true);
+    expect(input.value).toBe("    ");
+  });
+});
