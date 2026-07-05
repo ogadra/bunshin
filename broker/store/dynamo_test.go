@@ -70,9 +70,6 @@ func TestNewDynamoRepository(t *testing.T) {
 	if repo.randHexFn == nil {
 		t.Error("randHexFn is nil")
 	}
-	if repo.shuffleFn == nil {
-		t.Error("shuffleFn is nil")
-	}
 	if repo.marshalFn == nil {
 		t.Error("marshalFn is nil")
 	}
@@ -262,15 +259,10 @@ func assertStateIdxRandomStart(t *testing.T, params *dynamodb.QueryInput, wantSt
 	}
 }
 
-// assertStateIdxWrap は wrap query が range 条件なしで発行されていることを検証する。
+// assertStateIdxWrap は wrap query が partition 先頭 (minRunnerID) を開始位置に発行されていることを検証する。
 func assertStateIdxWrap(t *testing.T, params *dynamodb.QueryInput) {
 	t.Helper()
-	if *params.KeyConditionExpression != "#s = :s" {
-		t.Errorf("wrap KeyConditionExpression = %q, want %q", *params.KeyConditionExpression, "#s = :s")
-	}
-	if _, hasRange := params.ExpressionAttributeValues[":r"]; hasRange {
-		t.Errorf("wrap query should not bind :r")
-	}
+	assertStateIdxRandomStart(t, params, minRunnerID)
 }
 
 // TestAcquireIdle_Success はランダム開始位置で idle runner を確保できることを検証する。
@@ -429,8 +421,6 @@ func TestAcquireIdle_RetryWithinBatch(t *testing.T) {
 	}
 	repo := NewDynamoRepository(mock, "t")
 	repo.randHexFn = func() string { return "0000000000000000" }
-	// r1 が先頭に来るようシャッフルを固定する。
-	repo.shuffleFn = func(int, func(int, int)) {}
 
 	runner, err := repo.AcquireIdle(context.Background(), "sess-1")
 	if err != nil {
@@ -552,36 +542,6 @@ func TestAcquireIdle_UnmarshalError(t *testing.T) {
 	_, err := repo.AcquireIdle(context.Background(), "sess-1")
 	if err == nil {
 		t.Fatal("expected unmarshal error")
-	}
-}
-
-// TestAcquireIdle_ShuffleDistribution はデフォルトの shuffle がバッチ内の候補をランダムに選ぶことを検証する。
-func TestAcquireIdle_ShuffleDistribution(t *testing.T) {
-	t.Parallel()
-	assigned := map[string]int{}
-	for range 300 {
-		mock := &mockDynamoDBAPI{
-			queryFn: func(_ context.Context, _ *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-				return &dynamodb.QueryOutput{
-					Items: []map[string]types.AttributeValue{idleItem("r1"), idleItem("r2"), idleItem("r3")},
-				}, nil
-			},
-			updateItemFn: func(_ context.Context, _ *dynamodb.UpdateItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error) {
-				return &dynamodb.UpdateItemOutput{}, nil
-			},
-		}
-		repo := NewDynamoRepository(mock, "t")
-		repo.randHexFn = func() string { return "0000000000000000" }
-		runner, err := repo.AcquireIdle(context.Background(), "sess-1")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		assigned[runner.RunnerID]++
-	}
-	for _, id := range []string{"r1", "r2", "r3"} {
-		if assigned[id] == 0 {
-			t.Errorf("runner %q was never selected in 300 iterations", id)
-		}
 	}
 }
 
