@@ -73,6 +73,29 @@ func TestResolveIdentityRandReadError(t *testing.T) {
 	}
 }
 
+// TestResolveIdentityRandShortRead verifies that resolveIdentity rejects a
+// randRead that returns fewer bytes than requested with no error, which would
+// otherwise leave the runnerID buffer partially zero-filled.
+func TestResolveIdentityRandShortRead(t *testing.T) {
+	deps := identityDeps{
+		getenv:   func(k string) string { return "" },
+		hostname: func() (string, error) { return "host", nil },
+		randRead: func(b []byte) (int, error) {
+			if len(b) == 0 {
+				return 0, nil
+			}
+			b[0] = 0xff
+			return 1, nil
+		},
+		port: "3000",
+	}
+
+	_, err := resolveIdentity(context.Background(), deps)
+	if err == nil {
+		t.Fatal("expected error when randRead returns a short read")
+	}
+}
+
 // TestResolveIdentityECSContainerFetchError verifies that resolveIdentity
 // returns an error when fetching ECS container metadata fails.
 func TestResolveIdentityECSContainerFetchError(t *testing.T) {

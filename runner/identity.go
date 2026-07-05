@@ -54,10 +54,17 @@ func resolveIdentity(ctx context.Context, deps identityDeps) (Identity, error) {
 }
 
 // generateRunnerID reads 16 random bytes and returns them as a 32-char hex string.
+// A short read is treated as an error to avoid a zero-padded runnerID when the
+// injected randRead follows the io.Reader convention of returning n < len(b)
+// without an error.
 func generateRunnerID(randRead func([]byte) (int, error)) (string, error) {
 	var buf [16]byte
-	if _, err := randRead(buf[:]); err != nil {
+	n, err := randRead(buf[:])
+	if err != nil {
 		return "", fmt.Errorf("generate runner id: %w", err)
+	}
+	if n != len(buf) {
+		return "", fmt.Errorf("generate runner id: short read %d/%d", n, len(buf))
 	}
 	return hex.EncodeToString(buf[:]), nil
 }
