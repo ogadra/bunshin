@@ -283,22 +283,31 @@ describe("declared names", () => {
 
 describe("quote-like operators", () => {
   test.each([
-    ["q(a b)"],
-    ["qq{hi there}"],
-    ["qw(a b c)"],
-    ["qx(ls -l)"],
-    ["q!bang!"],
-    ["q^caret^"],
-    ["q#hash#"],
-    ["q|pipe|"],
-    ["q=equals="],
-    ["q.dot."],
-  ])("%s is a string", (quoted) => {
-    expect(textsOf(`my $x = ${quoted};`, TokenType.STRING)).toEqual([quoted]);
+    ["q(a b)", "a b"],
+    ["qq{hi there}", "hi there"],
+    ["qw(a b c)", "a b c"],
+    ["qx(ls -l)", "ls -l"],
+    ["q!bang!", "bang"],
+    ["q^caret^", "caret"],
+    ["q#hash#", "hash"],
+    ["q|pipe|", "pipe"],
+    ["q=equals=", "equals"],
+    ["q.dot.", "dot"],
+  ])("%s highlights its content as a string", (quoted, content) => {
+    expect(textsOf(`my $x = ${quoted};`, TokenType.STRING)).toEqual([content]);
+  });
+
+  test("the operator name is a keyword and delimiters stay plain", () => {
+    expect(tokenizePerl("qw(a b)")).toEqual([
+      { type: TokenType.KEYWORD, text: "qw" },
+      { type: TokenType.PLAIN, text: "(" },
+      { type: TokenType.STRING, text: "a b" },
+      { type: TokenType.PLAIN, text: ")" },
+    ]);
   });
 
   test("whitespace may separate the operator from its delimiter", () => {
-    expect(textsOf("my $x = q (a b);", TokenType.STRING)).toEqual(["q (a b)"]);
+    expect(textsOf("my $x = q (a b);", TokenType.STRING)).toEqual(["a b"]);
   });
 
   test("a hash delimiter must follow the operator immediately", () => {
@@ -307,11 +316,11 @@ describe("quote-like operators", () => {
   });
 
   test("paired delimiters nest", () => {
-    expect(textsOf("my $x = q{a{b}c};", TokenType.STRING)).toEqual(["q{a{b}c}"]);
+    expect(textsOf("my $x = q{a{b}c};", TokenType.STRING)).toEqual(["a{b}c"]);
   });
 
   test("escaped delimiter stays inside", () => {
-    expect(textsOf("q(a\\)b)", TokenType.STRING)).toEqual(["q(a\\)b)"]);
+    expect(textsOf("q(a\\)b)", TokenType.STRING)).toEqual(["a\\)b"]);
   });
 
   test("q before a fat comma is a plain hash key context", () => {
@@ -319,53 +328,62 @@ describe("quote-like operators", () => {
   });
 
   test("unclosed operator runs to the end of input", () => {
-    expect(textsOf("my $x = q{oops", TokenType.STRING)).toEqual(["q{oops"]);
+    expect(textsOf("my $x = q{oops", TokenType.STRING)).toEqual(["oops"]);
   });
 });
 
 describe("regexp operators", () => {
   test.each([
-    ["m/\\d+/"],
-    ["m{pat}i"],
-    ["m|pat|i"],
-    ["qr/^a.*z$/ms"],
-    ["s/foo/bar/g"],
-    ["s{foo}{bar}g"],
-    ["s {foo} {bar}g"],
-    ["tr/a-z/A-Z/"],
-    ["tr [a-z] [A-Z]"],
-    ["y/abc/xyz/"],
-  ])("%s is a regexp", (re) => {
-    expect(textsOf(`$x =~ ${re};`, TokenType.REGEXP)).toEqual([re]);
+    ["m/\\d+/", ["\\d+"]],
+    ["m{pat}i", ["pat"]],
+    ["m|pat|i", ["pat"]],
+    ["qr/^a.*z$/ms", ["^a.*z$"]],
+    ["s/foo/bar/g", ["foo", "bar"]],
+    ["s{foo}{bar}g", ["foo", "bar"]],
+    ["s {foo} {bar}g", ["foo", "bar"]],
+    ["tr/a-z/A-Z/", ["a-z", "A-Z"]],
+    ["tr [a-z] [A-Z]", ["a-z", "A-Z"]],
+    ["y/abc/xyz/", ["abc", "xyz"]],
+  ])("%s highlights its patterns as regexps", (re, patterns) => {
+    expect(textsOf(`$x =~ ${re};`, TokenType.REGEXP)).toEqual(patterns);
+  });
+
+  test("the operator name and modifiers are keywords", () => {
+    expect(textsOf("$x =~ s/foo/bar/gi;", TokenType.KEYWORD)).toEqual(["s", "gi"]);
+  });
+
+  test("slash right after modifiers is division", () => {
+    expect(textsOf("s/a/b/g / 2;", TokenType.REGEXP)).toEqual(["a", "b"]);
   });
 
   test("a substitution as a fat comma value is recognized", () => {
-    expect(textsOf("my %h = (a => s/foo/bar/g);", TokenType.REGEXP)).toEqual(["s/foo/bar/g"]);
+    expect(textsOf("my %h = (a => s/foo/bar/g);", TokenType.REGEXP)).toEqual(["foo", "bar"]);
   });
 
   test("a substitution after a comparison is recognized", () => {
-    expect(textsOf("$count > s{foo}{bar}g;", TokenType.REGEXP)).toEqual(["s{foo}{bar}g"]);
+    expect(textsOf("$count > s{foo}{bar}g;", TokenType.REGEXP)).toEqual(["foo", "bar"]);
   });
 
   test("a missing second part does not swallow the following word", () => {
-    expect(textsOf("s{foo}bar;", TokenType.REGEXP)).toEqual(["s{foo}"]);
+    expect(textsOf("s{foo}bar;", TokenType.REGEXP)).toEqual(["foo"]);
   });
 
   test("a word run containing non-modifier letters is not consumed as modifiers", () => {
-    expect(textsOf("$x =~ /foo/if 1;", TokenType.REGEXP)).toEqual(["/foo/"]);
+    expect(textsOf("$x =~ /foo/if 1;", TokenType.REGEXP)).toEqual(["foo"]);
     expect(textsOf("$x =~ /foo/if 1;", TokenType.KEYWORD)).toContain("if");
   });
 
   test("bare slashes after a binding operator are a regexp", () => {
-    expect(textsOf("$x =~ /foo/i;", TokenType.REGEXP)).toEqual(["/foo/i"]);
+    expect(textsOf("$x =~ /foo/i;", TokenType.REGEXP)).toEqual(["foo"]);
+    expect(textsOf("$x =~ /foo/i;", TokenType.KEYWORD)).toEqual(["i"]);
   });
 
   test("a pattern after split is a regexp", () => {
-    expect(textsOf("split /,/, $line;", TokenType.REGEXP)).toEqual(["/,/"]);
+    expect(textsOf("split /,/, $line;", TokenType.REGEXP)).toEqual([","]);
   });
 
   test("paired two-part substitution allows whitespace between parts", () => {
-    expect(textsOf("s{foo}\n  {bar}g;", TokenType.REGEXP)).toEqual(["s{foo}\n  {bar}g"]);
+    expect(textsOf("s{foo}\n  {bar}g;", TokenType.REGEXP)).toEqual(["foo", "bar"]);
   });
 
   test("slash after a variable is division", () => {
@@ -423,7 +441,7 @@ describe("heredocs", () => {
 
   test("a pattern on the line after the terminator is a regexp", () => {
     const code = "my $t = <<EOF;\nbody\nEOF\n/pat/;";
-    expect(textsOf(code, TokenType.REGEXP)).toEqual(["/pat/"]);
+    expect(textsOf(code, TokenType.REGEXP)).toEqual(["pat"]);
   });
 
   test("two heredocs on one line are consumed in order", () => {
