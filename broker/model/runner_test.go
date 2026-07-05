@@ -3,7 +3,7 @@ package model
 
 import "testing"
 
-// TestRunner_IsIdle は IdleBucket の有無で idle 判定されることを検証する。
+// TestRunner_IsIdle は State == StateIdle のときのみ idle と判定されることを検証する。
 func TestRunner_IsIdle(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -12,22 +12,22 @@ func TestRunner_IsIdle(t *testing.T) {
 		want   bool
 	}{
 		{
-			name:   "idle when idleBucket is set",
-			runner: Runner{RunnerID: "r1", IdleBucket: "bucket-0"},
+			name:   "idle when state is idle",
+			runner: Runner{RunnerID: "r1", State: StateIdle},
 			want:   true,
 		},
 		{
-			name:   "idle when idleBucket is set with privateURL",
-			runner: Runner{RunnerID: "r1", IdleBucket: "bucket-0", PrivateURL: "http://10.0.0.1:8080"},
+			name:   "idle when state is idle with privateURL",
+			runner: Runner{RunnerID: "r1", State: StateIdle, PrivateURL: "http://10.0.0.1:8080"},
 			want:   true,
 		},
 		{
-			name:   "not idle when idleBucket is empty",
+			name:   "not idle when currentSessionId is set",
 			runner: Runner{RunnerID: "r1", CurrentSessionID: "sess-1"},
 			want:   false,
 		},
 		{
-			name:   "not idle when both empty",
+			name:   "not idle when state is empty",
 			runner: Runner{RunnerID: "r1"},
 			want:   false,
 		},
@@ -42,7 +42,7 @@ func TestRunner_IsIdle(t *testing.T) {
 	}
 }
 
-// TestRunner_IsBusy は CurrentSessionID の有無で busy 判定されることを検証する。
+// TestRunner_IsBusy は CurrentSessionID が非空のときのみ busy と判定されることを検証する。
 func TestRunner_IsBusy(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -62,7 +62,7 @@ func TestRunner_IsBusy(t *testing.T) {
 		},
 		{
 			name:   "not busy when currentSessionId is empty",
-			runner: Runner{RunnerID: "r1", IdleBucket: "bucket-0"},
+			runner: Runner{RunnerID: "r1", State: StateIdle},
 			want:   false,
 		},
 		{

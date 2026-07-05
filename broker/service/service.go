@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	mrand "math/rand/v2"
 
 	"github.com/ogadra/bunshin/broker/healthcheck"
 	"github.com/ogadra/bunshin/broker/model"
@@ -107,43 +106,34 @@ func defaultSessionFn() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// createSession はセッション ID を生成し、全バケットを走査して健全な idle runner を確保しセッションを作成する。
+// createSession はセッション ID を生成し、健全な idle runner を確保しセッションを作成する。
 // checker が nil の場合はヘルスチェックをスキップし最初に見つかった runner を返す。
-// 不健全な runner は削除して同じバケット内で再試行し、バケットが空になったら次のバケットへ移る。
+// 不健全な runner は削除して再取得を繰り返し、idle runner が枯渇したら ErrNoIdleRunner を返す。
 func (s *BrokerService) createSession(ctx context.Context) (*CreateSessionResult, error) {
 	sessionID, err := s.sessionFn()
 	if err != nil {
 		return nil, err
 	}
 	sessionID = s.stackPrefix + "_" + sessionID
-	bc := s.repo.BucketCount()
-	start := mrand.IntN(bc)
 	check := s.checker != nil
-	for i := range bc {
-		bucket := (start + i) % bc
-		for {
-			runner, err := s.repo.AcquireIdle(ctx, sessionID, bucket)
-			if errors.Is(err, store.ErrNoIdleRunner) {
-				break
-			}
-			if err != nil {
-				return nil, err
-			}
-			if !check {
-				return &CreateSessionResult{SessionID: sessionID, Runner: runner}, nil
-			}
-			if checkErr := s.checker.Check(ctx, runner.PrivateURL); checkErr == nil {
-				return &CreateSessionResult{SessionID: sessionID, Runner: runner}, nil
-			} else if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-			logPrintf("healthcheck failed for runner %s, deleting stale record", runner.RunnerID)
-			if err := s.repo.Delete(ctx, runner.RunnerID); err != nil {
-				return nil, fmt.Errorf("delete unhealthy runner %s: %w", runner.RunnerID, err)
-			}
+	for {
+		runner, err := s.repo.AcquireIdle(ctx, sessionID)
+		if err != nil {
+			return nil, err
+		}
+		if !check {
+			return &CreateSessionResult{SessionID: sessionID, Runner: runner}, nil
+		}
+		if checkErr := s.checker.Check(ctx, runner.PrivateURL); checkErr == nil {
+			return &CreateSessionResult{SessionID: sessionID, Runner: runner}, nil
+		} else if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		logPrintf("healthcheck failed for runner %s, deleting stale record", runner.RunnerID)
+		if err := s.repo.Delete(ctx, runner.RunnerID); err != nil {
+			return nil, fmt.Errorf("delete unhealthy runner %s: %w", runner.RunnerID, err)
 		}
 	}
-	return nil, store.ErrNoIdleRunner
 }
 
 // CloseSession はセッションを終了し紐づく runner を削除する。

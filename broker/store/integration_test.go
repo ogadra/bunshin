@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/ogadra/bunshin/broker/model"
 )
 
 // TestIntegration_RegisterAndFindByID はレコード登録と ID 検索の統合テスト。
@@ -14,7 +16,6 @@ func TestIntegration_RegisterAndFindByID(t *testing.T) {
 	t.Parallel()
 	client, tableName := setupIntegrationTable(t)
 	repo := NewDynamoRepository(client, tableName)
-	repo.bucketFn = func() string { return "bucket-0" }
 
 	ctx := context.Background()
 
@@ -30,8 +31,8 @@ func TestIntegration_RegisterAndFindByID(t *testing.T) {
 	if runner.RunnerID != "r1" {
 		t.Errorf("runnerID = %q, want %q", runner.RunnerID, "r1")
 	}
-	if runner.IdleBucket != "bucket-0" {
-		t.Errorf("idleBucket = %q, want %q", runner.IdleBucket, "bucket-0")
+	if runner.State != model.StateIdle {
+		t.Errorf("state = %q, want %q", runner.State, model.StateIdle)
 	}
 	if runner.PrivateURL != "http://10.0.0.1:8080" {
 		t.Errorf("privateURL = %q, want %q", runner.PrivateURL, "http://10.0.0.1:8080")
@@ -43,7 +44,6 @@ func TestIntegration_RegisterIdempotent(t *testing.T) {
 	t.Parallel()
 	client, tableName := setupIntegrationTable(t)
 	repo := NewDynamoRepository(client, tableName)
-	repo.bucketFn = func() string { return "bucket-0" }
 
 	ctx := context.Background()
 
@@ -60,7 +60,6 @@ func TestIntegration_RegisterConflict(t *testing.T) {
 	t.Parallel()
 	client, tableName := setupIntegrationTable(t)
 	repo := NewDynamoRepository(client, tableName)
-	repo.bucketFn = func() string { return "bucket-0" }
 
 	ctx := context.Background()
 
@@ -73,12 +72,11 @@ func TestIntegration_RegisterConflict(t *testing.T) {
 	}
 }
 
-// TestIntegration_AcquireIdle は idle runner 確保の統合テスト。
+// TestIntegration_AcquireIdle は idle runner 確保後に busy へ遷移し state 属性が消えることを検証する統合テスト。
 func TestIntegration_AcquireIdle(t *testing.T) {
 	t.Parallel()
 	client, tableName := setupIntegrationTable(t)
 	repo := NewDynamoRepository(client, tableName)
-	repo.bucketFn = func() string { return "bucket-1" }
 
 	ctx := context.Background()
 
@@ -86,7 +84,7 @@ func TestIntegration_AcquireIdle(t *testing.T) {
 		t.Fatalf("Register: %v", err)
 	}
 
-	runner, err := repo.AcquireIdle(ctx, "sess-1", 1)
+	runner, err := repo.AcquireIdle(ctx, "sess-1")
 	if err != nil {
 		t.Fatalf("AcquireIdle: %v", err)
 	}
@@ -96,6 +94,23 @@ func TestIntegration_AcquireIdle(t *testing.T) {
 	if runner.CurrentSessionID != "sess-1" {
 		t.Errorf("currentSessionId = %q, want %q", runner.CurrentSessionID, "sess-1")
 	}
+	if !runner.IsBusy() {
+		t.Errorf("expected runner to be busy, got IsBusy=false state=%q", runner.State)
+	}
+	if runner.IsIdle() {
+		t.Errorf("expected runner not to be idle after acquire")
+	}
+
+	persisted, err := repo.FindByID(ctx, "r1")
+	if err != nil {
+		t.Fatalf("FindByID: %v", err)
+	}
+	if persisted.State != "" {
+		t.Errorf("persisted state = %q, want empty (attribute removed on busy transition)", persisted.State)
+	}
+	if persisted.CurrentSessionID != "sess-1" {
+		t.Errorf("persisted currentSessionId = %q, want %q", persisted.CurrentSessionID, "sess-1")
+	}
 }
 
 // TestIntegration_AcquireIdle_Empty は runner がいない場合に ErrNoIdleRunner を返す統合テスト。
@@ -104,7 +119,7 @@ func TestIntegration_AcquireIdle_Empty(t *testing.T) {
 	client, tableName := setupIntegrationTable(t)
 	repo := NewDynamoRepository(client, tableName)
 
-	_, err := repo.AcquireIdle(context.Background(), "sess-1", 0)
+	_, err := repo.AcquireIdle(context.Background(), "sess-1")
 	if !errors.Is(err, ErrNoIdleRunner) {
 		t.Fatalf("expected ErrNoIdleRunner, got: %v", err)
 	}
@@ -115,7 +130,6 @@ func TestIntegration_AcquireIdle_FindBySessionID(t *testing.T) {
 	t.Parallel()
 	client, tableName := setupIntegrationTable(t)
 	repo := NewDynamoRepository(client, tableName)
-	repo.bucketFn = func() string { return "bucket-0" }
 
 	ctx := context.Background()
 
@@ -123,7 +137,7 @@ func TestIntegration_AcquireIdle_FindBySessionID(t *testing.T) {
 		t.Fatalf("Register: %v", err)
 	}
 
-	if _, err := repo.AcquireIdle(ctx, "sess-1", 0); err != nil {
+	if _, err := repo.AcquireIdle(ctx, "sess-1"); err != nil {
 		t.Fatalf("AcquireIdle: %v", err)
 	}
 
@@ -141,20 +155,41 @@ func TestIntegration_AcquireIdle_AlreadyBusy(t *testing.T) {
 	t.Parallel()
 	client, tableName := setupIntegrationTable(t)
 	repo := NewDynamoRepository(client, tableName)
-	repo.bucketFn = func() string { return "bucket-0" }
 
 	ctx := context.Background()
 
 	if err := repo.Register(ctx, "r1", "http://10.0.0.1:8080"); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
-	if _, err := repo.AcquireIdle(ctx, "sess-1", 0); err != nil {
+	if _, err := repo.AcquireIdle(ctx, "sess-1"); err != nil {
 		t.Fatalf("first AcquireIdle: %v", err)
 	}
 
-	_, err := repo.AcquireIdle(ctx, "sess-2", 0)
+	_, err := repo.AcquireIdle(ctx, "sess-2")
 	if !errors.Is(err, ErrNoIdleRunner) {
 		t.Fatalf("expected ErrNoIdleRunner, got: %v", err)
+	}
+}
+
+// TestIntegration_AcquireIdle_WrapFromHead は乱数開始位置より前にしか runner がない場合でも wrap query で取得できることを検証する統合テスト。
+func TestIntegration_AcquireIdle_WrapFromHead(t *testing.T) {
+	t.Parallel()
+	client, tableName := setupIntegrationTable(t)
+	repo := NewDynamoRepository(client, tableName)
+	// 開始キーを常に "ffff..." にすることで、r-01 は必ず wrap 経路でのみ取得される。
+	repo.randHexFn = func() string { return "ffffffffffffffffffffffffffffffff" }
+
+	ctx := context.Background()
+	if err := repo.Register(ctx, "r-01", "http://10.0.0.1:8080"); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	runner, err := repo.AcquireIdle(ctx, "sess-wrap")
+	if err != nil {
+		t.Fatalf("AcquireIdle: %v", err)
+	}
+	if runner.RunnerID != "r-01" {
+		t.Errorf("runnerID = %q, want %q", runner.RunnerID, "r-01")
 	}
 }
 
@@ -163,7 +198,6 @@ func TestIntegration_Delete(t *testing.T) {
 	t.Parallel()
 	client, tableName := setupIntegrationTable(t)
 	repo := NewDynamoRepository(client, tableName)
-	repo.bucketFn = func() string { return "bucket-0" }
 
 	ctx := context.Background()
 

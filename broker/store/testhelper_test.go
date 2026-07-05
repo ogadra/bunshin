@@ -47,14 +47,15 @@ func setupIntegrationTable(t *testing.T) (*dynamodb.Client, string) {
 		},
 		AttributeDefinitions: []types.AttributeDefinition{
 			{AttributeName: aws.String("runnerId"), AttributeType: types.ScalarAttributeTypeS},
-			{AttributeName: aws.String("idleBucket"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("state"), AttributeType: types.ScalarAttributeTypeS},
 			{AttributeName: aws.String("currentSessionId"), AttributeType: types.ScalarAttributeTypeS},
 		},
 		GlobalSecondaryIndexes: []types.GlobalSecondaryIndex{
 			{
-				IndexName: aws.String("idle-index"),
+				IndexName: aws.String("state-index"),
 				KeySchema: []types.KeySchemaElement{
-					{AttributeName: aws.String("idleBucket"), KeyType: types.KeyTypeHash},
+					{AttributeName: aws.String("state"), KeyType: types.KeyTypeHash},
+					{AttributeName: aws.String("runnerId"), KeyType: types.KeyTypeRange},
 				},
 				Projection: &types.Projection{ProjectionType: types.ProjectionTypeAll},
 				ProvisionedThroughput: &types.ProvisionedThroughput{
