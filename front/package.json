@@ -8,9 +8,12 @@
     "build": "vp build",
     "check": "vp check",
     "test": "vp test",
-    "preview": "vp preview"
+    "preview": "vp preview",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@types/node": "^24.13.2",
     "happy-dom": "^20.10.6",
     "typescript": "~6.0.3",
     "vite": "npm:@voidzero-dev/vite-plus-core@0.1.13",

@@ -18,6 +18,7 @@
         packages = with pkgs; [
           awscli2
           checkov
+          chromium
           gitleaks
           just
           go_1_26
@@ -31,6 +32,10 @@
           graphviz
           uv
         ];
+        env = {
+          PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = "${pkgs.chromium}/bin/chromium";
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
+        };
       };
     };
 }
