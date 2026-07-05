@@ -18,7 +18,7 @@ resource "aws_dynamodb_table" "runners_apne3" {
   }
 
   attribute {
-    name = "idleShard"
+    name = "state"
     type = "S"
   }
 
@@ -33,11 +33,11 @@ resource "aws_dynamodb_table" "runners_apne3" {
   }
 
   global_secondary_index {
-    name            = "idle-index"
+    name            = "state-index"
     projection_type = "ALL"
 
     key_schema {
-      attribute_name = "idleShard"
+      attribute_name = "state"
       key_type       = "HASH"
     }
 
