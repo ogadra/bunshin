@@ -4,8 +4,6 @@ package store
 import (
 	"context"
 	"errors"
-	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -374,7 +372,7 @@ func TestAcquireIdle_WrapFromHead(t *testing.T) {
 	}
 }
 
-// TestAcquireIdle_NoIdleRunner は両クエリが空の場合に最大 2 query で ErrNoIdleRunner を返すことを検証する。
+// TestAcquireIdle_NoIdleRunner は全クエリが空の場合に ErrNoIdleRunner を返すことを検証する。
 func TestAcquireIdle_NoIdleRunner(t *testing.T) {
 	t.Parallel()
 	queryCount := 0
@@ -391,8 +389,9 @@ func TestAcquireIdle_NoIdleRunner(t *testing.T) {
 	if !errors.Is(err, ErrNoIdleRunner) {
 		t.Fatalf("expected ErrNoIdleRunner, got: %v", err)
 	}
-	if queryCount != 2 {
-		t.Errorf("queryCount = %d, want 2 (random + wrap)", queryCount)
+	// random + top-up (fast path) + backstop scan の 3 query で枯渇確定。
+	if queryCount != 3 {
+		t.Errorf("queryCount = %d, want 3 (random + top-up + backstop)", queryCount)
 	}
 }
 
@@ -474,45 +473,52 @@ func TestAcquireIdle_RetryWithinBatch(t *testing.T) {
 	}
 }
 
-// TestAcquireIdle_RegenRandomOnAllConflict は全候補が条件失敗した場合に乱数を作り直して再試行することを検証する。
-func TestAcquireIdle_RegenRandomOnAllConflict(t *testing.T) {
+// TestAcquireIdle_BackstopReachesMaskedIdle は fast path の窓が stale item で満杯になり
+// runnerId の小さい idle が窓外に隠れていても、backstop の head 全走査 (ページング含む) で
+// 確保できることを検証する。旧 bucket 全巡回に対する可用性リグレッションへの回帰テスト。
+func TestAcquireIdle_BackstopReachesMaskedIdle(t *testing.T) {
 	t.Parallel()
-	seq := []string{"11111111111111111111111111111111", "22222222222222222222222222222222"}
+	stale := []map[string]types.AttributeValue{
+		idleItem("s1"), idleItem("s2"), idleItem("s3"), idleItem("s4"), idleItem("s5"),
+	}
+	cursor := map[string]types.AttributeValue{"runnerId": &types.AttributeValueMemberS{Value: "s5"}}
+	fastQueries, scanQueries := 0, 0
 	mock := &mockDynamoDBAPI{
 		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			switch params.ExpressionAttributeValues[":r"].(*types.AttributeValueMemberS).Value {
-			case seq[0]:
-				return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{idleItem("r-conflict")}}, nil
-			case seq[1]:
-				return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{idleItem("r-ok")}}, nil
-			default: // minRunnerID からの top-up は空
-				return &dynamodb.QueryOutput{Items: nil}, nil
+			if params.Limit != nil { // fast path: random 窓は stale で満杯 (top-up は発火しない)
+				fastQueries++
+				assertStateIdxQuery(t, params, "ffffffffffffffffffffffffffffffff", acquireQueryLimit)
+				return &dynamodb.QueryOutput{Items: stale}, nil
 			}
+			// backstop scan: 先頭ページは tried 済み stale のみ、続きに masked idle。
+			scanQueries++
+			if params.ExclusiveStartKey == nil {
+				return &dynamodb.QueryOutput{Items: stale, LastEvaluatedKey: cursor}, nil
+			}
+			return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{idleItem("x-low")}}, nil
 		},
 		updateItemFn: func(_ context.Context, params *dynamodb.UpdateItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error) {
-			if params.Key["runnerId"].(*types.AttributeValueMemberS).Value == "r-conflict" {
-				return nil, &types.ConditionalCheckFailedException{Message: aws.String("conflict")}
+			if params.Key["runnerId"].(*types.AttributeValueMemberS).Value == "x-low" {
+				return &dynamodb.UpdateItemOutput{}, nil
 			}
-			return &dynamodb.UpdateItemOutput{}, nil
+			return nil, &types.ConditionalCheckFailedException{Message: aws.String("already busy (stale index)")}
 		},
 	}
 	repo := NewDynamoRepository(mock, "t")
-	i := 0
-	repo.randHexFn = func() string {
-		v := seq[i]
-		i++
-		return v
-	}
+	repo.randHexFn = func() string { return "ffffffffffffffffffffffffffffffff" }
 
 	runner, err := repo.AcquireIdle(context.Background(), "sess-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if runner.RunnerID != "r-ok" {
-		t.Errorf("runnerID = %q, want %q", runner.RunnerID, "r-ok")
+	if runner.RunnerID != "x-low" {
+		t.Errorf("runnerID = %q, want %q", runner.RunnerID, "x-low")
 	}
-	if i != 2 {
-		t.Errorf("randHexFn calls = %d, want 2", i)
+	if fastQueries != 1 {
+		t.Errorf("fastQueries = %d, want 1 (full window, no top-up)", fastQueries)
+	}
+	if scanQueries != 2 {
+		t.Errorf("scanQueries = %d, want 2 (paginated backstop)", scanQueries)
 	}
 }
 
@@ -536,10 +542,10 @@ func TestAcquireIdle_StaleGSI(t *testing.T) {
 	if !errors.Is(err, ErrNoIdleRunner) {
 		t.Fatalf("expected ErrNoIdleRunner, got: %v", err)
 	}
-	// ラウンド1 (random + top-up の 2 query): 候補 r-stale → conflict → tried に追加
-	// ラウンド2 (random + top-up の 2 query): r-stale は tried で除外 → 前進なし → ErrNoIdleRunner
-	if queryCount != 4 {
-		t.Errorf("queryCount = %d, want 4 (2 rounds x (random + top-up))", queryCount)
+	// fast path (random + top-up): r-stale → conflict → tried に追加
+	// backstop scan: r-stale は tried で除外 → 未試行 idle なし → ErrNoIdleRunner
+	if queryCount != 3 {
+		t.Errorf("queryCount = %d, want 3 (random + top-up + backstop)", queryCount)
 	}
 }
 
@@ -573,6 +579,48 @@ func TestAcquireIdle_UnmarshalError(t *testing.T) {
 					{"runnerId": &types.AttributeValueMemberL{Value: []types.AttributeValue{}}},
 				},
 			}, nil
+		},
+	}
+	repo := NewDynamoRepository(mock, "t")
+	repo.randHexFn = func() string { return "0000000000000000" }
+
+	_, err := repo.AcquireIdle(context.Background(), "sess-1")
+	if err == nil {
+		t.Fatal("expected unmarshal error")
+	}
+}
+
+// TestAcquireIdle_BackstopScanError は backstop 走査の Query エラーを伝搬することを検証する。
+func TestAcquireIdle_BackstopScanError(t *testing.T) {
+	t.Parallel()
+	mock := &mockDynamoDBAPI{
+		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
+			if params.Limit == nil { // backstop scan
+				return nil, errors.New("scan error")
+			}
+			return &dynamodb.QueryOutput{Items: nil}, nil // fast path は空
+		},
+	}
+	repo := NewDynamoRepository(mock, "t")
+	repo.randHexFn = func() string { return "0000000000000000" }
+
+	_, err := repo.AcquireIdle(context.Background(), "sess-1")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+// TestAcquireIdle_BackstopUnmarshalError は backstop 走査結果の unmarshal 失敗を伝搬することを検証する。
+func TestAcquireIdle_BackstopUnmarshalError(t *testing.T) {
+	t.Parallel()
+	mock := &mockDynamoDBAPI{
+		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
+			if params.Limit == nil { // backstop scan
+				return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{
+					{"runnerId": &types.AttributeValueMemberL{Value: []types.AttributeValue{}}},
+				}}, nil
+			}
+			return &dynamodb.QueryOutput{Items: nil}, nil // fast path は空
 		},
 	}
 	repo := NewDynamoRepository(mock, "t")
@@ -778,45 +826,4 @@ func TestDelete_Error(t *testing.T) {
 func TestDynamoRepository_ImplementsRepository(t *testing.T) {
 	t.Parallel()
 	var _ Repository = (*DynamoRepository)(nil)
-}
-
-// TestAcquireIdle_QueryStartsAreDistinctPerIteration は反復ごとに異なる randHexFn の値が :r に反映されることを検証する。
-func TestAcquireIdle_QueryStartsAreDistinctPerIteration(t *testing.T) {
-	t.Parallel()
-	seen := []string{}
-	mock := &mockDynamoDBAPI{
-		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			if v, ok := params.ExpressionAttributeValues[":r"]; ok {
-				if s := v.(*types.AttributeValueMemberS).Value; s != minRunnerID {
-					seen = append(seen, s)
-				}
-			}
-			return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{idleItem("r-stale")}}, nil
-		},
-		updateItemFn: func(_ context.Context, _ *dynamodb.UpdateItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error) {
-			return nil, &types.ConditionalCheckFailedException{Message: aws.String("stale")}
-		},
-	}
-	repo := NewDynamoRepository(mock, "t")
-	seq := []string{fmt.Sprintf("%032d", 1), fmt.Sprintf("%032d", 2)}
-	i := 0
-	repo.randHexFn = func() string {
-		v := seq[i%len(seq)]
-		i++
-		return v
-	}
-
-	_, err := repo.AcquireIdle(context.Background(), "sess-1")
-	if !errors.Is(err, ErrNoIdleRunner) {
-		t.Fatalf("expected ErrNoIdleRunner, got: %v", err)
-	}
-	if len(seen) < 2 {
-		t.Fatalf("expected at least 2 query starts, got %d", len(seen))
-	}
-	if seen[0] == seen[1] {
-		t.Errorf("expected distinct query starts, got %q twice", seen[0])
-	}
-	if !strings.Contains(seen[0], "1") || !strings.Contains(seen[1], "2") {
-		t.Errorf("randHexFn sequence not respected, got %v", seen)
-	}
 }

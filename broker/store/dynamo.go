@@ -91,58 +91,69 @@ func (r *DynamoRepository) Register(ctx context.Context, runnerID, privateURL st
 }
 
 // AcquireIdle は idle runner を 1 台確保し session を紐づける。
-// state-index (hash=state, range=runnerId) をランダムな runnerId から前方走査し、
+// fast path として state-index (hash=state, range=runnerId) をランダムな runnerId から前方走査し、
 // acquireQueryLimit に満たなければ partition 先頭 (minRunnerID) から不足分を補って候補を埋める。
-// 候補を条件付き更新で idle→busy に遷移させ、全候補が条件失敗なら乱数を作り直して再試行する。
 // runnerId は crypto/rand hex で keyspace に一様分布するため、ランダム開始点の successor 自体が
-// idle 集合上で一様になり、最初に試す候補も分散する。よって候補内の shuffle は不要。
-// idle 総数が acquireQueryLimit 未満のときは 2 クエリの結果が重複しうるため seen set で除く。
-// tried set により走査済み候補を除外することで、stale index に対しても有限時間で ErrNoIdleRunner に収束する。
+// idle 集合上で一様になり、最初に試す候補が分散して head のホットスポットを避けられる。
+// fast path の窓が stale (既 busy) item で埋まると小さい runnerId の idle を見落としうるため、
+// fast path で確保できなければ partition 先頭から LastEvaluatedKey で idle 全体を走査し、
+// 未試行 idle が存在しないことを確認してから ErrNoIdleRunner を返す。
+// tried set が走査済み候補を除外するので、stale index に対しても有限時間で枯渇判定に収束する。
 func (r *DynamoRepository) AcquireIdle(ctx context.Context, sessionID string) (*model.Runner, error) {
 	tried := map[string]struct{}{}
-	for {
-		candidates, err := r.queryIdleFrom(ctx, r.randHexFn(), acquireQueryLimit)
+
+	candidates, err := r.queryIdleFrom(ctx, r.randHexFn(), acquireQueryLimit)
+	if err != nil {
+		return nil, err
+	}
+	if len(candidates) < acquireQueryLimit {
+		head, err := r.queryIdleFrom(ctx, minRunnerID, acquireQueryLimit-len(candidates))
 		if err != nil {
 			return nil, err
 		}
-		if len(candidates) < acquireQueryLimit {
-			head, err := r.queryIdleFrom(ctx, minRunnerID, acquireQueryLimit-len(candidates))
-			if err != nil {
-				return nil, err
-			}
-			candidates = append(candidates, head...)
-		}
+		candidates = append(candidates, head...)
+	}
+	if runner, err := r.assignFirst(ctx, sessionID, candidates, tried); runner != nil || err != nil {
+		return runner, err
+	}
 
-		seen := make(map[string]struct{}, len(candidates))
-		fresh := candidates[:0]
-		for _, c := range candidates {
-			if _, dup := seen[c.RunnerID]; dup {
-				continue
-			}
-			seen[c.RunnerID] = struct{}{}
-			if _, done := tried[c.RunnerID]; done {
-				continue
-			}
-			fresh = append(fresh, c)
+	var startKey map[string]types.AttributeValue
+	for {
+		runners, next, err := r.scanIdlePage(ctx, startKey)
+		if err != nil {
+			return nil, err
 		}
-		if len(fresh) == 0 {
+		if runner, err := r.assignFirst(ctx, sessionID, runners, tried); runner != nil || err != nil {
+			return runner, err
+		}
+		if len(next) == 0 {
 			return nil, ErrNoIdleRunner
 		}
-
-		for i := range fresh {
-			runner := &fresh[i]
-			err := r.assignSession(ctx, runner.RunnerID, sessionID)
-			if err == nil {
-				runner.State = ""
-				runner.CurrentSessionID = sessionID
-				return runner, nil
-			}
-			if !errors.Is(err, ErrConditionFailed) {
-				return nil, err
-			}
-			tried[runner.RunnerID] = struct{}{}
-		}
+		startKey = next
 	}
+}
+
+// assignFirst は candidates のうち未試行のものを順に idle→busy へ遷移させ、最初に確保できた runner を返す。
+// 全て試行済み・条件失敗なら (nil, nil) を返し、呼び出し側が走査を継続する。条件失敗以外は error を返す。
+// tried への記録が重複候補と走査済み候補の再試行を同時に防ぐ。
+func (r *DynamoRepository) assignFirst(ctx context.Context, sessionID string, candidates []model.Runner, tried map[string]struct{}) (*model.Runner, error) {
+	for i := range candidates {
+		runner := &candidates[i]
+		if _, done := tried[runner.RunnerID]; done {
+			continue
+		}
+		err := r.assignSession(ctx, runner.RunnerID, sessionID)
+		if err == nil {
+			runner.State = ""
+			runner.CurrentSessionID = sessionID
+			return runner, nil
+		}
+		if !errors.Is(err, ErrConditionFailed) {
+			return nil, err
+		}
+		tried[runner.RunnerID] = struct{}{}
+	}
+	return nil, nil
 }
 
 // queryIdleFrom は state-index を state = "idle" かつ runnerId >= startKey で query し、
@@ -162,8 +173,37 @@ func (r *DynamoRepository) queryIdleFrom(ctx context.Context, startKey string, l
 	if err != nil {
 		return nil, fmt.Errorf("query state-index: %w", err)
 	}
-	runners := make([]model.Runner, 0, len(out.Items))
-	for _, item := range out.Items {
+	return unmarshalRunners(out.Items)
+}
+
+// scanIdlePage は idle partition を先頭 (minRunnerID) から 1 ページ query し、runner 群と続きの
+// LastEvaluatedKey を返す。exclusiveStart が nil なら先頭ページから走査する。
+func (r *DynamoRepository) scanIdlePage(ctx context.Context, exclusiveStart map[string]types.AttributeValue) ([]model.Runner, map[string]types.AttributeValue, error) {
+	out, err := r.client.Query(ctx, &dynamodb.QueryInput{
+		TableName:                aws.String(r.tableName),
+		IndexName:                aws.String("state-index"),
+		KeyConditionExpression:   aws.String("#s = :s AND runnerId >= :r"),
+		ExpressionAttributeNames: map[string]string{"#s": "state"},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":s": &types.AttributeValueMemberS{Value: string(model.StateIdle)},
+			":r": &types.AttributeValueMemberS{Value: minRunnerID},
+		},
+		ExclusiveStartKey: exclusiveStart,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("scan state-index: %w", err)
+	}
+	runners, err := unmarshalRunners(out.Items)
+	if err != nil {
+		return nil, nil, err
+	}
+	return runners, out.LastEvaluatedKey, nil
+}
+
+// unmarshalRunners は Query 結果の item 群を model.Runner に unmarshal する。
+func unmarshalRunners(items []map[string]types.AttributeValue) ([]model.Runner, error) {
+	runners := make([]model.Runner, 0, len(items))
+	for _, item := range items {
 		var runner model.Runner
 		if err := attributevalue.UnmarshalMap(item, &runner); err != nil {
 			return nil, fmt.Errorf("unmarshal runner: %w", err)
