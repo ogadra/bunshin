@@ -9,6 +9,10 @@ export const createPerlEditor = (container: HTMLElement, initialCode: string): v
   input.className = "editor-input";
   input.spellcheck = false;
   input.wrap = "off";
+  // モバイルの自動大文字化・自動修正はコードを構文レベルで書き換える
+  // (sub → Sub 等)。spellcheck=false だけでは autocorrect は止まらない
+  input.setAttribute("autocapitalize", "off");
+  input.setAttribute("autocorrect", "off");
   input.setAttribute("aria-label", "Perl code");
   input.value = initialCode;
 

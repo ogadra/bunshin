@@ -29,6 +29,13 @@ const setDisabled = (disabled: boolean) => {
   button.disabled = disabled;
 };
 
+const focusCommand = () => {
+  // 接続完了・コマンド完了は非同期に起きるため、ユーザーが既に
+  // 他要素（Perl エディタ等）へ移したフォーカスまで奪わない
+  const active = document.activeElement;
+  if (active === null || active === document.body || active === input) input.focus();
+};
+
 const MAX_DELAY_MS = 8000;
 const ac = new AbortController();
 const attempt = async (delay: number): Promise<void> => {
@@ -38,7 +45,7 @@ const attempt = async (delay: number): Promise<void> => {
     status.hidden = true;
     setDisabled(false);
     append("$ ");
-    input.focus();
+    focusCommand();
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") return;
     if (ac.signal.aborted) return;
@@ -105,7 +112,7 @@ const run = async () => {
     append("$ ");
     running = false;
     setDisabled(false);
-    input.focus();
+    focusCommand();
   }
 };
 
