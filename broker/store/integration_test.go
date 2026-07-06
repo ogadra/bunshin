@@ -99,6 +99,9 @@ func TestIntegration_AcquireIdle(t *testing.T) {
 	if runner.State != model.StateBusy {
 		t.Errorf("state = %q, want %q", runner.State, model.StateBusy)
 	}
+	if runner.PrivateURL != "http://10.0.0.1:8080" {
+		t.Errorf("privateURL = %q, want %q (state-index projection must include privateUrl)", runner.PrivateURL, "http://10.0.0.1:8080")
+	}
 
 	persisted, err := repo.FindByID(ctx, "11111111111111111111111111111111")
 	if err != nil {
@@ -106,6 +109,9 @@ func TestIntegration_AcquireIdle(t *testing.T) {
 	}
 	if persisted.State != model.StateBusy {
 		t.Errorf("persisted state = %q, want %q", persisted.State, model.StateBusy)
+	}
+	if persisted.PrivateURL != "http://10.0.0.1:8080" {
+		t.Errorf("persisted privateURL = %q, want %q", persisted.PrivateURL, "http://10.0.0.1:8080")
 	}
 }
 
@@ -274,6 +280,9 @@ func TestIntegration_ListBusyRunners_All(t *testing.T) {
 	for _, r := range runners {
 		if r.State != model.StateBusy {
 			t.Errorf("state = %q, want %q", r.State, model.StateBusy)
+		}
+		if r.PrivateURL == "" {
+			t.Errorf("runner %s: privateURL empty; state-index projection must include privateUrl", r.RunnerID)
 		}
 		got = append(got, r.RunnerID)
 	}

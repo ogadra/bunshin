@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"regexp"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -19,10 +20,13 @@ import (
 // item は 1 KB 未満で 0.5 RCU 固定のため Limit 1 と同コスト。stale item が混ざったときに再クエリを避けたいので複数取る。
 const acquireQueryLimit = 5
 
+// AcquireIdle は [minRunnerID, maxRunnerID] の BETWEEN scan で走査するため、この閉区間から外れた runnerId を書き込むと取りこぼす。Register で形式を強制する。
 const (
 	minRunnerID = "00000000000000000000000000000000"
 	maxRunnerID = "ffffffffffffffffffffffffffffffff"
 )
+
+var runnerIDRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 type DynamoRepository struct {
 	client    DynamoDBAPI
@@ -49,6 +53,9 @@ func defaultRandHexFn() string {
 }
 
 func (r *DynamoRepository) Register(ctx context.Context, runnerID, privateURL string) error {
+	if !runnerIDRe.MatchString(runnerID) {
+		return ErrInvalidRunnerID
+	}
 	if privateURL == "" {
 		return fmt.Errorf("privateURL must not be empty")
 	}

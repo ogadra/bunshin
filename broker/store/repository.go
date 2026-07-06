@@ -14,6 +14,7 @@ var (
 	ErrNoIdleRunner    = errors.New("no idle runner available")
 	ErrConditionFailed = errors.New("condition check failed")
 	ErrConflict        = errors.New("runner already exists with different attributes")
+	ErrInvalidRunnerID = errors.New("runnerID must be 32 lowercase hex characters")
 )
 
 type Repository interface {
