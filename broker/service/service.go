@@ -76,6 +76,9 @@ func NewBrokerService(repo store.Repository, stackPrefix string, opts ...Option)
 	for _, opt := range opts {
 		opt(s)
 	}
+	if s.checker == nil {
+		panic("service: checker must not be nil")
+	}
 	return s
 }
 
@@ -93,14 +96,10 @@ func (s *BrokerService) createSession(ctx context.Context) (*CreateSessionResult
 		return nil, err
 	}
 	sessionID = s.stackPrefix + "_" + sessionID
-	check := s.checker != nil
 	for {
 		runner, err := s.repo.AcquireIdle(ctx, sessionID)
 		if err != nil {
 			return nil, err
-		}
-		if !check {
-			return &CreateSessionResult{SessionID: sessionID, Runner: runner}, nil
 		}
 		if checkErr := s.checker.Check(ctx, runner.PrivateURL); checkErr == nil {
 			return &CreateSessionResult{SessionID: sessionID, Runner: runner}, nil
@@ -127,9 +126,6 @@ func (s *BrokerService) ResolveSession(ctx context.Context, sessionID string) (*
 	if sessionID != "" {
 		runner, err := s.repo.FindBySessionID(ctx, sessionID)
 		if err == nil {
-			if s.checker == nil {
-				return &ResolveResult{SessionID: sessionID, RunnerURL: runner.PrivateURL, Created: false}, nil
-			}
 			if checkErr := s.checker.Check(ctx, runner.PrivateURL); checkErr == nil {
 				return &ResolveResult{SessionID: sessionID, RunnerURL: runner.PrivateURL, Created: false}, nil
 			} else if ctx.Err() != nil {
