@@ -580,7 +580,7 @@ func TestAcquireIdle_UnmarshalError(t *testing.T) {
 }
 
 // assertBusyQuery は ListBusyRunners が state-index に発行する query の共通形を検証する。
-func assertBusyQuery(t *testing.T, params *dynamodb.QueryInput, wantLimit int32) {
+func assertBusyQuery(t *testing.T, params *dynamodb.QueryInput) {
 	t.Helper()
 	if params.IndexName == nil || *params.IndexName != "state-index" {
 		t.Errorf("IndexName = %v, want state-index", params.IndexName)
@@ -591,118 +591,98 @@ func assertBusyQuery(t *testing.T, params *dynamodb.QueryInput, wantLimit int32)
 	if got := params.ExpressionAttributeValues[":s"].(*types.AttributeValueMemberS).Value; got != string(model.StateBusy) {
 		t.Errorf(":s = %q, want %q", got, model.StateBusy)
 	}
-	if params.Limit == nil || *params.Limit != wantLimit {
-		t.Errorf("Limit = %v, want %d", params.Limit, wantLimit)
-	}
 }
 
-// TestListBusyRunners_Success は busy runner を返し LastEvaluatedKey から next cursor を組み立てることを検証する。
-func TestListBusyRunners_Success(t *testing.T) {
+// TestListBusyRunners_SinglePage は 1 ページで完結する場合に全件返すことを検証する。
+func TestListBusyRunners_SinglePage(t *testing.T) {
 	t.Parallel()
 	mock := &mockDynamoDBAPI{
 		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			assertBusyQuery(t, params, 10)
+			assertBusyQuery(t, params)
 			if params.ExclusiveStartKey != nil {
-				t.Errorf("ExclusiveStartKey should be nil for empty cursor, got %v", params.ExclusiveStartKey)
+				t.Errorf("ExclusiveStartKey should be nil on first call, got %v", params.ExclusiveStartKey)
 			}
 			return &dynamodb.QueryOutput{
 				Items: []map[string]types.AttributeValue{
 					busyItem("r1", "sess-1"),
 					busyItem("r2", "sess-2"),
 				},
-				LastEvaluatedKey: map[string]types.AttributeValue{
-					"runnerId": &types.AttributeValueMemberS{Value: "r2"},
-					"state":    &types.AttributeValueMemberS{Value: string(model.StateBusy)},
-				},
 			}, nil
 		},
 	}
 	repo := NewDynamoRepository(mock, "t")
 
-	runners, next, err := repo.ListBusyRunners(context.Background(), "", 10)
+	runners, err := repo.ListBusyRunners(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(runners) != 2 {
 		t.Fatalf("len(runners) = %d, want 2", len(runners))
 	}
-	if next != "r2" {
-		t.Errorf("next = %q, want %q", next, "r2")
-	}
 	if !runners[0].IsBusy() {
 		t.Errorf("expected first runner to be busy, state = %q", runners[0].State)
 	}
 }
 
-// TestListBusyRunners_Empty は busy runner がいない場合に空リストと空 cursor を返すことを検証する。
+// TestListBusyRunners_Empty は busy runner がいない場合に空リストを返すことを検証する。
 func TestListBusyRunners_Empty(t *testing.T) {
 	t.Parallel()
 	mock := &mockDynamoDBAPI{
 		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			assertBusyQuery(t, params, 10)
+			assertBusyQuery(t, params)
 			return &dynamodb.QueryOutput{Items: nil}, nil
 		},
 	}
 	repo := NewDynamoRepository(mock, "t")
 
-	runners, next, err := repo.ListBusyRunners(context.Background(), "", 10)
+	runners, err := repo.ListBusyRunners(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(runners) != 0 {
 		t.Errorf("len(runners) = %d, want 0", len(runners))
 	}
-	if next != "" {
-		t.Errorf("next = %q, want empty", next)
-	}
 }
 
-// TestListBusyRunners_LastPage は LastEvaluatedKey が nil の場合に空 cursor を返すことを検証する。
-func TestListBusyRunners_LastPage(t *testing.T) {
+// TestListBusyRunners_MultiPage は LastEvaluatedKey が nil になるまでページを辿り、
+// 続きの Query では ExclusiveStartKey が前ページの LastEvaluatedKey で満たされることを検証する。
+func TestListBusyRunners_MultiPage(t *testing.T) {
 	t.Parallel()
+	page1LEK := map[string]types.AttributeValue{
+		"runnerId": &types.AttributeValueMemberS{Value: "r2"},
+		"state":    &types.AttributeValueMemberS{Value: string(model.StateBusy)},
+	}
 	mock := &mockDynamoDBAPI{
 		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			assertBusyQuery(t, params, 10)
+			assertBusyQuery(t, params)
+			if params.ExclusiveStartKey == nil {
+				return &dynamodb.QueryOutput{
+					Items: []map[string]types.AttributeValue{
+						busyItem("r1", "sess-1"),
+						busyItem("r2", "sess-2"),
+					},
+					LastEvaluatedKey: page1LEK,
+				}, nil
+			}
+			if v := params.ExclusiveStartKey["runnerId"].(*types.AttributeValueMemberS).Value; v != "r2" {
+				t.Errorf("ExclusiveStartKey.runnerId = %q, want %q", v, "r2")
+			}
 			return &dynamodb.QueryOutput{
-				Items:            []map[string]types.AttributeValue{busyItem("r1", "sess-1")},
-				LastEvaluatedKey: nil,
+				Items: []map[string]types.AttributeValue{busyItem("r3", "sess-3")},
 			}, nil
 		},
 	}
 	repo := NewDynamoRepository(mock, "t")
 
-	_, next, err := repo.ListBusyRunners(context.Background(), "", 10)
+	runners, err := repo.ListBusyRunners(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if next != "" {
-		t.Errorf("next = %q, want empty on last page", next)
+	if len(runners) != 3 {
+		t.Fatalf("len(runners) = %d, want 3", len(runners))
 	}
-}
-
-// TestListBusyRunners_WithCursor は cursor が ExclusiveStartKey にそのまま反映されることを検証する。
-func TestListBusyRunners_WithCursor(t *testing.T) {
-	t.Parallel()
-	mock := &mockDynamoDBAPI{
-		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			assertBusyQuery(t, params, 10)
-			if params.ExclusiveStartKey == nil {
-				t.Fatal("ExclusiveStartKey should not be nil")
-			}
-			if v := params.ExclusiveStartKey["runnerId"].(*types.AttributeValueMemberS).Value; v != "r-cursor" {
-				t.Errorf("ExclusiveStartKey.runnerId = %q, want %q", v, "r-cursor")
-			}
-			if v := params.ExclusiveStartKey["state"].(*types.AttributeValueMemberS).Value; v != string(model.StateBusy) {
-				t.Errorf("ExclusiveStartKey.state = %q, want %q", v, model.StateBusy)
-			}
-			return &dynamodb.QueryOutput{Items: nil}, nil
-		},
-	}
-	repo := NewDynamoRepository(mock, "t")
-
-	_, _, err := repo.ListBusyRunners(context.Background(), "r-cursor", 10)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if runners[2].RunnerID != "r3" {
+		t.Errorf("runners[2].RunnerID = %q, want r3", runners[2].RunnerID)
 	}
 }
 
@@ -711,13 +691,13 @@ func TestListBusyRunners_QueryError(t *testing.T) {
 	t.Parallel()
 	mock := &mockDynamoDBAPI{
 		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			assertBusyQuery(t, params, 10)
+			assertBusyQuery(t, params)
 			return nil, errors.New("query error")
 		},
 	}
 	repo := NewDynamoRepository(mock, "t")
 
-	_, _, err := repo.ListBusyRunners(context.Background(), "", 10)
+	_, err := repo.ListBusyRunners(context.Background())
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -728,7 +708,7 @@ func TestListBusyRunners_UnmarshalError(t *testing.T) {
 	t.Parallel()
 	mock := &mockDynamoDBAPI{
 		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			assertBusyQuery(t, params, 10)
+			assertBusyQuery(t, params)
 			return &dynamodb.QueryOutput{
 				Items: []map[string]types.AttributeValue{
 					{"runnerId": &types.AttributeValueMemberL{Value: []types.AttributeValue{}}},
@@ -738,7 +718,7 @@ func TestListBusyRunners_UnmarshalError(t *testing.T) {
 	}
 	repo := NewDynamoRepository(mock, "t")
 
-	_, _, err := repo.ListBusyRunners(context.Background(), "", 10)
+	_, err := repo.ListBusyRunners(context.Background())
 	if err == nil {
 		t.Fatal("expected unmarshal error")
 	}

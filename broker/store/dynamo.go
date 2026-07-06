@@ -177,36 +177,35 @@ func (r *DynamoRepository) assignSession(ctx context.Context, runnerID, sessionI
 	return nil
 }
 
-func (r *DynamoRepository) ListBusyRunners(ctx context.Context, cursor string, limit int32) ([]model.Runner, string, error) {
-	input := &dynamodb.QueryInput{
-		TableName:                aws.String(r.tableName),
-		IndexName:                aws.String("state-index"),
-		KeyConditionExpression:   aws.String("#s = :s"),
-		ExpressionAttributeNames: map[string]string{"#s": "state"},
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":s": &types.AttributeValueMemberS{Value: string(model.StateBusy)},
-		},
-		Limit: aws.Int32(limit),
-	}
-	if cursor != "" {
-		input.ExclusiveStartKey = map[string]types.AttributeValue{
-			"runnerId": &types.AttributeValueMemberS{Value: cursor},
-			"state":    &types.AttributeValueMemberS{Value: string(model.StateBusy)},
+// pagination は関数内で閉じる。呼び出し側は 1 度呼べば busy 全件を受け取り、
+// LastEvaluatedKey や cursor の存在を意識する必要がない。
+func (r *DynamoRepository) ListBusyRunners(ctx context.Context) ([]model.Runner, error) {
+	var all []model.Runner
+	var exclusiveStart map[string]types.AttributeValue
+	for {
+		out, err := r.client.Query(ctx, &dynamodb.QueryInput{
+			TableName:                aws.String(r.tableName),
+			IndexName:                aws.String("state-index"),
+			KeyConditionExpression:   aws.String("#s = :s"),
+			ExpressionAttributeNames: map[string]string{"#s": "state"},
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":s": &types.AttributeValueMemberS{Value: string(model.StateBusy)},
+			},
+			ExclusiveStartKey: exclusiveStart,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("query state-index: %w", err)
 		}
+		var page []model.Runner
+		if err := attributevalue.UnmarshalListOfMaps(out.Items, &page); err != nil {
+			return nil, fmt.Errorf("unmarshal runners: %w", err)
+		}
+		all = append(all, page...)
+		if len(out.LastEvaluatedKey) == 0 {
+			return all, nil
+		}
+		exclusiveStart = out.LastEvaluatedKey
 	}
-	out, err := r.client.Query(ctx, input)
-	if err != nil {
-		return nil, "", fmt.Errorf("query state-index: %w", err)
-	}
-	var runners []model.Runner
-	if err := attributevalue.UnmarshalListOfMaps(out.Items, &runners); err != nil {
-		return nil, "", fmt.Errorf("unmarshal runners: %w", err)
-	}
-	next := ""
-	if v, ok := out.LastEvaluatedKey["runnerId"].(*types.AttributeValueMemberS); ok {
-		next = v.Value
-	}
-	return runners, next, nil
 }
 
 func (r *DynamoRepository) FindBySessionID(ctx context.Context, sessionID string) (*model.Runner, error) {

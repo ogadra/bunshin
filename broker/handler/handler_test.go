@@ -4,6 +4,7 @@ package handler
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -23,7 +24,7 @@ type mockService struct {
 	resolveSessionFn   func(ctx context.Context, sessionID string) (*service.ResolveResult, error)
 	registerRunnerFn   func(ctx context.Context, runnerID, privateURL string) error
 	deregisterRunnerFn func(ctx context.Context, runnerID string) error
-	listBusyRunnersFn  func(ctx context.Context, cursor string, limit int32) ([]model.Runner, string, error)
+	listBusyRunnersFn  func(ctx context.Context) ([]model.Runner, error)
 }
 
 // CloseSession はモック CloseSession を呼び出す。
@@ -47,8 +48,8 @@ func (m *mockService) DeregisterRunner(ctx context.Context, runnerID string) err
 }
 
 // ListBusyRunners はモック ListBusyRunners を呼び出す。
-func (m *mockService) ListBusyRunners(ctx context.Context, cursor string, limit int32) ([]model.Runner, string, error) {
-	return m.listBusyRunnersFn(ctx, cursor, limit)
+func (m *mockService) ListBusyRunners(ctx context.Context) ([]model.Runner, error) {
+	return m.listBusyRunnersFn(ctx)
 }
 
 // newTestRouter はテスト用のルーターを構築する。
@@ -61,6 +62,7 @@ func newTestRouter(h *Handler) *gin.Engine {
 	r.GET("/resolve", h.GetResolve)
 	r.POST("/internal/runners/register", h.PostRegister)
 	r.DELETE("/internal/runners/:runnerId", h.DeleteRunner)
+	r.GET("/internal/runners/busy", h.GetListBusyRunners)
 	return r
 }
 
@@ -704,5 +706,77 @@ func TestSignalFallback_LogsNextStack(t *testing.T) {
 		if !strings.Contains(buf.String(), want) {
 			t.Errorf("log = %q, want substring %q", buf.String(), want)
 		}
+	}
+}
+
+// TestGetListBusyRunners_Success はサービスが返した runner を JSON で返すことを検証する。
+func TestGetListBusyRunners_Success(t *testing.T) {
+	t.Parallel()
+	h := NewHandler(&mockService{
+		listBusyRunnersFn: func(context.Context) ([]model.Runner, error) {
+			return []model.Runner{
+				{RunnerID: "r1", State: model.StateBusy, CurrentSessionID: "sess-1"},
+				{RunnerID: "r2", State: model.StateBusy, CurrentSessionID: "sess-2"},
+			}, nil
+		},
+	}, []string{})
+	rec := httptest.NewRecorder()
+	newTestRouter(h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/internal/runners/busy", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	var resp struct {
+		Runners []struct {
+			RunnerID  string `json:"runnerId"`
+			SessionID string `json:"sessionId"`
+		} `json:"runners"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+	if len(resp.Runners) != 2 {
+		t.Fatalf("len(runners) = %d, want 2", len(resp.Runners))
+	}
+	if resp.Runners[0].RunnerID != "r1" || resp.Runners[0].SessionID != "sess-1" {
+		t.Errorf("runners[0] = %+v, want {r1, sess-1}", resp.Runners[0])
+	}
+	if resp.Runners[1].RunnerID != "r2" || resp.Runners[1].SessionID != "sess-2" {
+		t.Errorf("runners[1] = %+v, want {r2, sess-2}", resp.Runners[1])
+	}
+}
+
+// TestGetListBusyRunners_Empty は busy runner がいない場合に空配列を返すことを検証する。
+func TestGetListBusyRunners_Empty(t *testing.T) {
+	t.Parallel()
+	h := NewHandler(&mockService{
+		listBusyRunnersFn: func(context.Context) ([]model.Runner, error) {
+			return nil, nil
+		},
+	}, []string{})
+	rec := httptest.NewRecorder()
+	newTestRouter(h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/internal/runners/busy", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if !strings.Contains(rec.Body.String(), `"runners":[]`) {
+		t.Errorf("body = %q, want to contain \"runners\":[]", rec.Body.String())
+	}
+}
+
+// TestGetListBusyRunners_ServiceError はサービスがエラーを返した場合に 500 を返すことを検証する。
+func TestGetListBusyRunners_ServiceError(t *testing.T) {
+	t.Parallel()
+	h := NewHandler(&mockService{
+		listBusyRunnersFn: func(context.Context) ([]model.Runner, error) {
+			return nil, errors.New("boom")
+		},
+	}, []string{})
+	rec := httptest.NewRecorder()
+	newTestRouter(h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/internal/runners/busy", nil))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
 	}
 }

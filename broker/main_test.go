@@ -186,8 +186,8 @@ func (fakeNoIdleService) ResolveSession(context.Context, string) (*service.Resol
 }
 func (fakeNoIdleService) RegisterRunner(context.Context, string, string) error { return nil }
 func (fakeNoIdleService) DeregisterRunner(context.Context, string) error       { return nil }
-func (fakeNoIdleService) ListBusyRunners(context.Context, string, int32) ([]model.Runner, string, error) {
-	return nil, "", nil
+func (fakeNoIdleService) ListBusyRunners(context.Context) ([]model.Runner, error) {
+	return nil, nil
 }
 
 // TestDefaultInitHandler_FallbackSignal は BUNSHIN_STACKS から自スタックを除いた fallback を X-Fallback-Stack で返すことを検証する。

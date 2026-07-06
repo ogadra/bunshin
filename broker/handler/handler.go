@@ -205,6 +205,30 @@ func (h *Handler) DeleteRunner(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// busyRunnerView はレスポンスに載せる busy runner の表現。DynamoDB 内部の属性名を露出させないため型を分ける。
+type busyRunnerView struct {
+	RunnerID  string `json:"runnerId"`
+	SessionID string `json:"sessionId"`
+}
+
+type busyRunnersResponse struct {
+	Runners []busyRunnerView `json:"runners"`
+}
+
+// GetListBusyRunners は GET /internal/runners/busy を処理し busy runner の全件を返す。
+func (h *Handler) GetListBusyRunners(c *gin.Context) {
+	runners, err := h.svc.ListBusyRunners(c.Request.Context())
+	if err != nil {
+		writeError(c, http.StatusInternalServerError, model.CodeInternalError, "failed to list busy runners")
+		return
+	}
+	views := make([]busyRunnerView, 0, len(runners))
+	for _, r := range runners {
+		views = append(views, busyRunnerView{RunnerID: r.RunnerID, SessionID: r.CurrentSessionID})
+	}
+	c.JSON(http.StatusOK, busyRunnersResponse{Runners: views})
+}
+
 // writeError はエラーレスポンスを JSON で返す。
 func writeError(c *gin.Context, status int, code, message string) {
 	reqID, _ := c.Get(requestIDKey)

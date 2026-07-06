@@ -245,8 +245,8 @@ func TestIntegration_FindByID_NotFound(t *testing.T) {
 	}
 }
 
-// TestIntegration_ListBusyRunners_Pagination は busy 一覧が cursor で全件辿れることを検証する統合テスト。
-func TestIntegration_ListBusyRunners_Pagination(t *testing.T) {
+// TestIntegration_ListBusyRunners_All は busy にした全 runner を 1 度の呼び出しで受け取れることを検証する統合テスト。
+func TestIntegration_ListBusyRunners_All(t *testing.T) {
 	t.Parallel()
 	client, tableName := setupIntegrationTable(t)
 	repo := NewDynamoRepository(client, tableName)
@@ -266,25 +266,16 @@ func TestIntegration_ListBusyRunners_Pagination(t *testing.T) {
 		}
 	}
 
-	got := []string{}
-	cursor := ""
-	pages := 0
-	for {
-		runners, next, err := repo.ListBusyRunners(ctx, cursor, 2)
-		if err != nil {
-			t.Fatalf("ListBusyRunners: %v", err)
+	runners, err := repo.ListBusyRunners(ctx)
+	if err != nil {
+		t.Fatalf("ListBusyRunners: %v", err)
+	}
+	got := make([]string, 0, len(runners))
+	for _, r := range runners {
+		if r.State != model.StateBusy {
+			t.Errorf("state = %q, want %q", r.State, model.StateBusy)
 		}
-		pages++
-		for _, r := range runners {
-			if r.State != model.StateBusy {
-				t.Errorf("state = %q, want %q", r.State, model.StateBusy)
-			}
-			got = append(got, r.RunnerID)
-		}
-		if next == "" {
-			break
-		}
-		cursor = next
+		got = append(got, r.RunnerID)
 	}
 
 	sort.Strings(got)
@@ -297,9 +288,6 @@ func TestIntegration_ListBusyRunners_Pagination(t *testing.T) {
 			t.Errorf("got[%d] = %q, want %q", i, got[i], want[i])
 		}
 	}
-	if pages < 3 {
-		t.Errorf("pages = %d, want >= 3", pages)
-	}
 }
 
 // TestIntegration_ListBusyRunners_Empty は busy runner がいない場合に空リストを返す統合テスト。
@@ -308,15 +296,12 @@ func TestIntegration_ListBusyRunners_Empty(t *testing.T) {
 	client, tableName := setupIntegrationTable(t)
 	repo := NewDynamoRepository(client, tableName)
 
-	runners, next, err := repo.ListBusyRunners(context.Background(), "", 10)
+	runners, err := repo.ListBusyRunners(context.Background())
 	if err != nil {
 		t.Fatalf("ListBusyRunners: %v", err)
 	}
 	if len(runners) != 0 {
 		t.Errorf("len(runners) = %d, want 0", len(runners))
-	}
-	if next != "" {
-		t.Errorf("next = %q, want empty", next)
 	}
 }
 
@@ -339,7 +324,7 @@ func TestIntegration_ListBusyRunners_ExcludesIdle(t *testing.T) {
 		t.Fatalf("assignSession: %v", err)
 	}
 
-	runners, _, err := repo.ListBusyRunners(ctx, "", 10)
+	runners, err := repo.ListBusyRunners(ctx)
 	if err != nil {
 		t.Fatalf("ListBusyRunners: %v", err)
 	}
