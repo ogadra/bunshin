@@ -313,16 +313,23 @@ func TestAcquireIdle_Success(t *testing.T) {
 // TestAcquireIdle_SecondSegment は最初の区間 [start, max] が空のとき、次の区間 [min, start] で確保することを検証する。
 func TestAcquireIdle_SecondSegment(t *testing.T) {
 	t.Parallel()
-	queryCount := 0
+	sawFirst, sawSecond := false, false
 	mock := &mockDynamoDBAPI{
 		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			queryCount++
-			if queryCount == 1 {
+			lo := params.ExpressionAttributeValues[":lo"].(*types.AttributeValueMemberS).Value
+			hi := params.ExpressionAttributeValues[":hi"].(*types.AttributeValueMemberS).Value
+			switch {
+			case lo == testStart && hi == maxRunnerID:
+				sawFirst = true
 				assertStateIdxRange(t, params, testStart, maxRunnerID)
 				return &dynamodb.QueryOutput{Items: nil}, nil
+			case lo == minRunnerID && hi == testStart:
+				sawSecond = true
+				assertStateIdxRange(t, params, minRunnerID, testStart)
+				return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{idleItem("r-low")}}, nil
 			}
-			assertStateIdxRange(t, params, minRunnerID, testStart)
-			return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{idleItem("r-low")}}, nil
+			t.Fatalf("unexpected range [%q, %q]", lo, hi)
+			return nil, nil
 		},
 		updateItemFn: func(_ context.Context, _ *dynamodb.UpdateItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error) {
 			return &dynamodb.UpdateItemOutput{}, nil
@@ -338,8 +345,8 @@ func TestAcquireIdle_SecondSegment(t *testing.T) {
 	if runner.RunnerID != "r-low" {
 		t.Errorf("runnerID = %q, want %q", runner.RunnerID, "r-low")
 	}
-	if queryCount != 2 {
-		t.Errorf("queryCount = %d, want 2 (segment [start,max] + [min,start])", queryCount)
+	if !sawFirst || !sawSecond {
+		t.Errorf("expected both segments to be queried, sawFirst=%v sawSecond=%v", sawFirst, sawSecond)
 	}
 }
 
