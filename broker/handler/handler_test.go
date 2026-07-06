@@ -710,6 +710,7 @@ func TestSignalFallback_LogsNextStack(t *testing.T) {
 }
 
 // TestGetListBusyRunners_Success はサービスが返した runner を JSON で返すことを検証する。
+// currentSessionId は cookie 値そのものなのでレスポンスに含めない。
 func TestGetListBusyRunners_Success(t *testing.T) {
 	t.Parallel()
 	h := NewHandler(&mockService{
@@ -726,10 +727,12 @@ func TestGetListBusyRunners_Success(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
+	if strings.Contains(rec.Body.String(), "sess-") {
+		t.Errorf("response leaks session id: %s", rec.Body.String())
+	}
 	var resp struct {
 		Runners []struct {
-			RunnerID  string `json:"runnerId"`
-			SessionID string `json:"sessionId"`
+			RunnerID string `json:"runnerId"`
 		} `json:"runners"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
@@ -738,11 +741,11 @@ func TestGetListBusyRunners_Success(t *testing.T) {
 	if len(resp.Runners) != 2 {
 		t.Fatalf("len(runners) = %d, want 2", len(resp.Runners))
 	}
-	if resp.Runners[0].RunnerID != "r1" || resp.Runners[0].SessionID != "sess-1" {
-		t.Errorf("runners[0] = %+v, want {r1, sess-1}", resp.Runners[0])
+	if resp.Runners[0].RunnerID != "r1" {
+		t.Errorf("runners[0].RunnerID = %q, want r1", resp.Runners[0].RunnerID)
 	}
-	if resp.Runners[1].RunnerID != "r2" || resp.Runners[1].SessionID != "sess-2" {
-		t.Errorf("runners[1] = %+v, want {r2, sess-2}", resp.Runners[1])
+	if resp.Runners[1].RunnerID != "r2" {
+		t.Errorf("runners[1].RunnerID = %q, want r2", resp.Runners[1].RunnerID)
 	}
 }
 

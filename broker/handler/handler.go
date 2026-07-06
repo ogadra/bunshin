@@ -205,10 +205,9 @@ func (h *Handler) DeleteRunner(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// busyRunnerView はレスポンスに載せる busy runner の表現。DynamoDB 内部の属性名を露出させないため型を分ける。
+// currentSessionId は session cookie 値そのままで、露出させると session hijack を許すため busy 一覧レスポンスには載せない。
 type busyRunnerView struct {
-	RunnerID  string `json:"runnerId"`
-	SessionID string `json:"sessionId"`
+	RunnerID string `json:"runnerId"`
 }
 
 type busyRunnersResponse struct {
@@ -224,7 +223,7 @@ func (h *Handler) GetListBusyRunners(c *gin.Context) {
 	}
 	views := make([]busyRunnerView, 0, len(runners))
 	for _, r := range runners {
-		views = append(views, busyRunnerView{RunnerID: r.RunnerID, SessionID: r.CurrentSessionID})
+		views = append(views, busyRunnerView{RunnerID: r.RunnerID})
 	}
 	c.JSON(http.StatusOK, busyRunnersResponse{Runners: views})
 }
