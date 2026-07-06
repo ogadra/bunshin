@@ -17,6 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/ogadra/bunshin/broker/handler"
 	"github.com/ogadra/bunshin/broker/healthcheck"
+	"github.com/ogadra/bunshin/broker/model"
 	"github.com/ogadra/bunshin/broker/service"
 	"github.com/ogadra/bunshin/broker/store"
 )
@@ -185,6 +186,9 @@ func (fakeNoIdleService) ResolveSession(context.Context, string) (*service.Resol
 }
 func (fakeNoIdleService) RegisterRunner(context.Context, string, string) error { return nil }
 func (fakeNoIdleService) DeregisterRunner(context.Context, string) error       { return nil }
+func (fakeNoIdleService) ListBusyRunners(context.Context, string, int32) ([]model.Runner, string, error) {
+	return nil, "", nil
+}
 
 // TestDefaultInitHandler_FallbackSignal は BUNSHIN_STACKS から自スタックを除いた fallback を X-Fallback-Stack で返すことを検証する。
 func TestDefaultInitHandler_FallbackSignal(t *testing.T) {

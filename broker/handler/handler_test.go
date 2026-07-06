@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/ogadra/bunshin/broker/model"
 	"github.com/ogadra/bunshin/broker/service"
 	"github.com/ogadra/bunshin/broker/store"
 )
@@ -22,6 +23,7 @@ type mockService struct {
 	resolveSessionFn   func(ctx context.Context, sessionID string) (*service.ResolveResult, error)
 	registerRunnerFn   func(ctx context.Context, runnerID, privateURL string) error
 	deregisterRunnerFn func(ctx context.Context, runnerID string) error
+	listBusyRunnersFn  func(ctx context.Context, cursor string, limit int32) ([]model.Runner, string, error)
 }
 
 // CloseSession はモック CloseSession を呼び出す。
@@ -42,6 +44,11 @@ func (m *mockService) RegisterRunner(ctx context.Context, runnerID, privateURL s
 // DeregisterRunner はモック DeregisterRunner を呼び出す。
 func (m *mockService) DeregisterRunner(ctx context.Context, runnerID string) error {
 	return m.deregisterRunnerFn(ctx, runnerID)
+}
+
+// ListBusyRunners はモック ListBusyRunners を呼び出す。
+func (m *mockService) ListBusyRunners(ctx context.Context, cursor string, limit int32) ([]model.Runner, string, error) {
+	return m.listBusyRunnersFn(ctx, cursor, limit)
 }
 
 // newTestRouter はテスト用のルーターを構築する。

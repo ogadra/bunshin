@@ -3,7 +3,6 @@ package model
 
 import "testing"
 
-// TestRunner_IsIdle は State == StateIdle のときのみ idle と判定されることを検証する。
 func TestRunner_IsIdle(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -22,8 +21,8 @@ func TestRunner_IsIdle(t *testing.T) {
 			want:   true,
 		},
 		{
-			name:   "not idle when currentSessionId is set",
-			runner: Runner{RunnerID: "r1", CurrentSessionID: "sess-1"},
+			name:   "not idle when state is busy",
+			runner: Runner{RunnerID: "r1", State: StateBusy, CurrentSessionID: "sess-1"},
 			want:   false,
 		},
 		{
@@ -42,7 +41,6 @@ func TestRunner_IsIdle(t *testing.T) {
 	}
 }
 
-// TestRunner_IsBusy は CurrentSessionID が非空のときのみ busy と判定されることを検証する。
 func TestRunner_IsBusy(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -51,22 +49,22 @@ func TestRunner_IsBusy(t *testing.T) {
 		want   bool
 	}{
 		{
-			name:   "busy when currentSessionId is set",
-			runner: Runner{RunnerID: "r1", CurrentSessionID: "sess-1"},
+			name:   "busy when state is busy",
+			runner: Runner{RunnerID: "r1", State: StateBusy, CurrentSessionID: "sess-1"},
 			want:   true,
 		},
 		{
-			name:   "busy when currentSessionId is set with privateURL",
-			runner: Runner{RunnerID: "r1", CurrentSessionID: "sess-1", PrivateURL: "http://10.0.0.1:8080"},
+			name:   "busy when state is busy with privateURL",
+			runner: Runner{RunnerID: "r1", State: StateBusy, CurrentSessionID: "sess-1", PrivateURL: "http://10.0.0.1:8080"},
 			want:   true,
 		},
 		{
-			name:   "not busy when currentSessionId is empty",
+			name:   "not busy when state is idle",
 			runner: Runner{RunnerID: "r1", State: StateIdle},
 			want:   false,
 		},
 		{
-			name:   "not busy when both empty",
+			name:   "not busy when state is empty",
 			runner: Runner{RunnerID: "r1"},
 			want:   false,
 		},

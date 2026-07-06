@@ -115,7 +115,7 @@ func (r *DynamoRepository) assignFirst(ctx context.Context, sessionID string, ca
 		}
 		err := r.assignSession(ctx, runner.RunnerID, sessionID)
 		if err == nil {
-			runner.State = ""
+			runner.State = model.StateBusy
 			runner.CurrentSessionID = sessionID
 			return runner, nil
 		}
@@ -151,18 +151,20 @@ func (r *DynamoRepository) queryIdlePage(ctx context.Context, lo, hi string, exc
 	return runners, out.LastEvaluatedKey, nil
 }
 
+// busy 遷移後も state 属性を残すことで GSI item が state-index の busy partition に載り、ListBusyRunners から辿れる。
 func (r *DynamoRepository) assignSession(ctx context.Context, runnerID, sessionID string) error {
 	_, err := r.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName: &r.tableName,
 		Key: map[string]types.AttributeValue{
 			"runnerId": &types.AttributeValueMemberS{Value: runnerID},
 		},
-		UpdateExpression:         aws.String("SET currentSessionId = :sid REMOVE #s"),
+		UpdateExpression:         aws.String("SET #s = :busy, currentSessionId = :sid"),
 		ConditionExpression:      aws.String("#s = :idle"),
 		ExpressionAttributeNames: map[string]string{"#s": "state"},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":sid":  &types.AttributeValueMemberS{Value: sessionID},
 			":idle": &types.AttributeValueMemberS{Value: string(model.StateIdle)},
+			":busy": &types.AttributeValueMemberS{Value: string(model.StateBusy)},
 		},
 	})
 	if err != nil {
@@ -173,6 +175,38 @@ func (r *DynamoRepository) assignSession(ctx context.Context, runnerID, sessionI
 		return fmt.Errorf("update item: %w", err)
 	}
 	return nil
+}
+
+func (r *DynamoRepository) ListBusyRunners(ctx context.Context, cursor string, limit int32) ([]model.Runner, string, error) {
+	input := &dynamodb.QueryInput{
+		TableName:                aws.String(r.tableName),
+		IndexName:                aws.String("state-index"),
+		KeyConditionExpression:   aws.String("#s = :s"),
+		ExpressionAttributeNames: map[string]string{"#s": "state"},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":s": &types.AttributeValueMemberS{Value: string(model.StateBusy)},
+		},
+		Limit: aws.Int32(limit),
+	}
+	if cursor != "" {
+		input.ExclusiveStartKey = map[string]types.AttributeValue{
+			"runnerId": &types.AttributeValueMemberS{Value: cursor},
+			"state":    &types.AttributeValueMemberS{Value: string(model.StateBusy)},
+		}
+	}
+	out, err := r.client.Query(ctx, input)
+	if err != nil {
+		return nil, "", fmt.Errorf("query state-index: %w", err)
+	}
+	var runners []model.Runner
+	if err := attributevalue.UnmarshalListOfMaps(out.Items, &runners); err != nil {
+		return nil, "", fmt.Errorf("unmarshal runners: %w", err)
+	}
+	next := ""
+	if v, ok := out.LastEvaluatedKey["runnerId"].(*types.AttributeValueMemberS); ok {
+		next = v.Value
+	}
+	return runners, next, nil
 }
 
 func (r *DynamoRepository) FindBySessionID(ctx context.Context, sessionID string) (*model.Runner, error) {

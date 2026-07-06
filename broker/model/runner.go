@@ -3,7 +3,10 @@ package model
 
 type State string
 
-const StateIdle State = "idle"
+const (
+	StateIdle State = "idle"
+	StateBusy State = "busy"
+)
 
 type Runner struct {
 	RunnerID         string `dynamodbav:"runnerId"`
@@ -17,5 +20,5 @@ func (r *Runner) IsIdle() bool {
 }
 
 func (r *Runner) IsBusy() bool {
-	return r.CurrentSessionID != ""
+	return r.State == StateBusy
 }

@@ -19,6 +19,7 @@ var (
 type Repository interface {
 	Register(ctx context.Context, runnerID, privateURL string) error
 	AcquireIdle(ctx context.Context, sessionID string) (*model.Runner, error)
+	ListBusyRunners(ctx context.Context, cursor string, limit int32) ([]model.Runner, string, error)
 	FindBySessionID(ctx context.Context, sessionID string) (*model.Runner, error)
 	FindByID(ctx context.Context, runnerID string) (*model.Runner, error)
 	Delete(ctx context.Context, runnerID string) error
