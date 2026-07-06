@@ -353,10 +353,21 @@ func TestAcquireIdle_SecondSegment(t *testing.T) {
 // TestAcquireIdle_NoIdleRunner は両区間が空の場合に 2 query で ErrNoIdleRunner を返すことを検証する。
 func TestAcquireIdle_NoIdleRunner(t *testing.T) {
 	t.Parallel()
-	queryCount := 0
+	sawFirst, sawSecond := false, false
 	mock := &mockDynamoDBAPI{
-		queryFn: func(_ context.Context, _ *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			queryCount++
+		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
+			lo := params.ExpressionAttributeValues[":lo"].(*types.AttributeValueMemberS).Value
+			hi := params.ExpressionAttributeValues[":hi"].(*types.AttributeValueMemberS).Value
+			switch {
+			case lo == testStart && hi == maxRunnerID:
+				sawFirst = true
+				assertStateIdxRange(t, params, testStart, maxRunnerID)
+			case lo == minRunnerID && hi == testStart:
+				sawSecond = true
+				assertStateIdxRange(t, params, minRunnerID, testStart)
+			default:
+				t.Fatalf("unexpected range [%q, %q]", lo, hi)
+			}
 			return &dynamodb.QueryOutput{Items: nil}, nil
 		},
 	}
@@ -367,8 +378,8 @@ func TestAcquireIdle_NoIdleRunner(t *testing.T) {
 	if !errors.Is(err, ErrNoIdleRunner) {
 		t.Fatalf("expected ErrNoIdleRunner, got: %v", err)
 	}
-	if queryCount != 2 {
-		t.Errorf("queryCount = %d, want 2 (both segments)", queryCount)
+	if !sawFirst || !sawSecond {
+		t.Errorf("expected both segments to be queried, sawFirst=%v sawSecond=%v", sawFirst, sawSecond)
 	}
 }
 
@@ -376,7 +387,8 @@ func TestAcquireIdle_NoIdleRunner(t *testing.T) {
 func TestAcquireIdle_QueryError(t *testing.T) {
 	t.Parallel()
 	mock := &mockDynamoDBAPI{
-		queryFn: func(_ context.Context, _ *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
+		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
+			assertStateIdxRange(t, params, testStart, maxRunnerID)
 			return nil, errors.New("query error")
 		},
 	}
@@ -392,18 +404,17 @@ func TestAcquireIdle_QueryError(t *testing.T) {
 // TestAcquireIdle_RetryWithinBatch はページ内で条件失敗した候補をスキップし次を試行することを検証する。
 func TestAcquireIdle_RetryWithinBatch(t *testing.T) {
 	t.Parallel()
-	queryCount := 0
-	updateCount := 0
+	tried := map[string]struct{}{}
 	mock := &mockDynamoDBAPI{
-		queryFn: func(_ context.Context, _ *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			queryCount++
+		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
+			assertStateIdxRange(t, params, testStart, maxRunnerID)
 			return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{
 				idleItem("r1"), idleItem("r2"), idleItem("r3"), idleItem("r4"), idleItem("r5"),
 			}}, nil
 		},
 		updateItemFn: func(_ context.Context, params *dynamodb.UpdateItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error) {
-			updateCount++
 			rid := params.Key["runnerId"].(*types.AttributeValueMemberS).Value
+			tried[rid] = struct{}{}
 			if rid != "r2" {
 				return nil, &types.ConditionalCheckFailedException{Message: aws.String("conflict")}
 			}
@@ -420,11 +431,11 @@ func TestAcquireIdle_RetryWithinBatch(t *testing.T) {
 	if runner.RunnerID != "r2" {
 		t.Errorf("runnerID = %q, want %q", runner.RunnerID, "r2")
 	}
-	if queryCount != 1 {
-		t.Errorf("queryCount = %d, want 1 (found in first page)", queryCount)
+	if _, ok := tried["r1"]; !ok {
+		t.Errorf("expected r1 to have been tried before r2, tried=%v", tried)
 	}
-	if updateCount != 2 {
-		t.Errorf("updateCount = %d, want 2", updateCount)
+	if _, ok := tried["r2"]; !ok {
+		t.Errorf("expected r2 to have been tried, tried=%v", tried)
 	}
 }
 
@@ -481,10 +492,21 @@ func TestAcquireIdle_SecondSegmentReachesMaskedIdle(t *testing.T) {
 // 有限時間で ErrNoIdleRunner に収束することを検証する。
 func TestAcquireIdle_StaleGSI(t *testing.T) {
 	t.Parallel()
-	queryCount := 0
+	sawFirst, sawSecond := false, false
 	mock := &mockDynamoDBAPI{
-		queryFn: func(_ context.Context, _ *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			queryCount++
+		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
+			lo := params.ExpressionAttributeValues[":lo"].(*types.AttributeValueMemberS).Value
+			hi := params.ExpressionAttributeValues[":hi"].(*types.AttributeValueMemberS).Value
+			switch {
+			case lo == testStart && hi == maxRunnerID:
+				sawFirst = true
+				assertStateIdxRange(t, params, testStart, maxRunnerID)
+			case lo == minRunnerID && hi == testStart:
+				sawSecond = true
+				assertStateIdxRange(t, params, minRunnerID, testStart)
+			default:
+				t.Fatalf("unexpected range [%q, %q]", lo, hi)
+			}
 			return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{idleItem("r-stale")}}, nil
 		},
 		updateItemFn: func(_ context.Context, _ *dynamodb.UpdateItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error) {
@@ -498,10 +520,8 @@ func TestAcquireIdle_StaleGSI(t *testing.T) {
 	if !errors.Is(err, ErrNoIdleRunner) {
 		t.Fatalf("expected ErrNoIdleRunner, got: %v", err)
 	}
-	// 区間1: r-stale → conflict → tried に追加。
-	// 区間2: r-stale は tried で除外 → 未試行 idle なし → ErrNoIdleRunner。
-	if queryCount != 2 {
-		t.Errorf("queryCount = %d, want 2 (both segments)", queryCount)
+	if !sawFirst || !sawSecond {
+		t.Errorf("expected both segments to be queried, sawFirst=%v sawSecond=%v", sawFirst, sawSecond)
 	}
 }
 
@@ -509,10 +529,14 @@ func TestAcquireIdle_StaleGSI(t *testing.T) {
 func TestAcquireIdle_UpdateError(t *testing.T) {
 	t.Parallel()
 	mock := &mockDynamoDBAPI{
-		queryFn: func(_ context.Context, _ *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
+		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
+			assertStateIdxRange(t, params, testStart, maxRunnerID)
 			return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{idleItem("r1")}}, nil
 		},
-		updateItemFn: func(_ context.Context, _ *dynamodb.UpdateItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error) {
+		updateItemFn: func(_ context.Context, params *dynamodb.UpdateItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error) {
+			if got := params.Key["runnerId"].(*types.AttributeValueMemberS).Value; got != "r1" {
+				t.Errorf("runnerId = %q, want %q", got, "r1")
+			}
 			return nil, errors.New("update error")
 		},
 	}
@@ -529,7 +553,8 @@ func TestAcquireIdle_UpdateError(t *testing.T) {
 func TestAcquireIdle_UnmarshalError(t *testing.T) {
 	t.Parallel()
 	mock := &mockDynamoDBAPI{
-		queryFn: func(_ context.Context, _ *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
+		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
+			assertStateIdxRange(t, params, testStart, maxRunnerID)
 			return &dynamodb.QueryOutput{
 				Items: []map[string]types.AttributeValue{
 					{"runnerId": &types.AttributeValueMemberL{Value: []types.AttributeValue{}}},
