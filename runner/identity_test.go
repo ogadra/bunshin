@@ -8,18 +8,26 @@ import (
 	"testing"
 )
 
-// TestResolveIdentityECS verifies that resolveIdentity uses ECS metadata
-// when ECS_CONTAINER_METADATA_URI_V4 is set.
+func stubRandRead(fill byte, err error) func([]byte) (int, error) {
+	return func(b []byte) (int, error) {
+		if err != nil {
+			return 0, err
+		}
+		for i := range b {
+			b[i] = fill
+		}
+		return len(b), nil
+	}
+}
+
 func TestResolveIdentityECS(t *testing.T) {
-	taskJSON := `{"TaskARN":"arn:aws:ecs:ap-northeast-1:123456789:task/cluster/abc123"}`
 	containerJSON := `{"Networks":[{"IPv4Addresses":["10.0.1.5"]}]}`
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/task" {
-			w.Write([]byte(taskJSON))
-		} else {
-			w.Write([]byte(containerJSON))
+			t.Errorf("unexpected request to /task")
 		}
+		w.Write([]byte(containerJSON))
 	}))
 	defer ts.Close()
 
@@ -27,6 +35,7 @@ func TestResolveIdentityECS(t *testing.T) {
 		getenv:   func(k string) string { return ts.URL },
 		hostname: func() (string, error) { return "", errors.New("should not be called") },
 		httpGet:  defaultHTTPGet,
+		randRead: stubRandRead(0xab, nil),
 		port:     "3000",
 	}
 
@@ -34,99 +43,57 @@ func TestResolveIdentityECS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if id.RunnerID != "abc123" {
-		t.Errorf("RunnerID = %q, want %q", id.RunnerID, "abc123")
+	want := "abababababababababababababababab"
+	if id.RunnerID != want {
+		t.Errorf("RunnerID = %q, want %q", id.RunnerID, want)
 	}
 	if id.PrivateURL != "http://10.0.1.5:3000" {
 		t.Errorf("PrivateURL = %q, want %q", id.PrivateURL, "http://10.0.1.5:3000")
 	}
 }
 
-// TestResolveIdentityECSTaskFetchError verifies that resolveIdentity returns
-// an error when fetching the ECS task metadata fails.
-func TestResolveIdentityECSTaskFetchError(t *testing.T) {
+func TestResolveIdentityRandReadError(t *testing.T) {
 	deps := identityDeps{
-		getenv: func(k string) string { return "http://169.254.170.2/v4" },
-		httpGet: func(ctx context.Context, url string) ([]byte, error) {
-			return nil, errors.New("connection refused")
-		},
-		port: "3000",
+		getenv:   func(k string) string { return "" },
+		hostname: func() (string, error) { return "host", nil },
+		randRead: stubRandRead(0, errors.New("no entropy")),
+		port:     "3000",
 	}
 
 	_, err := resolveIdentity(context.Background(), deps)
 	if err == nil {
-		t.Fatal("expected error when task metadata fetch fails")
+		t.Fatal("expected error when randRead fails")
 	}
 }
 
-// TestResolveIdentityECSTaskInvalidJSON verifies that resolveIdentity returns
-// an error when ECS task metadata contains invalid JSON.
-func TestResolveIdentityECSTaskInvalidJSON(t *testing.T) {
+func TestResolveIdentityRandShortRead(t *testing.T) {
 	deps := identityDeps{
-		getenv: func(k string) string { return "http://169.254.170.2/v4" },
-		httpGet: func(ctx context.Context, url string) ([]byte, error) {
-			if url == "http://169.254.170.2/v4/task" {
-				return []byte("{invalid"), nil
+		getenv:   func(k string) string { return "" },
+		hostname: func() (string, error) { return "host", nil },
+		randRead: func(b []byte) (int, error) {
+			if len(b) == 0 {
+				return 0, nil
 			}
-			return nil, errors.New("unexpected call")
+			b[0] = 0xff
+			return 1, nil
 		},
 		port: "3000",
 	}
 
 	_, err := resolveIdentity(context.Background(), deps)
 	if err == nil {
-		t.Fatal("expected error when task metadata is invalid JSON")
+		t.Fatal("expected error when randRead returns a short read")
 	}
 }
 
-// TestResolveIdentityECSTaskARNNoSlash verifies that resolveIdentity returns
-// an error when TaskARN does not contain a slash.
-func TestResolveIdentityECSTaskARNNoSlash(t *testing.T) {
-	deps := identityDeps{
-		getenv: func(k string) string { return "http://169.254.170.2/v4" },
-		httpGet: func(ctx context.Context, url string) ([]byte, error) {
-			return []byte(`{"TaskARN":"noslash"}`), nil
-		},
-		port: "3000",
-	}
-
-	_, err := resolveIdentity(context.Background(), deps)
-	if err == nil {
-		t.Fatal("expected error when TaskARN has no slash")
-	}
-}
-
-// TestResolveIdentityECSTaskARNTrailingSlash verifies that resolveIdentity returns
-// an error when TaskARN ends with a slash.
-func TestResolveIdentityECSTaskARNTrailingSlash(t *testing.T) {
-	deps := identityDeps{
-		getenv: func(k string) string { return "http://169.254.170.2/v4" },
-		httpGet: func(ctx context.Context, url string) ([]byte, error) {
-			return []byte(`{"TaskARN":"arn:aws:ecs:region:account:task/cluster/"}`), nil
-		},
-		port: "3000",
-	}
-
-	_, err := resolveIdentity(context.Background(), deps)
-	if err == nil {
-		t.Fatal("expected error when TaskARN ends with slash")
-	}
-}
-
-// TestResolveIdentityECSContainerFetchError verifies that resolveIdentity returns
-// an error when fetching the ECS container metadata fails.
 func TestResolveIdentityECSContainerFetchError(t *testing.T) {
-	callCount := 0
 	deps := identityDeps{
 		getenv: func(k string) string { return "http://169.254.170.2/v4" },
 		httpGet: func(ctx context.Context, url string) ([]byte, error) {
-			callCount++
-			if callCount == 1 {
-				return []byte(`{"TaskARN":"arn:aws:ecs:r:a:task/c/id123"}`), nil
-			}
 			return nil, errors.New("connection refused")
 		},
-		port: "3000",
+		randRead: stubRandRead(0x01, nil),
+		port:     "3000",
 	}
 
 	_, err := resolveIdentity(context.Background(), deps)
@@ -135,20 +102,14 @@ func TestResolveIdentityECSContainerFetchError(t *testing.T) {
 	}
 }
 
-// TestResolveIdentityECSContainerInvalidJSON verifies that resolveIdentity returns
-// an error when ECS container metadata contains invalid JSON.
 func TestResolveIdentityECSContainerInvalidJSON(t *testing.T) {
-	callCount := 0
 	deps := identityDeps{
 		getenv: func(k string) string { return "http://169.254.170.2/v4" },
 		httpGet: func(ctx context.Context, url string) ([]byte, error) {
-			callCount++
-			if callCount == 1 {
-				return []byte(`{"TaskARN":"arn:aws:ecs:r:a:task/c/id123"}`), nil
-			}
 			return []byte("{bad"), nil
 		},
-		port: "3000",
+		randRead: stubRandRead(0x01, nil),
+		port:     "3000",
 	}
 
 	_, err := resolveIdentity(context.Background(), deps)
@@ -157,20 +118,14 @@ func TestResolveIdentityECSContainerInvalidJSON(t *testing.T) {
 	}
 }
 
-// TestResolveIdentityECSEmptyNetworks verifies that resolveIdentity returns
-// an error when ECS container metadata has no networks.
 func TestResolveIdentityECSEmptyNetworks(t *testing.T) {
-	callCount := 0
 	deps := identityDeps{
 		getenv: func(k string) string { return "http://169.254.170.2/v4" },
 		httpGet: func(ctx context.Context, url string) ([]byte, error) {
-			callCount++
-			if callCount == 1 {
-				return []byte(`{"TaskARN":"arn:aws:ecs:r:a:task/c/id123"}`), nil
-			}
 			return []byte(`{"Networks":[]}`), nil
 		},
-		port: "3000",
+		randRead: stubRandRead(0x01, nil),
+		port:     "3000",
 	}
 
 	_, err := resolveIdentity(context.Background(), deps)
@@ -179,20 +134,14 @@ func TestResolveIdentityECSEmptyNetworks(t *testing.T) {
 	}
 }
 
-// TestResolveIdentityECSEmptyIPv4 verifies that resolveIdentity returns
-// an error when ECS container metadata has a network with no IPv4 addresses.
 func TestResolveIdentityECSEmptyIPv4(t *testing.T) {
-	callCount := 0
 	deps := identityDeps{
 		getenv: func(k string) string { return "http://169.254.170.2/v4" },
 		httpGet: func(ctx context.Context, url string) ([]byte, error) {
-			callCount++
-			if callCount == 1 {
-				return []byte(`{"TaskARN":"arn:aws:ecs:r:a:task/c/id123"}`), nil
-			}
 			return []byte(`{"Networks":[{"IPv4Addresses":[]}]}`), nil
 		},
-		port: "3000",
+		randRead: stubRandRead(0x01, nil),
+		port:     "3000",
 	}
 
 	_, err := resolveIdentity(context.Background(), deps)
@@ -201,36 +150,35 @@ func TestResolveIdentityECSEmptyIPv4(t *testing.T) {
 	}
 }
 
-// TestResolveIdentityHostnameFallback verifies that resolveIdentity falls back
-// to hostname-based resolution when ECS metadata is not available.
 func TestResolveIdentityHostnameFallback(t *testing.T) {
 	deps := identityDeps{
 		getenv:   func(k string) string { return "" },
-		hostname: func() (string, error) { return "abcdef123456", nil },
+		hostname: func() (string, error) { return "runner-host", nil },
 		httpGet: func(ctx context.Context, url string) ([]byte, error) {
 			return nil, errors.New("should not be called")
 		},
-		port: "3000",
+		randRead: stubRandRead(0xcd, nil),
+		port:     "3000",
 	}
 
 	id, err := resolveIdentity(context.Background(), deps)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if id.RunnerID != "abcdef123456" {
-		t.Errorf("RunnerID = %q, want %q", id.RunnerID, "abcdef123456")
+	wantID := "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+	if id.RunnerID != wantID {
+		t.Errorf("RunnerID = %q, want %q", id.RunnerID, wantID)
 	}
-	if id.PrivateURL != "http://abcdef123456:3000" {
-		t.Errorf("PrivateURL = %q, want %q", id.PrivateURL, "http://abcdef123456:3000")
+	if id.PrivateURL != "http://runner-host:3000" {
+		t.Errorf("PrivateURL = %q, want %q", id.PrivateURL, "http://runner-host:3000")
 	}
 }
 
-// TestResolveIdentityHostnameError verifies that resolveIdentity returns
-// an error when hostname lookup fails.
 func TestResolveIdentityHostnameError(t *testing.T) {
 	deps := identityDeps{
 		getenv:   func(k string) string { return "" },
 		hostname: func() (string, error) { return "", errors.New("no hostname") },
+		randRead: stubRandRead(0x01, nil),
 		port:     "3000",
 	}
 
@@ -240,8 +188,6 @@ func TestResolveIdentityHostnameError(t *testing.T) {
 	}
 }
 
-// TestDefaultHTTPGetSuccess verifies that defaultHTTPGet returns the body
-// of a successful HTTP response.
 func TestDefaultHTTPGetSuccess(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("ok"))
@@ -257,8 +203,6 @@ func TestDefaultHTTPGetSuccess(t *testing.T) {
 	}
 }
 
-// TestDefaultHTTPGetNon200 verifies that defaultHTTPGet returns an error
-// when the server responds with a non-200 status code.
 func TestDefaultHTTPGetNon200(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -271,8 +215,6 @@ func TestDefaultHTTPGetNon200(t *testing.T) {
 	}
 }
 
-// TestDefaultHTTPGetCanceledContext verifies that defaultHTTPGet returns an error
-// when the context is already canceled.
 func TestDefaultHTTPGetCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -282,8 +224,6 @@ func TestDefaultHTTPGetCanceledContext(t *testing.T) {
 	}
 }
 
-// TestDefaultHTTPGetInvalidURL verifies that defaultHTTPGet returns an error
-// when the URL is malformed and cannot be parsed into a request.
 func TestDefaultHTTPGetInvalidURL(t *testing.T) {
 	_, err := defaultHTTPGet(context.Background(), "://bad-url")
 	if err == nil {

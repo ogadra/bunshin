@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log"
@@ -60,6 +61,7 @@ func start(addr string) error {
 		getenv:   os.Getenv,
 		hostname: os.Hostname,
 		httpGet:  defaultHTTPGet,
+		randRead: rand.Read,
 		port:     port,
 	})
 	if err != nil {

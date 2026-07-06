@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -15,14 +17,27 @@ import (
 	"time"
 )
 
-// TestMainSuccess verifies that main completes without calling fatalf
-// when start succeeds. It sends SIGTERM to the current process because
-// main reads RUNNER_PORT and calls start, making injection impractical.
 func TestMainSuccess(t *testing.T) {
 	t.Setenv("RUNNER_PORT", "3000")
 
+	registered := make(chan registerRequest, 1)
 	broker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusCreated)
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/internal/runners/register":
+			var body registerRequest
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("decode register body: %v", err)
+			}
+			select {
+			case registered <- body:
+			default:
+			}
+			w.WriteHeader(http.StatusCreated)
+		case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/internal/runners/"):
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected broker request: %s %s", r.Method, r.URL.Path)
+		}
 	}))
 	defer broker.Close()
 	t.Setenv("BROKER_URL", broker.URL)
@@ -40,7 +55,20 @@ func TestMainSuccess(t *testing.T) {
 		main()
 	}()
 
-	time.Sleep(200 * time.Millisecond)
+	var body registerRequest
+	select {
+	case body = <-registered:
+	case <-time.After(5 * time.Second):
+		proc, _ := os.FindProcess(os.Getpid())
+		proc.Signal(syscall.SIGTERM)
+		t.Fatal("register request not received within 5 seconds")
+	}
+
+	// Wait for the HTTP server to accept connections before signaling. Sending
+	// SIGTERM before register.go finishes reading its 201 response can cancel
+	// regCtx mid-response and surface as "context canceled" instead of a clean
+	// shutdown, which flakes under -race.
+	waitForServer(t, "127.0.0.1:3000")
 
 	proc, _ := os.FindProcess(os.Getpid())
 	proc.Signal(syscall.SIGTERM)
@@ -49,6 +77,14 @@ func TestMainSuccess(t *testing.T) {
 	case <-done:
 	case <-time.After(10 * time.Second):
 		t.Fatal("main did not return within 10 seconds")
+	}
+
+	raw, err := hex.DecodeString(body.RunnerID)
+	if err != nil || len(raw) != 16 {
+		t.Errorf("runnerId = %q, want 32-char hex (16 bytes)", body.RunnerID)
+	}
+	if !strings.HasSuffix(body.PrivateURL, ":3000") || !strings.HasPrefix(body.PrivateURL, "http://") {
+		t.Errorf("privateUrl = %q, want http://<host>:3000", body.PrivateURL)
 	}
 }
 
