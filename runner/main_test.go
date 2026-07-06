@@ -64,6 +64,12 @@ func TestMainSuccess(t *testing.T) {
 		t.Fatal("register request not received within 5 seconds")
 	}
 
+	// Wait for the HTTP server to accept connections before signaling. Sending
+	// SIGTERM before register.go finishes reading its 201 response can cancel
+	// regCtx mid-response and surface as "context canceled" instead of a clean
+	// shutdown, which flakes under -race.
+	waitForServer(t, "127.0.0.1:3000")
+
 	proc, _ := os.FindProcess(os.Getpid())
 	proc.Signal(syscall.SIGTERM)
 
