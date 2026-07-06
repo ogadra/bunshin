@@ -14,61 +14,73 @@ body {
   font-family: monospace;
 }
 
-.status {
-  padding: 8px 12px;
-  background: #2d2d2d;
-  color: #888;
-}
-
-.output {
+.editor {
+  position: relative;
   flex: 1;
-  overflow-y: auto;
+}
+
+/* pre と textarea のフォント・余白が 1px でもずれるとキャレット位置が狂うため、
+   メトリクスに関わるルールは必ず両者同時に指定する */
+.editor-highlight,
+.editor-input {
+  position: absolute;
+  inset: 0;
   padding: 8px 12px;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-.stderr {
-  color: #888;
-}
-
-.error {
-  color: #f44;
-}
-
-.input-bar {
-  display: flex;
-  border-bottom: 1px solid #333;
-}
-
-.input-bar input {
-  flex: 1;
-  padding: 8px 12px;
-  border: none;
-  background: #2d2d2d;
-  color: #d4d4d4;
   font-family: monospace;
   font-size: 16px;
-}
-
-.input-bar button {
-  padding: 8px 16px;
+  line-height: 1.4;
+  white-space: pre;
+  tab-size: 4;
+  overflow: auto;
   border: none;
-  background: #0e639c;
-  color: #fff;
-  font-family: monospace;
-  font-size: 16px;
-  cursor: pointer;
 }
 
-.input-bar input:focus-visible,
-.input-bar button:focus-visible {
+.editor-highlight {
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.editor-input {
+  background: transparent;
+  color: transparent;
+  caret-color: #d4d4d4;
+  resize: none;
+}
+
+.editor-input:focus-visible {
   outline: 2px solid #4fc3f7;
   outline-offset: -2px;
 }
 
-.input-bar button:disabled {
-  background: #333;
-  color: #666;
-  cursor: not-allowed;
+.editor-input::selection {
+  background: rgba(79, 195, 247, 0.35);
+  color: transparent;
+}
+
+.hl-comment {
+  color: #6a9955;
+}
+
+.hl-string {
+  color: #ce9178;
+}
+
+.hl-regexp {
+  color: #d16969;
+}
+
+.hl-variable {
+  color: #9cdcfe;
+}
+
+.hl-number {
+  color: #b5cea8;
+}
+
+.hl-keyword {
+  color: #569cd6;
+}
+
+.hl-function {
+  color: #dcdcaa;
 }
