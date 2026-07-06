@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"maps"
 	"math/rand/v2"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -89,49 +88,43 @@ func (r *DynamoRepository) AcquireIdle(ctx context.Context, sessionID string) (*
 	tried := map[string]struct{}{}
 	start := r.randHexFn()
 	for _, seg := range [][2]string{{start, maxRunnerID}, {minRunnerID, start}} {
-		runner, updated, err := r.acquireInRange(ctx, sessionID, seg[0], seg[1], nil, tried)
-		if runner != nil || err != nil {
-			return runner, err
+		var exclusiveStart map[string]types.AttributeValue
+		for {
+			runners, next, err := r.queryIdlePage(ctx, seg[0], seg[1], exclusiveStart)
+			if err != nil {
+				return nil, err
+			}
+			runner, err := r.assignFirst(ctx, sessionID, runners, tried)
+			if runner != nil || err != nil {
+				return runner, err
+			}
+			if len(next) == 0 {
+				break
+			}
+			exclusiveStart = next
 		}
-		tried = updated
 	}
 	return nil, ErrNoIdleRunner
 }
 
-func (r *DynamoRepository) acquireInRange(ctx context.Context, sessionID, lo, hi string, exclusiveStart map[string]types.AttributeValue, tried map[string]struct{}) (*model.Runner, map[string]struct{}, error) {
-	runners, nextPage, err := r.queryIdlePage(ctx, lo, hi, exclusiveStart)
-	if err != nil {
-		return nil, tried, err
-	}
-	runner, updated, err := r.assignFirst(ctx, sessionID, runners, tried)
-	if runner != nil || err != nil {
-		return runner, updated, err
-	}
-	if len(nextPage) == 0 {
-		return nil, updated, nil
-	}
-	return r.acquireInRange(ctx, sessionID, lo, hi, nextPage, updated)
-}
-
-func (r *DynamoRepository) assignFirst(ctx context.Context, sessionID string, candidates []model.Runner, tried map[string]struct{}) (*model.Runner, map[string]struct{}, error) {
-	next := maps.Clone(tried)
+func (r *DynamoRepository) assignFirst(ctx context.Context, sessionID string, candidates []model.Runner, tried map[string]struct{}) (*model.Runner, error) {
 	for i := range candidates {
 		runner := &candidates[i]
-		if _, done := next[runner.RunnerID]; done {
+		if _, done := tried[runner.RunnerID]; done {
 			continue
 		}
 		err := r.assignSession(ctx, runner.RunnerID, sessionID)
 		if err == nil {
 			runner.State = ""
 			runner.CurrentSessionID = sessionID
-			return runner, next, nil
+			return runner, nil
 		}
 		if !errors.Is(err, ErrConditionFailed) {
-			return nil, next, err
+			return nil, err
 		}
-		next[runner.RunnerID] = struct{}{}
+		tried[runner.RunnerID] = struct{}{}
 	}
-	return nil, next, nil
+	return nil, nil
 }
 
 func (r *DynamoRepository) queryIdlePage(ctx context.Context, lo, hi string, exclusiveStart map[string]types.AttributeValue) ([]model.Runner, map[string]types.AttributeValue, error) {
@@ -151,23 +144,11 @@ func (r *DynamoRepository) queryIdlePage(ctx context.Context, lo, hi string, exc
 	if err != nil {
 		return nil, nil, fmt.Errorf("query state-index: %w", err)
 	}
-	runners, err := unmarshalRunners(out.Items)
-	if err != nil {
-		return nil, nil, err
+	var runners []model.Runner
+	if err := attributevalue.UnmarshalListOfMaps(out.Items, &runners); err != nil {
+		return nil, nil, fmt.Errorf("unmarshal runners: %w", err)
 	}
 	return runners, out.LastEvaluatedKey, nil
-}
-
-func unmarshalRunners(items []map[string]types.AttributeValue) ([]model.Runner, error) {
-	runners := make([]model.Runner, 0, len(items))
-	for _, item := range items {
-		var runner model.Runner
-		if err := attributevalue.UnmarshalMap(item, &runner); err != nil {
-			return nil, fmt.Errorf("unmarshal runner: %w", err)
-		}
-		runners = append(runners, runner)
-	}
-	return runners, nil
 }
 
 func (r *DynamoRepository) assignSession(ctx context.Context, runnerID, sessionID string) error {

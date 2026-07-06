@@ -441,7 +441,6 @@ func TestAcquireIdle_RetryWithinBatch(t *testing.T) {
 
 // TestAcquireIdle_SecondSegmentReachesMaskedIdle は最初の区間 [start, max] が stale item で満杯になり
 // runnerId の小さい idle が隠れていても、次区間 [min, start] のページングで確保できることを検証する。
-// 旧 bucket 全巡回に対する可用性リグレッションへの回帰テスト。
 func TestAcquireIdle_SecondSegmentReachesMaskedIdle(t *testing.T) {
 	t.Parallel()
 	stale := []map[string]types.AttributeValue{

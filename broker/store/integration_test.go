@@ -176,7 +176,6 @@ func TestIntegration_AcquireIdle_WrapFromHead(t *testing.T) {
 	t.Parallel()
 	client, tableName := setupIntegrationTable(t)
 	repo := NewDynamoRepository(client, tableName)
-	// 開始キーを常に "ffff..." にすることで、r-01 は必ず wrap 経路でのみ取得される。
 	repo.randHexFn = func() string { return "ffffffffffffffffffffffffffffffff" }
 
 	ctx := context.Background()
