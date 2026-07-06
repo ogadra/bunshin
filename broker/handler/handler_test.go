@@ -62,7 +62,7 @@ func newTestRouter(h *Handler) *gin.Engine {
 	r.GET("/resolve", h.GetResolve)
 	r.POST("/internal/runners/register", h.PostRegister)
 	r.DELETE("/internal/runners/:runnerId", h.DeleteRunner)
-	r.GET("/internal/runners/busy", h.GetListBusyRunners)
+	r.GET("/runners/busy", h.GetListBusyRunners)
 	return r
 }
 
@@ -722,7 +722,7 @@ func TestGetListBusyRunners_Success(t *testing.T) {
 		},
 	}, []string{})
 	rec := httptest.NewRecorder()
-	newTestRouter(h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/internal/runners/busy", nil))
+	newTestRouter(h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runners/busy", nil))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
@@ -758,7 +758,7 @@ func TestGetListBusyRunners_Empty(t *testing.T) {
 		},
 	}, []string{})
 	rec := httptest.NewRecorder()
-	newTestRouter(h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/internal/runners/busy", nil))
+	newTestRouter(h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runners/busy", nil))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
@@ -777,7 +777,7 @@ func TestGetListBusyRunners_ServiceError(t *testing.T) {
 		},
 	}, []string{})
 	rec := httptest.NewRecorder()
-	newTestRouter(h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/internal/runners/busy", nil))
+	newTestRouter(h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runners/busy", nil))
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)

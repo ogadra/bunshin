@@ -36,7 +36,7 @@ func newRouter(h *handler.Handler) *gin.Engine {
 		r.GET("/resolve", h.GetResolve)
 		r.POST("/internal/runners/register", h.PostRegister)
 		r.DELETE("/internal/runners/:runnerId", h.DeleteRunner)
-		r.GET("/internal/runners/busy", h.GetListBusyRunners)
+		r.GET("/runners/busy", h.GetListBusyRunners)
 	}
 	return r
 }

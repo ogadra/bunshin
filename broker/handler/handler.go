@@ -214,7 +214,7 @@ type busyRunnersResponse struct {
 	Runners []busyRunnerView `json:"runners"`
 }
 
-// GetListBusyRunners は GET /internal/runners/busy を処理し busy runner の全件を返す。
+// GetListBusyRunners は GET /runners/busy を処理し busy runner の全件を返す。
 func (h *Handler) GetListBusyRunners(c *gin.Context) {
 	runners, err := h.svc.ListBusyRunners(c.Request.Context())
 	if err != nil {
