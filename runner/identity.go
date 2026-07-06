@@ -38,9 +38,6 @@ type ecsContainerMeta struct {
 	Networks []ecsNetwork `json:"Networks"`
 }
 
-// resolveIdentity generates a runnerID via crypto/rand and resolves the
-// privateURL from ECS container metadata (when ECS_CONTAINER_METADATA_URI_V4
-// is set) or from the container hostname.
 func resolveIdentity(ctx context.Context, deps identityDeps) (Identity, error) {
 	runnerID, err := generateRunnerID(deps.randRead)
 	if err != nil {
@@ -53,12 +50,11 @@ func resolveIdentity(ctx context.Context, deps identityDeps) (Identity, error) {
 	return Identity{RunnerID: runnerID, PrivateURL: privateURL}, nil
 }
 
-// generateRunnerID reads 16 random bytes and returns them as a 32-char hex string.
-// A short read is treated as an error to avoid a zero-padded runnerID when the
-// injected randRead follows the io.Reader convention of returning n < len(b)
-// without an error.
 func generateRunnerID(randRead func([]byte) (int, error)) (string, error) {
 	var buf [16]byte
+	// randRead follows the io.Reader convention where n < len(b) with nil err
+	// is legal, so err alone is not enough to reject a partial read that would
+	// silently leave the tail zero-filled.
 	n, err := randRead(buf[:])
 	if err != nil {
 		return "", fmt.Errorf("generate runner id: %w", err)
@@ -69,8 +65,6 @@ func generateRunnerID(randRead func([]byte) (int, error)) (string, error) {
 	return hex.EncodeToString(buf[:]), nil
 }
 
-// resolvePrivateURL determines the privateURL using ECS container metadata
-// when available, otherwise falling back to the container hostname.
 func resolvePrivateURL(ctx context.Context, deps identityDeps) (string, error) {
 	if ecsURI := deps.getenv("ECS_CONTAINER_METADATA_URI_V4"); ecsURI != "" {
 		return privateURLFromECS(ctx, deps, ecsURI)
@@ -78,7 +72,6 @@ func resolvePrivateURL(ctx context.Context, deps identityDeps) (string, error) {
 	return privateURLFromHostname(deps)
 }
 
-// privateURLFromECS reads the container IPv4 address from ECS container metadata.
 func privateURLFromECS(ctx context.Context, deps identityDeps, ecsURI string) (string, error) {
 	body, err := deps.httpGet(ctx, ecsURI)
 	if err != nil {
@@ -94,7 +87,6 @@ func privateURLFromECS(ctx context.Context, deps identityDeps, ecsURI string) (s
 	return "http://" + container.Networks[0].IPv4Addresses[0] + ":" + deps.port, nil
 }
 
-// privateURLFromHostname builds the privateURL from os.Hostname.
 func privateURLFromHostname(deps identityDeps) (string, error) {
 	host, err := deps.hostname()
 	if err != nil {

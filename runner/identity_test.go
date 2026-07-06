@@ -8,8 +8,6 @@ import (
 	"testing"
 )
 
-// stubRandRead returns a randRead function that fills the destination with
-// the given byte, or returns err when non-nil.
 func stubRandRead(fill byte, err error) func([]byte) (int, error) {
 	return func(b []byte) (int, error) {
 		if err != nil {
@@ -22,9 +20,6 @@ func stubRandRead(fill byte, err error) func([]byte) (int, error) {
 	}
 }
 
-// TestResolveIdentityECS verifies that resolveIdentity generates a random
-// runnerID and reads privateURL from ECS container metadata when
-// ECS_CONTAINER_METADATA_URI_V4 is set.
 func TestResolveIdentityECS(t *testing.T) {
 	containerJSON := `{"Networks":[{"IPv4Addresses":["10.0.1.5"]}]}`
 
@@ -57,8 +52,6 @@ func TestResolveIdentityECS(t *testing.T) {
 	}
 }
 
-// TestResolveIdentityRandReadError verifies that resolveIdentity returns an
-// error when the random source fails.
 func TestResolveIdentityRandReadError(t *testing.T) {
 	deps := identityDeps{
 		getenv:   func(k string) string { return "" },
@@ -73,9 +66,6 @@ func TestResolveIdentityRandReadError(t *testing.T) {
 	}
 }
 
-// TestResolveIdentityRandShortRead verifies that resolveIdentity rejects a
-// randRead that returns fewer bytes than requested with no error, which would
-// otherwise leave the runnerID buffer partially zero-filled.
 func TestResolveIdentityRandShortRead(t *testing.T) {
 	deps := identityDeps{
 		getenv:   func(k string) string { return "" },
@@ -96,8 +86,6 @@ func TestResolveIdentityRandShortRead(t *testing.T) {
 	}
 }
 
-// TestResolveIdentityECSContainerFetchError verifies that resolveIdentity
-// returns an error when fetching ECS container metadata fails.
 func TestResolveIdentityECSContainerFetchError(t *testing.T) {
 	deps := identityDeps{
 		getenv: func(k string) string { return "http://169.254.170.2/v4" },
@@ -114,8 +102,6 @@ func TestResolveIdentityECSContainerFetchError(t *testing.T) {
 	}
 }
 
-// TestResolveIdentityECSContainerInvalidJSON verifies that resolveIdentity
-// returns an error when ECS container metadata contains invalid JSON.
 func TestResolveIdentityECSContainerInvalidJSON(t *testing.T) {
 	deps := identityDeps{
 		getenv: func(k string) string { return "http://169.254.170.2/v4" },
@@ -132,8 +118,6 @@ func TestResolveIdentityECSContainerInvalidJSON(t *testing.T) {
 	}
 }
 
-// TestResolveIdentityECSEmptyNetworks verifies that resolveIdentity returns
-// an error when ECS container metadata has no networks.
 func TestResolveIdentityECSEmptyNetworks(t *testing.T) {
 	deps := identityDeps{
 		getenv: func(k string) string { return "http://169.254.170.2/v4" },
@@ -150,8 +134,6 @@ func TestResolveIdentityECSEmptyNetworks(t *testing.T) {
 	}
 }
 
-// TestResolveIdentityECSEmptyIPv4 verifies that resolveIdentity returns an
-// error when ECS container metadata has a network with no IPv4 addresses.
 func TestResolveIdentityECSEmptyIPv4(t *testing.T) {
 	deps := identityDeps{
 		getenv: func(k string) string { return "http://169.254.170.2/v4" },
@@ -168,8 +150,6 @@ func TestResolveIdentityECSEmptyIPv4(t *testing.T) {
 	}
 }
 
-// TestResolveIdentityHostnameFallback verifies that resolveIdentity uses the
-// container hostname for privateURL when ECS metadata is not available.
 func TestResolveIdentityHostnameFallback(t *testing.T) {
 	deps := identityDeps{
 		getenv:   func(k string) string { return "" },
@@ -194,8 +174,6 @@ func TestResolveIdentityHostnameFallback(t *testing.T) {
 	}
 }
 
-// TestResolveIdentityHostnameError verifies that resolveIdentity returns an
-// error when hostname lookup fails.
 func TestResolveIdentityHostnameError(t *testing.T) {
 	deps := identityDeps{
 		getenv:   func(k string) string { return "" },
@@ -210,8 +188,6 @@ func TestResolveIdentityHostnameError(t *testing.T) {
 	}
 }
 
-// TestDefaultHTTPGetSuccess verifies that defaultHTTPGet returns the body of
-// a successful HTTP response.
 func TestDefaultHTTPGetSuccess(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("ok"))
@@ -227,8 +203,6 @@ func TestDefaultHTTPGetSuccess(t *testing.T) {
 	}
 }
 
-// TestDefaultHTTPGetNon200 verifies that defaultHTTPGet returns an error when
-// the server responds with a non-200 status code.
 func TestDefaultHTTPGetNon200(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -241,8 +215,6 @@ func TestDefaultHTTPGetNon200(t *testing.T) {
 	}
 }
 
-// TestDefaultHTTPGetCanceledContext verifies that defaultHTTPGet returns an
-// error when the context is already canceled.
 func TestDefaultHTTPGetCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -252,8 +224,6 @@ func TestDefaultHTTPGetCanceledContext(t *testing.T) {
 	}
 }
 
-// TestDefaultHTTPGetInvalidURL verifies that defaultHTTPGet returns an error
-// when the URL is malformed and cannot be parsed into a request.
 func TestDefaultHTTPGetInvalidURL(t *testing.T) {
 	_, err := defaultHTTPGet(context.Background(), "://bad-url")
 	if err == nil {
