@@ -26,6 +26,7 @@ type Service interface {
 	ResolveSession(ctx context.Context, sessionID string) (*ResolveResult, error)
 	RegisterRunner(ctx context.Context, runnerID, privateURL string) error
 	DeregisterRunner(ctx context.Context, runnerID string) error
+	ListBusyRunners(ctx context.Context) ([]model.Runner, error)
 }
 
 type ResolveResult struct {
@@ -161,4 +162,8 @@ func (s *BrokerService) RegisterRunner(ctx context.Context, runnerID, privateURL
 
 func (s *BrokerService) DeregisterRunner(ctx context.Context, runnerID string) error {
 	return s.repo.Delete(ctx, runnerID)
+}
+
+func (s *BrokerService) ListBusyRunners(ctx context.Context) ([]model.Runner, error) {
+	return s.repo.ListBusyRunners(ctx)
 }

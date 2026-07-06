@@ -22,6 +22,7 @@ func (e *errorReader) Read(_ []byte) (int, error) {
 type mockRepository struct {
 	registerFn        func(ctx context.Context, runnerID, privateURL string) error
 	acquireIdleFn     func(ctx context.Context, sessionID string) (*model.Runner, error)
+	listBusyRunnersFn func(ctx context.Context) ([]model.Runner, error)
 	findBySessionIDFn func(ctx context.Context, sessionID string) (*model.Runner, error)
 	findByIDFn        func(ctx context.Context, runnerID string) (*model.Runner, error)
 	deleteFn          func(ctx context.Context, runnerID string) error
@@ -35,6 +36,11 @@ func (m *mockRepository) Register(ctx context.Context, runnerID, privateURL stri
 // AcquireIdle はモック AcquireIdle を呼び出す。
 func (m *mockRepository) AcquireIdle(ctx context.Context, sessionID string) (*model.Runner, error) {
 	return m.acquireIdleFn(ctx, sessionID)
+}
+
+// ListBusyRunners はモック ListBusyRunners を呼び出す。
+func (m *mockRepository) ListBusyRunners(ctx context.Context) ([]model.Runner, error) {
+	return m.listBusyRunnersFn(ctx)
 }
 
 // FindBySessionID はモック FindBySessionID を呼び出す。
@@ -434,6 +440,44 @@ func TestDeregisterRunner_Error(t *testing.T) {
 	svc := NewBrokerService(repo, "ap-northeast-1")
 
 	err := svc.DeregisterRunner(context.Background(), "r1")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+// TestListBusyRunners_Passthrough は repository の返却値をそのまま返すことを検証する。
+func TestListBusyRunners_Passthrough(t *testing.T) {
+	t.Parallel()
+	want := []model.Runner{
+		{RunnerID: "r1", State: model.StateBusy, CurrentSessionID: "sess-1"},
+	}
+	repo := &mockRepository{
+		listBusyRunnersFn: func(context.Context) ([]model.Runner, error) {
+			return want, nil
+		},
+	}
+	svc := NewBrokerService(repo, "ap-northeast-1")
+
+	got, err := svc.ListBusyRunners(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || got[0].RunnerID != "r1" {
+		t.Errorf("got = %v, want %v", got, want)
+	}
+}
+
+// TestListBusyRunners_Error は repository のエラーが伝搬されることを検証する。
+func TestListBusyRunners_Error(t *testing.T) {
+	t.Parallel()
+	repo := &mockRepository{
+		listBusyRunnersFn: func(context.Context) ([]model.Runner, error) {
+			return nil, errors.New("list error")
+		},
+	}
+	svc := NewBrokerService(repo, "ap-northeast-1")
+
+	_, err := svc.ListBusyRunners(context.Background())
 	if err == nil {
 		t.Fatal("expected error")
 	}

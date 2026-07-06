@@ -6,6 +6,8 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sort"
 	"testing"
 
 	"github.com/ogadra/bunshin/broker/model"
@@ -72,7 +74,7 @@ func TestIntegration_RegisterConflict(t *testing.T) {
 	}
 }
 
-// TestIntegration_AcquireIdle は idle runner 確保後に busy へ遷移し state 属性が消えることを検証する統合テスト。
+// TestIntegration_AcquireIdle は idle runner 確保後に state = busy になり GSI item が残ることを検証する統合テスト。
 func TestIntegration_AcquireIdle(t *testing.T) {
 	t.Parallel()
 	client, tableName := setupIntegrationTable(t)
@@ -94,22 +96,16 @@ func TestIntegration_AcquireIdle(t *testing.T) {
 	if runner.CurrentSessionID != "sess-1" {
 		t.Errorf("currentSessionId = %q, want %q", runner.CurrentSessionID, "sess-1")
 	}
-	if !runner.IsBusy() {
-		t.Errorf("expected runner to be busy, got IsBusy=false state=%q", runner.State)
-	}
-	if runner.IsIdle() {
-		t.Errorf("expected runner not to be idle after acquire")
+	if runner.State != model.StateBusy {
+		t.Errorf("state = %q, want %q", runner.State, model.StateBusy)
 	}
 
 	persisted, err := repo.FindByID(ctx, "11111111111111111111111111111111")
 	if err != nil {
 		t.Fatalf("FindByID: %v", err)
 	}
-	if persisted.State != "" {
-		t.Errorf("persisted state = %q, want empty (attribute removed on busy transition)", persisted.State)
-	}
-	if persisted.CurrentSessionID != "sess-1" {
-		t.Errorf("persisted currentSessionId = %q, want %q", persisted.CurrentSessionID, "sess-1")
+	if persisted.State != model.StateBusy {
+		t.Errorf("persisted state = %q, want %q", persisted.State, model.StateBusy)
 	}
 }
 
@@ -246,5 +242,96 @@ func TestIntegration_FindByID_NotFound(t *testing.T) {
 	_, err := repo.FindByID(context.Background(), "r-missing")
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got: %v", err)
+	}
+}
+
+// TestIntegration_ListBusyRunners_All は busy にした全 runner を 1 度の呼び出しで受け取れることを検証する統合テスト。
+func TestIntegration_ListBusyRunners_All(t *testing.T) {
+	t.Parallel()
+	client, tableName := setupIntegrationTable(t)
+	repo := NewDynamoRepository(client, tableName)
+
+	ctx := context.Background()
+
+	const total = 5
+	want := make([]string, 0, total)
+	for i := range total {
+		id := fmt.Sprintf("%02d%030d", i, 0)
+		want = append(want, id)
+		if err := repo.Register(ctx, id, fmt.Sprintf("http://10.0.0.%d:8080", i+1)); err != nil {
+			t.Fatalf("Register %s: %v", id, err)
+		}
+		if _, err := repo.AcquireIdle(ctx, fmt.Sprintf("sess-%02d", i)); err != nil {
+			t.Fatalf("AcquireIdle: %v", err)
+		}
+	}
+
+	runners, err := repo.ListBusyRunners(ctx)
+	if err != nil {
+		t.Fatalf("ListBusyRunners: %v", err)
+	}
+	got := make([]string, 0, len(runners))
+	for _, r := range runners {
+		if r.State != model.StateBusy {
+			t.Errorf("state = %q, want %q", r.State, model.StateBusy)
+		}
+		got = append(got, r.RunnerID)
+	}
+
+	sort.Strings(got)
+	sort.Strings(want)
+	if len(got) != len(want) {
+		t.Fatalf("len(got) = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("got[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+// TestIntegration_ListBusyRunners_Empty は busy runner がいない場合に空リストを返す統合テスト。
+func TestIntegration_ListBusyRunners_Empty(t *testing.T) {
+	t.Parallel()
+	client, tableName := setupIntegrationTable(t)
+	repo := NewDynamoRepository(client, tableName)
+
+	runners, err := repo.ListBusyRunners(context.Background())
+	if err != nil {
+		t.Fatalf("ListBusyRunners: %v", err)
+	}
+	if len(runners) != 0 {
+		t.Errorf("len(runners) = %d, want 0", len(runners))
+	}
+}
+
+// TestIntegration_ListBusyRunners_ExcludesIdle は idle runner が busy 一覧に含まれないことを検証する統合テスト。
+func TestIntegration_ListBusyRunners_ExcludesIdle(t *testing.T) {
+	t.Parallel()
+	client, tableName := setupIntegrationTable(t)
+	repo := NewDynamoRepository(client, tableName)
+
+	ctx := context.Background()
+
+	if err := repo.Register(ctx, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "http://10.0.0.1:8080"); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	if err := repo.Register(ctx, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "http://10.0.0.2:8080"); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	// AcquireIdle はランダム選択のため、bbbb を確実に busy 化するには assignSession を直接叩く。
+	if err := repo.assignSession(ctx, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "sess-1"); err != nil {
+		t.Fatalf("assignSession: %v", err)
+	}
+
+	runners, err := repo.ListBusyRunners(ctx)
+	if err != nil {
+		t.Fatalf("ListBusyRunners: %v", err)
+	}
+	if len(runners) != 1 {
+		t.Fatalf("len(runners) = %d, want 1", len(runners))
+	}
+	if runners[0].RunnerID != "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" {
+		t.Errorf("runnerID = %q, want %q", runners[0].RunnerID, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
 	}
 }
