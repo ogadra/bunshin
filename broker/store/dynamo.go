@@ -177,8 +177,7 @@ func (r *DynamoRepository) assignSession(ctx context.Context, runnerID, sessionI
 	return nil
 }
 
-// pagination は関数内で閉じる。呼び出し側は 1 度呼べば busy 全件を受け取り、
-// LastEvaluatedKey や cursor の存在を意識する必要がない。
+// busy 一覧は管理用の低頻度アクセス前提で全件収まる規模のため、pagination を API に出さず内部で辿り切る。
 func (r *DynamoRepository) ListBusyRunners(ctx context.Context) ([]model.Runner, error) {
 	var all []model.Runner
 	var exclusiveStart map[string]types.AttributeValue
