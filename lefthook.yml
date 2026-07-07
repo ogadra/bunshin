@@ -30,20 +30,20 @@ pre-commit:
       glob: "*.go"
       run: go vet ./...
     021_terraform_fmt:
-      root: "terraform/"
+      root: "terraform/aws/"
       glob: "*.tf"
       stage_fixed: true
       run: terraform fmt {staged_files}
     022_terraform_fmt_check:
-      root: "terraform/"
+      root: "terraform/aws/"
       glob: "*.tf"
       run: terraform fmt -check {staged_files}
     023_terraform_validate:
-      root: "terraform/"
+      root: "terraform/aws/"
       glob: "*.tf"
       run: terraform validate -json | jq -e '.warning_count == 0 and .error_count == 0'
     024_tflint:
-      root: "terraform/"
+      root: "terraform/aws/"
       glob: "*.tf"
       run: tflint --init && tflint
     031_fix_front:
