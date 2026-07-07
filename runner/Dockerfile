@@ -25,7 +25,7 @@ FROM build AS binary
 RUN CGO_ENABLED=0 go build -o /server .
 
 # nix runtime build
-FROM nixos/nix:2.34.7@sha256:bf1d938835ab96312f098fa6c2e9cab367728e0aad0646ee3e02a787c80d8fb8 AS nix-runtime
+FROM nixos/nix:2.34.8@sha256:1a711b619c8a713eff32c3f8d8781b3b4d0130cb91c0a57f67e87abfeeb90b01 AS nix-runtime
 
 ENV PATH="/usr/local/bin:${PATH}"
 
