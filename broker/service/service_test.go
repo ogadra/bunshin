@@ -68,6 +68,11 @@ func (m *mockChecker) Check(ctx context.Context, privateURL string) error {
 	return m.checkFn(ctx, privateURL)
 }
 
+// healthyChecker は常に健全を返す checker を注入する Option。
+func healthyChecker() Option {
+	return WithChecker(&mockChecker{checkFn: func(context.Context, string) error { return nil }})
+}
+
 // suppressLog はテスト中のログ出力を抑制し、テスト終了時に復元する。
 func suppressLog(t *testing.T) {
 	t.Helper()
@@ -86,7 +91,7 @@ func TestBrokerService_ImplementsService(t *testing.T) {
 func TestNewBrokerService(t *testing.T) {
 	t.Parallel()
 	repo := &mockRepository{}
-	svc := NewBrokerService(repo, "ap-northeast-1")
+	svc := NewBrokerService(repo, "ap-northeast-1", healthyChecker())
 	if svc.repo != repo {
 		t.Error("repo mismatch")
 	}
@@ -117,7 +122,7 @@ func TestNewBrokerService_WithSessionFn(t *testing.T) {
 		called = true
 		return "test-session", nil
 	}
-	svc := NewBrokerService(&mockRepository{}, "ap-northeast-1", WithSessionFn(fn))
+	svc := NewBrokerService(&mockRepository{}, "ap-northeast-1", WithSessionFn(fn), healthyChecker())
 	got, err := svc.sessionFn()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -133,7 +138,7 @@ func TestNewBrokerService_WithSessionFn(t *testing.T) {
 // TestWithSessionFn_Nil は WithSessionFn に nil を渡してもデフォルト関数が維持されることを検証する。
 func TestWithSessionFn_Nil(t *testing.T) {
 	t.Parallel()
-	svc := NewBrokerService(&mockRepository{}, "ap-northeast-1", WithSessionFn(nil))
+	svc := NewBrokerService(&mockRepository{}, "ap-northeast-1", WithSessionFn(nil), healthyChecker())
 	if svc.sessionFn == nil {
 		t.Fatal("sessionFn should not be nil when WithSessionFn(nil) is passed")
 	}
@@ -156,13 +161,15 @@ func TestWithChecker(t *testing.T) {
 	}
 }
 
-// TestWithChecker_Nil は WithChecker に nil を渡すと checker が nil になることを検証する。
-func TestWithChecker_Nil(t *testing.T) {
+// TestNewBrokerService_NilCheckerPanics は checker 未設定のとき panic することを検証する。
+func TestNewBrokerService_NilCheckerPanics(t *testing.T) {
 	t.Parallel()
-	svc := NewBrokerService(&mockRepository{}, "ap-northeast-1", WithChecker(nil))
-	if svc.checker != nil {
-		t.Error("expected nil checker")
-	}
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic for nil checker")
+		}
+	}()
+	NewBrokerService(&mockRepository{}, "ap-northeast-1")
 }
 
 // TestDefaultSessionFn はデフォルトセッション ID 生成関数が 32 文字の hex 文字列を返すことを検証する。
@@ -222,7 +229,7 @@ func TestCreateSession_Success(t *testing.T) {
 	}
 	svc := NewBrokerService(repo, "ap-northeast-1", WithSessionFn(func() (string, error) {
 		return "fixed-session", nil
-	}))
+	}), healthyChecker())
 
 	result, err := svc.createSession(context.Background())
 	if err != nil {
@@ -247,7 +254,7 @@ func TestCreateSession_StackPrefix(t *testing.T) {
 			return &model.Runner{RunnerID: "r1", CurrentSessionID: sessionID, PrivateURL: "http://10.0.0.1:8080"}, nil
 		},
 	}
-	svc := NewBrokerService(repo, "ap-northeast-3", WithSessionFn(func() (string, error) { return "fixed-session", nil }))
+	svc := NewBrokerService(repo, "ap-northeast-3", WithSessionFn(func() (string, error) { return "fixed-session", nil }), healthyChecker())
 
 	result, err := svc.createSession(context.Background())
 	if err != nil {
@@ -263,7 +270,7 @@ func TestCreateSession_SessionFnError(t *testing.T) {
 	t.Parallel()
 	svc := NewBrokerService(&mockRepository{}, "ap-northeast-1", WithSessionFn(func() (string, error) {
 		return "", errors.New("rand error")
-	}))
+	}), healthyChecker())
 
 	_, err := svc.createSession(context.Background())
 	if err == nil {
@@ -281,7 +288,7 @@ func TestCreateSession_AcquireIdleError(t *testing.T) {
 	}
 	svc := NewBrokerService(repo, "ap-northeast-1", WithSessionFn(func() (string, error) {
 		return "sess-1", nil
-	}))
+	}), healthyChecker())
 
 	_, err := svc.createSession(context.Background())
 	if !errors.Is(err, store.ErrNoIdleRunner) {
@@ -299,7 +306,7 @@ func TestCreateSession_AcquireIdleInternalError(t *testing.T) {
 	}
 	svc := NewBrokerService(repo, "ap-northeast-1", WithSessionFn(func() (string, error) {
 		return "sess-1", nil
-	}))
+	}), healthyChecker())
 
 	_, err := svc.createSession(context.Background())
 	if err == nil {
@@ -326,7 +333,7 @@ func TestCloseSession_Success(t *testing.T) {
 			return nil
 		},
 	}
-	svc := NewBrokerService(repo, "ap-northeast-1")
+	svc := NewBrokerService(repo, "ap-northeast-1", healthyChecker())
 
 	err := svc.CloseSession(context.Background(), "sess-1")
 	if err != nil {
@@ -345,7 +352,7 @@ func TestCloseSession_FindError(t *testing.T) {
 			return nil, store.ErrNotFound
 		},
 	}
-	svc := NewBrokerService(repo, "ap-northeast-1")
+	svc := NewBrokerService(repo, "ap-northeast-1", healthyChecker())
 
 	err := svc.CloseSession(context.Background(), "sess-missing")
 	if !errors.Is(err, store.ErrNotFound) {
@@ -364,7 +371,7 @@ func TestCloseSession_DeleteError(t *testing.T) {
 			return errors.New("delete error")
 		},
 	}
-	svc := NewBrokerService(repo, "ap-northeast-1")
+	svc := NewBrokerService(repo, "ap-northeast-1", healthyChecker())
 
 	err := svc.CloseSession(context.Background(), "sess-1")
 	if err == nil {
@@ -386,7 +393,7 @@ func TestRegisterRunner_Success(t *testing.T) {
 			return nil
 		},
 	}
-	svc := NewBrokerService(repo, "ap-northeast-1")
+	svc := NewBrokerService(repo, "ap-northeast-1", healthyChecker())
 
 	err := svc.RegisterRunner(context.Background(), "r1", "http://10.0.0.1:8080")
 	if err != nil {
@@ -402,7 +409,7 @@ func TestRegisterRunner_Error(t *testing.T) {
 			return errors.New("register error")
 		},
 	}
-	svc := NewBrokerService(repo, "ap-northeast-1")
+	svc := NewBrokerService(repo, "ap-northeast-1", healthyChecker())
 
 	err := svc.RegisterRunner(context.Background(), "r1", "http://10.0.0.1:8080")
 	if err == nil {
@@ -421,7 +428,7 @@ func TestDeregisterRunner_Success(t *testing.T) {
 			return nil
 		},
 	}
-	svc := NewBrokerService(repo, "ap-northeast-1")
+	svc := NewBrokerService(repo, "ap-northeast-1", healthyChecker())
 
 	err := svc.DeregisterRunner(context.Background(), "r1")
 	if err != nil {
@@ -437,7 +444,7 @@ func TestDeregisterRunner_Error(t *testing.T) {
 			return errors.New("delete error")
 		},
 	}
-	svc := NewBrokerService(repo, "ap-northeast-1")
+	svc := NewBrokerService(repo, "ap-northeast-1", healthyChecker())
 
 	err := svc.DeregisterRunner(context.Background(), "r1")
 	if err == nil {
@@ -456,7 +463,7 @@ func TestListBusyRunners_Passthrough(t *testing.T) {
 			return want, nil
 		},
 	}
-	svc := NewBrokerService(repo, "ap-northeast-1")
+	svc := NewBrokerService(repo, "ap-northeast-1", healthyChecker())
 
 	got, err := svc.ListBusyRunners(context.Background())
 	if err != nil {
@@ -475,7 +482,7 @@ func TestListBusyRunners_Error(t *testing.T) {
 			return nil, errors.New("list error")
 		},
 	}
-	svc := NewBrokerService(repo, "ap-northeast-1")
+	svc := NewBrokerService(repo, "ap-northeast-1", healthyChecker())
 
 	_, err := svc.ListBusyRunners(context.Background())
 	if err == nil {
@@ -491,7 +498,7 @@ func TestResolveSession_ExistingSession(t *testing.T) {
 			return &model.Runner{RunnerID: "r1", PrivateURL: "http://10.0.0.1:8080"}, nil
 		},
 	}
-	svc := NewBrokerService(repo, "ap-northeast-1")
+	svc := NewBrokerService(repo, "ap-northeast-1", healthyChecker())
 
 	result, err := svc.ResolveSession(context.Background(), "sess-1")
 	if err != nil {
@@ -525,7 +532,7 @@ func TestResolveSession_NotFound_CreatesNew(t *testing.T) {
 	}
 	svc := NewBrokerService(repo, "ap-northeast-1", WithSessionFn(func() (string, error) {
 		return "new-session", nil
-	}))
+	}), healthyChecker())
 
 	result, err := svc.ResolveSession(context.Background(), "sess-missing")
 	if err != nil {
@@ -550,7 +557,7 @@ func TestResolveSession_FindInternalError(t *testing.T) {
 			return nil, errors.New("db error")
 		},
 	}
-	svc := NewBrokerService(repo, "ap-northeast-1")
+	svc := NewBrokerService(repo, "ap-northeast-1", healthyChecker())
 
 	_, err := svc.ResolveSession(context.Background(), "sess-1")
 	if err == nil {
@@ -571,7 +578,7 @@ func TestResolveSession_CreateError(t *testing.T) {
 	}
 	svc := NewBrokerService(repo, "ap-northeast-1", WithSessionFn(func() (string, error) {
 		return "new-session", nil
-	}))
+	}), healthyChecker())
 
 	_, err := svc.ResolveSession(context.Background(), "sess-missing")
 	if !errors.Is(err, store.ErrNoIdleRunner) {
@@ -597,7 +604,7 @@ func TestResolveSession_EmptySessionID(t *testing.T) {
 	}
 	svc := NewBrokerService(repo, "ap-northeast-1", WithSessionFn(func() (string, error) {
 		return "new-session", nil
-	}))
+	}), healthyChecker())
 
 	result, err := svc.ResolveSession(context.Background(), "")
 	if err != nil {
@@ -758,50 +765,6 @@ func TestCreateSession_AllUnhealthyThenNoIdle(t *testing.T) {
 	_, err := svc.createSession(context.Background())
 	if !errors.Is(err, store.ErrNoIdleRunner) {
 		t.Fatalf("expected ErrNoIdleRunner, got: %v", err)
-	}
-}
-
-// TestResolveSession_NilChecker_SkipsHealthcheck は checker が nil の場合にヘルスチェックをスキップすることを検証する。
-func TestResolveSession_NilChecker_SkipsHealthcheck(t *testing.T) {
-	t.Parallel()
-	repo := &mockRepository{
-		findBySessionIDFn: func(_ context.Context, _ string) (*model.Runner, error) {
-			return &model.Runner{RunnerID: "r1", PrivateURL: "http://10.0.0.1:8080"}, nil
-		},
-	}
-	svc := NewBrokerService(repo, "ap-northeast-1")
-
-	result, err := svc.ResolveSession(context.Background(), "sess-1")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.Created {
-		t.Error("expected Created=false")
-	}
-}
-
-// TestCreateSession_NilChecker は checker が nil の場合にヘルスチェックなしで返すことを検証する。
-func TestCreateSession_NilChecker(t *testing.T) {
-	t.Parallel()
-	repo := &mockRepository{
-		acquireIdleFn: func(_ context.Context, sessionID string) (*model.Runner, error) {
-			return &model.Runner{
-				RunnerID:         "r1",
-				CurrentSessionID: sessionID,
-				PrivateURL:       "http://10.0.0.1:8080",
-			}, nil
-		},
-	}
-	svc := NewBrokerService(repo, "ap-northeast-1", WithSessionFn(func() (string, error) {
-		return "sess-1", nil
-	}))
-
-	result, err := svc.createSession(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.Runner.RunnerID != "r1" {
-		t.Errorf("RunnerID = %q, want %q", result.Runner.RunnerID, "r1")
 	}
 }
 
