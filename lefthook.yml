@@ -46,6 +46,23 @@ pre-commit:
       root: "terraform/aws/"
       glob: "*.tf"
       run: tflint --init && tflint
+    026_terraform_fmt_google_cloud:
+      root: "terraform/google-cloud/"
+      glob: "*.tf"
+      stage_fixed: true
+      run: terraform fmt {staged_files}
+    027_terraform_fmt_check_google_cloud:
+      root: "terraform/google-cloud/"
+      glob: "*.tf"
+      run: terraform fmt -check {staged_files}
+    028_terraform_validate_google_cloud:
+      root: "terraform/google-cloud/"
+      glob: "*.tf"
+      run: terraform validate -json | jq -e '.warning_count == 0 and .error_count == 0'
+    029_tflint_google_cloud:
+      root: "terraform/google-cloud/"
+      glob: "*.tf"
+      run: tflint --init && tflint
     031_fix_front:
       root: "front/"
       glob: "**/*.{ts,tsx,css,html}"
