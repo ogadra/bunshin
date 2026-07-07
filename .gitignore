@@ -9,8 +9,8 @@ __pycache__/
 !.env.example
 .takt/
 .terraform/
-terraform/*.tfstate
-terraform/*.tfstate.*
-terraform/*_override.tf
-terraform/environments/*.tfvars
+*.tfstate
+*.tfstate.*
+*_override.tf
+*.tfvars
 k6-output.log
