@@ -18,7 +18,7 @@ resource "aws_dynamodb_table" "runners_apne1" {
   }
 
   attribute {
-    name = "idleBucket"
+    name = "state"
     type = "S"
   }
 
@@ -33,12 +33,17 @@ resource "aws_dynamodb_table" "runners_apne1" {
   }
 
   global_secondary_index {
-    name            = "idle-index"
+    name            = "state-index"
     projection_type = "ALL"
 
     key_schema {
-      attribute_name = "idleBucket"
+      attribute_name = "state"
       key_type       = "HASH"
+    }
+
+    key_schema {
+      attribute_name = "runnerId"
+      key_type       = "RANGE"
     }
   }
 

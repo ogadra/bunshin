@@ -104,7 +104,7 @@ data "aws_iam_policy_document" "broker_dynamodb" {
     ]
     resources = [
       "${aws_dynamodb_table.runners_apne3.arn}/index/session-index",
-      "${aws_dynamodb_table.runners_apne3.arn}/index/idle-index",
+      "${aws_dynamodb_table.runners_apne3.arn}/index/state-index",
     ]
   }
 }
