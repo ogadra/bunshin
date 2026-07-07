@@ -10,15 +10,15 @@ _validate-tf-backend-bucket:
 # Initialize terraform with environment-specific S3 backend config
 # Requires TF_BACKEND_BUCKET to be set (e.g. via direnv / .env)
 init env: (_validate-env env) _validate-tf-backend-bucket
-    terraform -chdir=terraform init -reconfigure -backend-config="bucket=${TF_BACKEND_BUCKET}" -backend-config="key=bunshin/{{env}}.tfstate"
+    terraform -chdir=terraform/aws init -reconfigure -backend-config="bucket=${TF_BACKEND_BUCKET}" -backend-config="key=bunshin/aws/{{env}}.tfstate"
 
 # Plan changes for the specified environment
 plan env: (_validate-env env)
-    terraform -chdir=terraform plan -var-file=environments/{{env}}.tfvars
+    terraform -chdir=terraform/aws plan -var-file=environments/{{env}}.tfvars
 
 # Apply changes for the specified environment
 apply env: (_validate-env env)
-    terraform -chdir=terraform apply -var-file=environments/{{env}}.tfvars
+    terraform -chdir=terraform/aws apply -var-file=environments/{{env}}.tfvars
 
 # Deploy services for the specified environment
 deploy env *service: (_validate-env env)
@@ -26,7 +26,7 @@ deploy env *service: (_validate-env env)
 
 # Destroy resources for the specified environment
 destroy env: (_validate-env env)
-    terraform -chdir=terraform destroy -var-file=environments/{{env}}.tfvars
+    terraform -chdir=terraform/aws destroy -var-file=environments/{{env}}.tfvars
 
 # Run k6 load test against the specified base URL
 loadtest base_url runner_count:

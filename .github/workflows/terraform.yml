@@ -5,11 +5,11 @@ on:
     branches:
       - main
     paths:
-      - "terraform/**"
+      - "terraform/aws/**"
       - ".github/workflows/terraform.yml"
   pull_request:
     paths:
-      - "terraform/**"
+      - "terraform/aws/**"
       - ".github/workflows/terraform.yml"
 
 permissions:
@@ -24,11 +24,11 @@ jobs:
         with:
           terraform_version: "1.15"
       - name: terraform fmt check
-        run: terraform -chdir=terraform fmt -check
+        run: terraform -chdir=terraform/aws fmt -check
       - name: terraform init
-        run: terraform -chdir=terraform init -backend=false
+        run: terraform -chdir=terraform/aws init -backend=false
       - name: terraform validate
-        run: terraform -chdir=terraform validate -json | jq -e '.warning_count == 0 and .error_count == 0'
+        run: terraform -chdir=terraform/aws validate -json | jq -e '.warning_count == 0 and .error_count == 0'
 
   tflint:
     runs-on: ubuntu-latest
@@ -36,6 +36,6 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: terraform-linters/setup-tflint@6e1e0642c0289bd619021bf6b34e3c08ed1e005a # v6.3.0
       - name: tflint init
-        run: cd terraform && tflint --init
+        run: cd terraform/aws && tflint --init
       - name: tflint
-        run: cd terraform && tflint
+        run: cd terraform/aws && tflint
