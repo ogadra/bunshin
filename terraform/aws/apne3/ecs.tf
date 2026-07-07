@@ -123,6 +123,8 @@ resource "aws_ecs_task_definition" "broker" {
 
     environment = [
       { name = "AWS_REGION", value = data.aws_region.current.region },
+      { name = "STACK_NAME", value = data.aws_region.current.region },
+      { name = "BUNSHIN_STORE", value = "dynamodb" },
       { name = "BUNSHIN_STACKS", value = join(",", var.bunshin_stacks) },
     ]
 
