@@ -205,6 +205,29 @@ func (h *Handler) DeleteRunner(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// currentSessionId は session cookie 値そのままで、露出させると session hijack を許すため busy 一覧レスポンスには載せない。
+type busyRunnerView struct {
+	RunnerID string `json:"runnerId"`
+}
+
+type busyRunnersResponse struct {
+	Runners []busyRunnerView `json:"runners"`
+}
+
+// GetListBusyRunners は GET /runners/busy を処理し busy runner の全件を返す。
+func (h *Handler) GetListBusyRunners(c *gin.Context) {
+	runners, err := h.svc.ListBusyRunners(c.Request.Context())
+	if err != nil {
+		writeError(c, http.StatusInternalServerError, model.CodeInternalError, "failed to list busy runners")
+		return
+	}
+	views := make([]busyRunnerView, 0, len(runners))
+	for _, r := range runners {
+		views = append(views, busyRunnerView{RunnerID: r.RunnerID})
+	}
+	c.JSON(http.StatusOK, busyRunnersResponse{Runners: views})
+}
+
 // writeError はエラーレスポンスを JSON で返す。
 func writeError(c *gin.Context, status int, code, message string) {
 	reqID, _ := c.Get(requestIDKey)

@@ -5,6 +5,8 @@ package integration
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +17,13 @@ import (
 	"testing"
 	"time"
 )
+
+// hostnameRunnerID は docker hostname を broker の 32 桁小文字 hex 契約に合わせるための決定的な派生 ID を返す。
+// runner コンテナ自身の crypto/rand ID とは別で、テストが delete+register で管理する idle 枠専用。
+func hostnameRunnerID(hostname string) string {
+	sum := sha256.Sum256([]byte(hostname))
+	return hex.EncodeToString(sum[:16])
+}
 
 // httpClient はテスト用の HTTP クライアント。タイムアウトを設定して CI でのハングを防止する。
 var httpClient = &http.Client{
@@ -146,7 +155,7 @@ func discoverRunnerHostnames() ([]string, error) {
 
 	// 列挙で busy になった全 runner を idle へ戻す (delete+register は resetRunners と同じ確実な手順)。
 	for _, h := range hostnames {
-		if err := deleteFromBroker(brokerBase + "/internal/runners/" + h); err != nil {
+		if err := deleteFromBroker(brokerBase + "/internal/runners/" + hostnameRunnerID(h)); err != nil {
 			return nil, fmt.Errorf("delete runner %s: %w", h, err)
 		}
 		if err := registerRunnerOnBroker(h); err != nil {
@@ -180,7 +189,7 @@ func deleteFromBroker(url string) error {
 
 // registerRunnerOnBroker は runner を broker に登録する。
 func registerRunnerOnBroker(hostname string) error {
-	body := fmt.Sprintf(`{"runnerId":%q,"privateUrl":"http://%s:3000"}`, hostname, hostname)
+	body := fmt.Sprintf(`{"runnerId":%q,"privateUrl":"http://%s:3000"}`, hostnameRunnerID(hostname), hostname)
 	req, err := http.NewRequest(http.MethodPost, brokerBase+"/internal/runners/register", strings.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
@@ -206,7 +215,7 @@ func resetRunners(t *testing.T, sessionID string) {
 		}
 	}
 	for _, h := range runnerHostnames {
-		if err := deleteFromBroker(brokerBase + "/internal/runners/" + h); err != nil {
+		if err := deleteFromBroker(brokerBase + "/internal/runners/" + hostnameRunnerID(h)); err != nil {
 			t.Errorf("delete runner %s: %v", h, err)
 		}
 		if err := registerRunnerOnBroker(h); err != nil {

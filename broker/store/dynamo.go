@@ -3,9 +3,12 @@ package store
 
 import (
 	"context"
+	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"regexp"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -14,43 +17,52 @@ import (
 	"github.com/ogadra/bunshin/broker/model"
 )
 
-// bucketCount は IdleBucket のバケット数。
-// idle runner を複数バケットに分散させ、DynamoDB のホットパーティションを防ぐ。
-const bucketCount = 4
+// item は 1 KB 未満で 0.5 RCU 固定のため Limit 1 と同コスト。stale item が混ざったときに再クエリを避けたいので複数取る。
+const acquireQueryLimit = 5
 
-// DynamoRepository は DynamoDB を使った Repository の実装。
+// AcquireIdle は [minRunnerID, maxRunnerID] の BETWEEN scan で走査するため、この閉区間から外れた runnerId を書き込むと取りこぼす。Register で形式を強制する。
+const (
+	minRunnerID = "00000000000000000000000000000000"
+	maxRunnerID = "ffffffffffffffffffffffffffffffff"
+)
+
+var runnerIDRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
 type DynamoRepository struct {
 	client    DynamoDBAPI
 	tableName string
-	bucketFn  func() string
+	randHexFn func() string
 	marshalFn func(in interface{}) (map[string]types.AttributeValue, error)
 }
 
-// NewDynamoRepository は DynamoRepository を生成する。
 func NewDynamoRepository(client DynamoDBAPI, tableName string) *DynamoRepository {
 	return &DynamoRepository{
 		client:    client,
 		tableName: tableName,
-		bucketFn:  defaultBucketFn,
+		randHexFn: defaultRandHexFn,
 		marshalFn: attributevalue.MarshalMap,
 	}
 }
 
-// defaultBucketFn はランダムなバケット値を返す。
-func defaultBucketFn() string {
-	return fmt.Sprintf("bucket-%d", rand.IntN(bucketCount))
+// 走査開始位置は暗号強度を要求しないので crypto/rand ではなく math/rand/v2 を使う。
+func defaultRandHexFn() string {
+	var b [16]byte
+	binary.LittleEndian.PutUint64(b[:8], rand.Uint64())
+	binary.LittleEndian.PutUint64(b[8:], rand.Uint64())
+	return hex.EncodeToString(b[:])
 }
 
-// Register は runner を idle 状態で登録する。attribute_not_exists で冪等性を確保する。
-// 同一 runnerID で異なる privateURL が登録済みの場合は ErrConflict を返す。
 func (r *DynamoRepository) Register(ctx context.Context, runnerID, privateURL string) error {
+	if !runnerIDRe.MatchString(runnerID) {
+		return ErrInvalidRunnerID
+	}
 	if privateURL == "" {
 		return fmt.Errorf("privateURL must not be empty")
 	}
 
 	item, err := r.marshalFn(model.Runner{
 		RunnerID:   runnerID,
-		IdleBucket: r.bucketFn(),
+		State:      model.StateIdle,
 		PrivateURL: privateURL,
 	})
 	if err != nil {
@@ -79,94 +91,87 @@ func (r *DynamoRepository) Register(ctx context.Context, runnerID, privateURL st
 	return nil
 }
 
-// BucketCount は idle runner のバケット数を返す。
-func (r *DynamoRepository) BucketCount() int {
-	return bucketCount
-}
-
-// idleQueryLimit はバケットクエリで一度に取得する idle runner の最大数。
-// 複数件取得してランダムに選ぶことで同一 runner への競合を分散する。
-const idleQueryLimit = 20
-
-// AcquireIdle は指定バケットから idle runner を1台確保し session を紐づける。
-// バケット内の候補を最大 idleQueryLimit 件取得しランダムな順序で試行する。
-// GSI は eventually consistent なため、assignSession 済みの runner が再度返される場合がある。
-// tried 集合で同一 runner の無限リトライを防止する。
-// sessionID の一意性は呼び出し側が保証する。
-func (r *DynamoRepository) AcquireIdle(ctx context.Context, sessionID string, bucket int) (*model.Runner, error) {
-	bucketKey := fmt.Sprintf("bucket-%d", bucket)
+func (r *DynamoRepository) AcquireIdle(ctx context.Context, sessionID string) (*model.Runner, error) {
 	tried := map[string]struct{}{}
-	for {
-		runners, err := r.queryIdleBucket(ctx, bucketKey)
-		if err != nil {
-			return nil, err
-		}
-		if len(runners) == 0 {
-			return nil, ErrNoIdleRunner
-		}
-		rand.Shuffle(len(runners), func(i, j int) {
-			runners[i], runners[j] = runners[j], runners[i]
-		})
-		progressed := false
-		for i := range runners {
-			runner := &runners[i]
-			if _, seen := tried[runner.RunnerID]; seen {
-				continue
-			}
-			tried[runner.RunnerID] = struct{}{}
-			progressed = true
-			err = r.assignSession(ctx, runner.RunnerID, sessionID)
-			if err == nil {
-				runner.CurrentSessionID = sessionID
-				runner.IdleBucket = ""
-				return runner, nil
-			}
-			if !errors.Is(err, ErrConditionFailed) {
+	start := r.randHexFn()
+	for _, seg := range [][2]string{{start, maxRunnerID}, {minRunnerID, start}} {
+		var exclusiveStart map[string]types.AttributeValue
+		for {
+			runners, next, err := r.queryIdlePage(ctx, seg[0], seg[1], exclusiveStart)
+			if err != nil {
 				return nil, err
 			}
-		}
-		if !progressed {
-			return nil, ErrNoIdleRunner
+			runner, err := r.assignFirst(ctx, sessionID, runners, tried)
+			if runner != nil || err != nil {
+				return runner, err
+			}
+			if len(next) == 0 {
+				break
+			}
+			exclusiveStart = next
 		}
 	}
+	return nil, ErrNoIdleRunner
 }
 
-// queryIdleBucket は指定バケットから idle runner を最大 idleQueryLimit 件取得する。
-func (r *DynamoRepository) queryIdleBucket(ctx context.Context, bucket string) ([]model.Runner, error) {
+func (r *DynamoRepository) assignFirst(ctx context.Context, sessionID string, candidates []model.Runner, tried map[string]struct{}) (*model.Runner, error) {
+	for i := range candidates {
+		runner := &candidates[i]
+		if _, done := tried[runner.RunnerID]; done {
+			continue
+		}
+		err := r.assignSession(ctx, runner.RunnerID, sessionID)
+		if err == nil {
+			runner.State = model.StateBusy
+			runner.CurrentSessionID = sessionID
+			return runner, nil
+		}
+		if !errors.Is(err, ErrConditionFailed) {
+			return nil, err
+		}
+		tried[runner.RunnerID] = struct{}{}
+	}
+	return nil, nil
+}
+
+func (r *DynamoRepository) queryIdlePage(ctx context.Context, lo, hi string, exclusiveStart map[string]types.AttributeValue) ([]model.Runner, map[string]types.AttributeValue, error) {
 	out, err := r.client.Query(ctx, &dynamodb.QueryInput{
-		TableName:              &r.tableName,
-		IndexName:              aws.String("idle-index"),
-		KeyConditionExpression: aws.String("idleBucket = :b"),
+		TableName:                aws.String(r.tableName),
+		IndexName:                aws.String("state-index"),
+		KeyConditionExpression:   aws.String("#s = :s AND runnerId BETWEEN :lo AND :hi"),
+		ExpressionAttributeNames: map[string]string{"#s": "state"},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":b": &types.AttributeValueMemberS{Value: bucket},
+			":s":  &types.AttributeValueMemberS{Value: string(model.StateIdle)},
+			":lo": &types.AttributeValueMemberS{Value: lo},
+			":hi": &types.AttributeValueMemberS{Value: hi},
 		},
-		Limit: aws.Int32(idleQueryLimit),
+		Limit:             aws.Int32(acquireQueryLimit),
+		ExclusiveStartKey: exclusiveStart,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("query idle-index: %w", err)
+		return nil, nil, fmt.Errorf("query state-index: %w", err)
 	}
-	runners := make([]model.Runner, 0, len(out.Items))
-	for _, item := range out.Items {
-		var runner model.Runner
-		if err := attributevalue.UnmarshalMap(item, &runner); err != nil {
-			return nil, fmt.Errorf("unmarshal runner: %w", err)
-		}
-		runners = append(runners, runner)
+	var runners []model.Runner
+	if err := attributevalue.UnmarshalListOfMaps(out.Items, &runners); err != nil {
+		return nil, nil, fmt.Errorf("unmarshal runners: %w", err)
 	}
-	return runners, nil
+	return runners, out.LastEvaluatedKey, nil
 }
 
-// assignSession は runner に session を紐づけ idle から busy に遷移させる。idleBucket が存在する場合のみ成功する。
+// busy 遷移後も state 属性を残すことで GSI item が state-index の busy partition に載り、ListBusyRunners から辿れる。
 func (r *DynamoRepository) assignSession(ctx context.Context, runnerID, sessionID string) error {
 	_, err := r.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName: &r.tableName,
 		Key: map[string]types.AttributeValue{
 			"runnerId": &types.AttributeValueMemberS{Value: runnerID},
 		},
-		UpdateExpression:    aws.String("SET currentSessionId = :sid REMOVE idleBucket"),
-		ConditionExpression: aws.String("attribute_exists(idleBucket)"),
+		UpdateExpression:         aws.String("SET #s = :busy, currentSessionId = :sid"),
+		ConditionExpression:      aws.String("#s = :idle"),
+		ExpressionAttributeNames: map[string]string{"#s": "state"},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":sid": &types.AttributeValueMemberS{Value: sessionID},
+			":sid":  &types.AttributeValueMemberS{Value: sessionID},
+			":idle": &types.AttributeValueMemberS{Value: string(model.StateIdle)},
+			":busy": &types.AttributeValueMemberS{Value: string(model.StateBusy)},
 		},
 	})
 	if err != nil {
@@ -179,7 +184,36 @@ func (r *DynamoRepository) assignSession(ctx context.Context, runnerID, sessionI
 	return nil
 }
 
-// FindBySessionID は session ID から runner を検索する。
+// busy 一覧は管理用の低頻度アクセス前提で全件収まる規模のため、pagination を API に出さず内部で辿り切る。
+func (r *DynamoRepository) ListBusyRunners(ctx context.Context) ([]model.Runner, error) {
+	var all []model.Runner
+	var exclusiveStart map[string]types.AttributeValue
+	for {
+		out, err := r.client.Query(ctx, &dynamodb.QueryInput{
+			TableName:                aws.String(r.tableName),
+			IndexName:                aws.String("state-index"),
+			KeyConditionExpression:   aws.String("#s = :s"),
+			ExpressionAttributeNames: map[string]string{"#s": "state"},
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":s": &types.AttributeValueMemberS{Value: string(model.StateBusy)},
+			},
+			ExclusiveStartKey: exclusiveStart,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("query state-index: %w", err)
+		}
+		var page []model.Runner
+		if err := attributevalue.UnmarshalListOfMaps(out.Items, &page); err != nil {
+			return nil, fmt.Errorf("unmarshal runners: %w", err)
+		}
+		all = append(all, page...)
+		if len(out.LastEvaluatedKey) == 0 {
+			return all, nil
+		}
+		exclusiveStart = out.LastEvaluatedKey
+	}
+}
+
 func (r *DynamoRepository) FindBySessionID(ctx context.Context, sessionID string) (*model.Runner, error) {
 	out, err := r.client.Query(ctx, &dynamodb.QueryInput{
 		TableName:              &r.tableName,
@@ -203,7 +237,6 @@ func (r *DynamoRepository) FindBySessionID(ctx context.Context, sessionID string
 	return &runner, nil
 }
 
-// FindByID は runner ID から runner を検索する。
 func (r *DynamoRepository) FindByID(ctx context.Context, runnerID string) (*model.Runner, error) {
 	out, err := r.client.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: &r.tableName,
@@ -225,7 +258,6 @@ func (r *DynamoRepository) FindByID(ctx context.Context, runnerID string) (*mode
 	return &runner, nil
 }
 
-// Delete は runner レコードを削除する。条件なしで冪等。
 func (r *DynamoRepository) Delete(ctx context.Context, runnerID string) error {
 	_, err := r.client.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: &r.tableName,
@@ -239,7 +271,6 @@ func (r *DynamoRepository) Delete(ctx context.Context, runnerID string) error {
 	return nil
 }
 
-// isConditionalCheckFailed は err が ConditionalCheckFailedException かどうかを判定するヘルパー。
 func isConditionalCheckFailed(err error, target **types.ConditionalCheckFailedException) bool {
 	var condErr *types.ConditionalCheckFailedException
 	if errors.As(err, &condErr) {

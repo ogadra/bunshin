@@ -9,53 +9,38 @@ import (
 	"fmt"
 	"io"
 	"log"
-	mrand "math/rand/v2"
 
 	"github.com/ogadra/bunshin/broker/healthcheck"
 	"github.com/ogadra/bunshin/broker/model"
 	"github.com/ogadra/bunshin/broker/store"
 )
 
-// randReader はセッション ID 生成に使う暗号学的乱数ソース。テスト時に差し替える。
-var randReader io.Reader = rand.Reader
+// テストで差し替えるため package 変数で保持する。
+var (
+	randReader io.Reader = rand.Reader
+	logPrintf            = log.Printf
+)
 
-// logPrintf はログ出力関数。テスト時に差し替える。
-var logPrintf = log.Printf
-
-// Service はブローカーのビジネスロジックを定義するインターフェース。
 type Service interface {
-	// CloseSession はセッションを終了し紐づく runner を削除する。
 	CloseSession(ctx context.Context, sessionID string) error
-	// ResolveSession はセッション ID から runner を解決し、見つからなければ新規作成する。
 	ResolveSession(ctx context.Context, sessionID string) (*ResolveResult, error)
-	// RegisterRunner は runner を idle として登録する。
 	RegisterRunner(ctx context.Context, runnerID, privateURL string) error
-	// DeregisterRunner は runner を削除する。
 	DeregisterRunner(ctx context.Context, runnerID string) error
+	ListBusyRunners(ctx context.Context) ([]model.Runner, error)
 }
 
-// ResolveResult はセッション解決または作成の結果を表す。
 type ResolveResult struct {
-	// SessionID はセッション ID。新規作成時は新しい ID、既存時は入力と同じ値。
-	SessionID string
-	// RunnerURL は runner のプライベート URL。
-	RunnerURL string
-	// Created は新規作成されたかどうかを示す。
-	Created bool
-	// Reassigned はセッションが再割当てされたかどうかを示す。
-	// dead runner 検出により既存セッションが新しい runner に再割当てされた場合に true。
+	SessionID  string
+	RunnerURL  string
+	Created    bool
 	Reassigned bool
 }
 
-// CreateSessionResult はセッション作成の結果を表す。
 type CreateSessionResult struct {
-	// SessionID は作成されたセッション ID。
 	SessionID string
-	// Runner は確保された runner。
-	Runner *model.Runner
+	Runner    *model.Runner
 }
 
-// BrokerService は Service の実装。
 type BrokerService struct {
 	repo        store.Repository
 	stackPrefix string
@@ -63,10 +48,8 @@ type BrokerService struct {
 	sessionFn   func() (string, error)
 }
 
-// Option は BrokerService のオプション関数。
 type Option func(*BrokerService)
 
-// WithSessionFn はセッション ID 生成関数を差し替えるオプション。
 func WithSessionFn(fn func() (string, error)) Option {
 	return func(s *BrokerService) {
 		if fn != nil {
@@ -75,14 +58,12 @@ func WithSessionFn(fn func() (string, error)) Option {
 	}
 }
 
-// WithChecker はヘルスチェッカーを差し替えるオプション。
 func WithChecker(c healthcheck.Checker) Option {
 	return func(s *BrokerService) {
 		s.checker = c
 	}
 }
 
-// NewBrokerService は BrokerService を生成する。
 func NewBrokerService(repo store.Repository, stackPrefix string, opts ...Option) *BrokerService {
 	if stackPrefix == "" {
 		panic("service: stackPrefix must not be empty")
@@ -98,7 +79,6 @@ func NewBrokerService(repo store.Repository, stackPrefix string, opts ...Option)
 	return s
 }
 
-// defaultSessionFn は crypto/rand で 16 バイトの暗号学的ランダム値を生成し hex 32 文字の文字列を返す。
 func defaultSessionFn() (string, error) {
 	b := make([]byte, 16)
 	if _, err := io.ReadFull(randReader, b); err != nil {
@@ -107,46 +87,33 @@ func defaultSessionFn() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// createSession はセッション ID を生成し、全バケットを走査して健全な idle runner を確保しセッションを作成する。
-// checker が nil の場合はヘルスチェックをスキップし最初に見つかった runner を返す。
-// 不健全な runner は削除して同じバケット内で再試行し、バケットが空になったら次のバケットへ移る。
 func (s *BrokerService) createSession(ctx context.Context) (*CreateSessionResult, error) {
 	sessionID, err := s.sessionFn()
 	if err != nil {
 		return nil, err
 	}
 	sessionID = s.stackPrefix + "_" + sessionID
-	bc := s.repo.BucketCount()
-	start := mrand.IntN(bc)
 	check := s.checker != nil
-	for i := range bc {
-		bucket := (start + i) % bc
-		for {
-			runner, err := s.repo.AcquireIdle(ctx, sessionID, bucket)
-			if errors.Is(err, store.ErrNoIdleRunner) {
-				break
-			}
-			if err != nil {
-				return nil, err
-			}
-			if !check {
-				return &CreateSessionResult{SessionID: sessionID, Runner: runner}, nil
-			}
-			if checkErr := s.checker.Check(ctx, runner.PrivateURL); checkErr == nil {
-				return &CreateSessionResult{SessionID: sessionID, Runner: runner}, nil
-			} else if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-			logPrintf("healthcheck failed for runner %s, deleting stale record", runner.RunnerID)
-			if err := s.repo.Delete(ctx, runner.RunnerID); err != nil {
-				return nil, fmt.Errorf("delete unhealthy runner %s: %w", runner.RunnerID, err)
-			}
+	for {
+		runner, err := s.repo.AcquireIdle(ctx, sessionID)
+		if err != nil {
+			return nil, err
+		}
+		if !check {
+			return &CreateSessionResult{SessionID: sessionID, Runner: runner}, nil
+		}
+		if checkErr := s.checker.Check(ctx, runner.PrivateURL); checkErr == nil {
+			return &CreateSessionResult{SessionID: sessionID, Runner: runner}, nil
+		} else if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		logPrintf("healthcheck failed for runner %s, deleting stale record", runner.RunnerID)
+		if err := s.repo.Delete(ctx, runner.RunnerID); err != nil {
+			return nil, fmt.Errorf("delete unhealthy runner %s: %w", runner.RunnerID, err)
 		}
 	}
-	return nil, store.ErrNoIdleRunner
 }
 
-// CloseSession はセッションを終了し紐づく runner を削除する。
 func (s *BrokerService) CloseSession(ctx context.Context, sessionID string) error {
 	runner, err := s.repo.FindBySessionID(ctx, sessionID)
 	if err != nil {
@@ -155,9 +122,6 @@ func (s *BrokerService) CloseSession(ctx context.Context, sessionID string) erro
 	return s.repo.Delete(ctx, runner.RunnerID)
 }
 
-// ResolveSession はセッション ID から runner を解決し、見つからなければ新規作成する。
-// sessionID が空の場合は検索をスキップして即座に新規作成する。
-// 既存 runner が不健全な場合は削除して新規 runner を割り当てる。
 func (s *BrokerService) ResolveSession(ctx context.Context, sessionID string) (*ResolveResult, error) {
 	reassigned := false
 	if sessionID != "" {
@@ -192,12 +156,14 @@ func (s *BrokerService) ResolveSession(ctx context.Context, sessionID string) (*
 	}, nil
 }
 
-// RegisterRunner は runner を idle として登録する。
 func (s *BrokerService) RegisterRunner(ctx context.Context, runnerID, privateURL string) error {
 	return s.repo.Register(ctx, runnerID, privateURL)
 }
 
-// DeregisterRunner は runner を削除する。
 func (s *BrokerService) DeregisterRunner(ctx context.Context, runnerID string) error {
 	return s.repo.Delete(ctx, runnerID)
+}
+
+func (s *BrokerService) ListBusyRunners(ctx context.Context) ([]model.Runner, error) {
+	return s.repo.ListBusyRunners(ctx)
 }
