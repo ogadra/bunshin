@@ -1,4 +1,4 @@
-{ system ? "x86_64-linux" }:
+{ system ? builtins.currentSystem }:
 
 let
   pkgs = import (import ./nixpkgs-pin.nix) {
