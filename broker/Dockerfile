@@ -34,8 +34,9 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /server .
 
 # production image
 FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+ARG TARGETARCH
 RUN adduser -D -H -s /sbin/nologin appuser
-COPY apk-checksums.sha256 /tmp/apks.sha256
+COPY apk-checksums.${TARGETARCH}.sha256 /tmp/apks.sha256
 RUN set -euxo pipefail; \
     mkdir -p /tmp/apks; \
     apk update; \
