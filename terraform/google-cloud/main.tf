@@ -1,4 +1,3 @@
-# Connect Gateway 経由の deploy と Firestore / Artifact Registry / Logging 基盤に必要な API を有効化する
 resource "google_project_service" "apis" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   for_each = toset([

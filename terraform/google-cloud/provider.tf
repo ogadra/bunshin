@@ -1,4 +1,3 @@
-# Terraform と Google Cloud プロバイダのバージョン制約
 terraform {
   required_version = ">= 1.15"
 
