@@ -17,3 +17,23 @@ resource "google_project_service" "apis" {
   disable_dependent_services = false
   disable_on_destroy         = false
 }
+
+module "asne1" {
+  source = "./asne1"
+
+  providers = {
+    google = google.asne1
+  }
+
+  depends_on = [google_project_service.apis]
+}
+
+module "asne2" {
+  source = "./asne2"
+
+  providers = {
+    google = google.asne2
+  }
+
+  depends_on = [google_project_service.apis]
+}

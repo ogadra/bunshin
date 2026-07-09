@@ -19,4 +19,14 @@ provider "google" {}
 
 provider "google-beta" {}
 
+provider "google" {
+  alias  = "asne1"
+  region = "asia-northeast1"
+}
+
+provider "google" {
+  alias  = "asne2"
+  region = "asia-northeast2"
+}
+
 data "google_project" "current" {}
