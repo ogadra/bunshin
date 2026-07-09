@@ -6,7 +6,6 @@ scan:
     - .worktrees
     - /nix/store/*-source
 severity:
-  - UNKNOWN
   - LOW
   - MEDIUM
   - HIGH
