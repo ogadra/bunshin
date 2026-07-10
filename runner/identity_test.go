@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -20,19 +21,25 @@ func stubRandRead(fill byte, err error) func([]byte) (int, error) {
 	}
 }
 
+// stubGetenv returns a getenv func backed by the given key/value map, mirroring
+// os.Getenv's behavior of returning "" for unset keys.
+func stubGetenv(values map[string]string) func(string) string {
+	return func(k string) string { return values[k] }
+}
+
 func TestResolveIdentityECS(t *testing.T) {
 	containerJSON := `{"Networks":[{"IPv4Addresses":["10.0.1.5"]}]}`
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/task" {
-			t.Errorf("unexpected request to /task")
-		}
 		w.Write([]byte(containerJSON))
 	}))
 	defer ts.Close()
 
 	deps := identityDeps{
-		getenv:   func(k string) string { return ts.URL },
+		getenv: stubGetenv(map[string]string{
+			"STACK_NAME":                    "ap-northeast-1",
+			"ECS_CONTAINER_METADATA_URI_V4": ts.URL,
+		}),
 		hostname: func() (string, error) { return "", errors.New("should not be called") },
 		httpGet:  defaultHTTPGet,
 		randRead: stubRandRead(0xab, nil),
@@ -52,9 +59,49 @@ func TestResolveIdentityECS(t *testing.T) {
 	}
 }
 
+func TestResolveIdentityECSApNortheast3(t *testing.T) {
+	containerJSON := `{"Networks":[{"IPv4Addresses":["10.0.1.6"]}]}`
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(containerJSON))
+	}))
+	defer ts.Close()
+
+	deps := identityDeps{
+		getenv: stubGetenv(map[string]string{
+			"STACK_NAME":                    "ap-northeast-3",
+			"ECS_CONTAINER_METADATA_URI_V4": ts.URL,
+		}),
+		httpGet:  defaultHTTPGet,
+		randRead: stubRandRead(0x01, nil),
+		port:     "3000",
+	}
+
+	id, err := resolveIdentity(context.Background(), deps)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id.PrivateURL != "http://10.0.1.6:3000" {
+		t.Errorf("PrivateURL = %q, want %q", id.PrivateURL, "http://10.0.1.6:3000")
+	}
+}
+
+func TestResolveIdentityECSMissingMetadataURI(t *testing.T) {
+	deps := identityDeps{
+		getenv:   stubGetenv(map[string]string{"STACK_NAME": "ap-northeast-1"}),
+		randRead: stubRandRead(0x01, nil),
+		port:     "3000",
+	}
+
+	_, err := resolveIdentity(context.Background(), deps)
+	if err == nil {
+		t.Fatal("expected error when ECS_CONTAINER_METADATA_URI_V4 is missing")
+	}
+}
+
 func TestResolveIdentityRandReadError(t *testing.T) {
 	deps := identityDeps{
-		getenv:   func(k string) string { return "" },
+		getenv:   stubGetenv(map[string]string{"STACK_NAME": "local"}),
 		hostname: func() (string, error) { return "host", nil },
 		randRead: stubRandRead(0, errors.New("no entropy")),
 		port:     "3000",
@@ -68,7 +115,7 @@ func TestResolveIdentityRandReadError(t *testing.T) {
 
 func TestResolveIdentityRandShortRead(t *testing.T) {
 	deps := identityDeps{
-		getenv:   func(k string) string { return "" },
+		getenv:   stubGetenv(map[string]string{"STACK_NAME": "local"}),
 		hostname: func() (string, error) { return "host", nil },
 		randRead: func(b []byte) (int, error) {
 			if len(b) == 0 {
@@ -88,7 +135,10 @@ func TestResolveIdentityRandShortRead(t *testing.T) {
 
 func TestResolveIdentityECSContainerFetchError(t *testing.T) {
 	deps := identityDeps{
-		getenv: func(k string) string { return "http://169.254.170.2/v4" },
+		getenv: stubGetenv(map[string]string{
+			"STACK_NAME":                    "ap-northeast-1",
+			"ECS_CONTAINER_METADATA_URI_V4": "http://169.254.170.2/v4",
+		}),
 		httpGet: func(ctx context.Context, url string) ([]byte, error) {
 			return nil, errors.New("connection refused")
 		},
@@ -104,7 +154,10 @@ func TestResolveIdentityECSContainerFetchError(t *testing.T) {
 
 func TestResolveIdentityECSContainerInvalidJSON(t *testing.T) {
 	deps := identityDeps{
-		getenv: func(k string) string { return "http://169.254.170.2/v4" },
+		getenv: stubGetenv(map[string]string{
+			"STACK_NAME":                    "ap-northeast-1",
+			"ECS_CONTAINER_METADATA_URI_V4": "http://169.254.170.2/v4",
+		}),
 		httpGet: func(ctx context.Context, url string) ([]byte, error) {
 			return []byte("{bad"), nil
 		},
@@ -120,7 +173,10 @@ func TestResolveIdentityECSContainerInvalidJSON(t *testing.T) {
 
 func TestResolveIdentityECSEmptyNetworks(t *testing.T) {
 	deps := identityDeps{
-		getenv: func(k string) string { return "http://169.254.170.2/v4" },
+		getenv: stubGetenv(map[string]string{
+			"STACK_NAME":                    "ap-northeast-1",
+			"ECS_CONTAINER_METADATA_URI_V4": "http://169.254.170.2/v4",
+		}),
 		httpGet: func(ctx context.Context, url string) ([]byte, error) {
 			return []byte(`{"Networks":[]}`), nil
 		},
@@ -136,7 +192,10 @@ func TestResolveIdentityECSEmptyNetworks(t *testing.T) {
 
 func TestResolveIdentityECSEmptyIPv4(t *testing.T) {
 	deps := identityDeps{
-		getenv: func(k string) string { return "http://169.254.170.2/v4" },
+		getenv: stubGetenv(map[string]string{
+			"STACK_NAME":                    "ap-northeast-1",
+			"ECS_CONTAINER_METADATA_URI_V4": "http://169.254.170.2/v4",
+		}),
 		httpGet: func(ctx context.Context, url string) ([]byte, error) {
 			return []byte(`{"Networks":[{"IPv4Addresses":[]}]}`), nil
 		},
@@ -150,9 +209,87 @@ func TestResolveIdentityECSEmptyIPv4(t *testing.T) {
 	}
 }
 
-func TestResolveIdentityHostnameFallback(t *testing.T) {
+func TestResolveIdentityGKEPodIP(t *testing.T) {
 	deps := identityDeps{
-		getenv:   func(k string) string { return "" },
+		getenv: stubGetenv(map[string]string{"STACK_NAME": "asia-northeast1"}),
+		interfaceAddrs: func() ([]net.Addr, error) {
+			return []net.Addr{
+				&net.IPNet{IP: net.ParseIP("127.0.0.1"), Mask: net.CIDRMask(8, 32)},
+				&net.IPNet{IP: net.ParseIP("10.4.0.9"), Mask: net.CIDRMask(24, 32)},
+			}, nil
+		},
+		randRead: stubRandRead(0x02, nil),
+		port:     "3000",
+	}
+
+	id, err := resolveIdentity(context.Background(), deps)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id.PrivateURL != "http://10.4.0.9:3000" {
+		t.Errorf("PrivateURL = %q, want %q", id.PrivateURL, "http://10.4.0.9:3000")
+	}
+}
+
+func TestResolveIdentityGKEAsiaNortheast2(t *testing.T) {
+	deps := identityDeps{
+		getenv: stubGetenv(map[string]string{"STACK_NAME": "asia-northeast2"}),
+		interfaceAddrs: func() ([]net.Addr, error) {
+			return []net.Addr{
+				&net.IPNet{IP: net.ParseIP("10.4.0.10"), Mask: net.CIDRMask(24, 32)},
+			}, nil
+		},
+		randRead: stubRandRead(0x02, nil),
+		port:     "3000",
+	}
+
+	id, err := resolveIdentity(context.Background(), deps)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id.PrivateURL != "http://10.4.0.10:3000" {
+		t.Errorf("PrivateURL = %q, want %q", id.PrivateURL, "http://10.4.0.10:3000")
+	}
+}
+
+func TestResolveIdentityGKEInterfaceAddrsError(t *testing.T) {
+	deps := identityDeps{
+		getenv: stubGetenv(map[string]string{"STACK_NAME": "asia-northeast1"}),
+		interfaceAddrs: func() ([]net.Addr, error) {
+			return nil, errors.New("interface lookup failed")
+		},
+		randRead: stubRandRead(0x02, nil),
+		port:     "3000",
+	}
+
+	_, err := resolveIdentity(context.Background(), deps)
+	if err == nil {
+		t.Fatal("expected error when interfaceAddrs fails")
+	}
+}
+
+func TestResolveIdentityGKENoIPv4(t *testing.T) {
+	deps := identityDeps{
+		getenv: stubGetenv(map[string]string{"STACK_NAME": "asia-northeast1"}),
+		interfaceAddrs: func() ([]net.Addr, error) {
+			return []net.Addr{
+				&net.IPNet{IP: net.ParseIP("127.0.0.1"), Mask: net.CIDRMask(8, 32)},
+				&net.IPNet{IP: net.ParseIP("fe80::1"), Mask: net.CIDRMask(64, 128)},
+			}, nil
+		},
+		randRead: stubRandRead(0x02, nil),
+		port:     "3000",
+	}
+
+	_, err := resolveIdentity(context.Background(), deps)
+	if err == nil {
+		t.Fatal("expected error when no non-loopback IPv4 address is found")
+	}
+}
+
+func TestResolveIdentityLocalHostname(t *testing.T) {
+	deps := identityDeps{
+		getenv:   stubGetenv(map[string]string{"STACK_NAME": "local"}),
 		hostname: func() (string, error) { return "runner-host", nil },
 		httpGet: func(ctx context.Context, url string) ([]byte, error) {
 			return nil, errors.New("should not be called")
@@ -174,9 +311,9 @@ func TestResolveIdentityHostnameFallback(t *testing.T) {
 	}
 }
 
-func TestResolveIdentityHostnameError(t *testing.T) {
+func TestResolveIdentityLocalHostnameError(t *testing.T) {
 	deps := identityDeps{
-		getenv:   func(k string) string { return "" },
+		getenv:   stubGetenv(map[string]string{"STACK_NAME": "local"}),
 		hostname: func() (string, error) { return "", errors.New("no hostname") },
 		randRead: stubRandRead(0x01, nil),
 		port:     "3000",
@@ -185,6 +322,32 @@ func TestResolveIdentityHostnameError(t *testing.T) {
 	_, err := resolveIdentity(context.Background(), deps)
 	if err == nil {
 		t.Fatal("expected error when hostname fails")
+	}
+}
+
+func TestResolveIdentityStackNameMissing(t *testing.T) {
+	deps := identityDeps{
+		getenv:   stubGetenv(nil),
+		randRead: stubRandRead(0x01, nil),
+		port:     "3000",
+	}
+
+	_, err := resolveIdentity(context.Background(), deps)
+	if err == nil {
+		t.Fatal("expected error when STACK_NAME is missing")
+	}
+}
+
+func TestResolveIdentityStackNameUnsupported(t *testing.T) {
+	deps := identityDeps{
+		getenv:   stubGetenv(map[string]string{"STACK_NAME": "us-east-1"}),
+		randRead: stubRandRead(0x01, nil),
+		port:     "3000",
+	}
+
+	_, err := resolveIdentity(context.Background(), deps)
+	if err == nil {
+		t.Fatal("expected error when STACK_NAME is unsupported")
 	}
 }
 
