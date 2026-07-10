@@ -638,4 +638,3 @@ func TestFirestoreRegister_ModelRoundtrip(t *testing.T) {
 		t.Errorf("state = %q, want idle", runner.State)
 	}
 }
-
