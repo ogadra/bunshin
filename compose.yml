@@ -50,22 +50,21 @@ services:
       - test
 
   runner-1:
+    image: bunshin-runner
     build:
       context: runner/
     env_file:
       - runner/.env.example
 
   runner-2:
-    build:
-      context: runner/
+    image: bunshin-runner
     env_file:
       - runner/.env.example
     profiles:
       - integration
 
   integration-test:
-    build:
-      context: integration/
+    image: bunshin-integration
     environment:
       NGINX_URL: "http://nginx:8080"
       BROKER_URL: "http://broker:8080"
@@ -85,6 +84,7 @@ services:
       - integration
 
   forward-cert:
+    image: bunshin-integration
     build:
       context: integration/
     command: ["go", "run", "./cmd/gen-forward-cert"]
@@ -93,8 +93,7 @@ services:
     user: root
 
   forward-target:
-    build:
-      context: integration/
+    image: bunshin-integration
     command: ["go", "run", "./cmd/forward-target"]
     volumes:
       - forward-target-certs:/app/testdata:ro
