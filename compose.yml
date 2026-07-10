@@ -1,5 +1,6 @@
 services:
   nginx:
+    platform: ${IMAGE_PLATFORM}
     build:
       context: nginx/
       args:
@@ -18,7 +19,7 @@ services:
         condition: service_completed_successfully
 
   broker:
-    platform: linux/arm64
+    platform: ${IMAGE_PLATFORM}
     build:
       context: broker/
     ports:
@@ -37,7 +38,7 @@ services:
         condition: service_completed_successfully
 
   broker-test:
-    platform: linux/arm64
+    platform: ${IMAGE_PLATFORM}
     build:
       context: broker/
       target: test-integration
