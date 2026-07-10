@@ -9,6 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/ogadra/bunshin/broker/store"
 )
 
 // setDynamoEnv は dynamodb 経路で必要な env をまとめて設定する。
@@ -157,5 +158,98 @@ func TestNewRepositoryFromEnv_LoadConfigError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "load aws config") {
 		t.Errorf("error = %q, want to contain %q", err.Error(), "load aws config")
+	}
+}
+
+// setFirestoreEnv は firestore 経路で必要な env をまとめて設定する。
+func setFirestoreEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("BUNSHIN_STORE", "firestore")
+	t.Setenv("GOOGLE_CLOUD_PROJECT", "test-project")
+	t.Setenv("FIRESTORE_DATABASE", "test-db")
+}
+
+// saveNewFirestoreRepositoryFn は NewFirestoreRepositoryFn 変数を退避し、テスト終了時に復元する。
+func saveNewFirestoreRepositoryFn(t *testing.T) {
+	t.Helper()
+	orig := NewFirestoreRepositoryFn
+	t.Cleanup(func() { NewFirestoreRepositoryFn = orig })
+}
+
+// fakeFirestoreRepo は firestore 経路の test で NewFirestoreRepositoryFn を差し替えるためのダミー Repository。
+type fakeFirestoreRepo struct{ store.Repository }
+
+// TestNewRepositoryFromEnv_FirestoreSuccess は firestore 経路が env と factory を通って Repository を返すことを検証する。
+func TestNewRepositoryFromEnv_FirestoreSuccess(t *testing.T) {
+	setFirestoreEnv(t)
+	saveNewFirestoreRepositoryFn(t)
+
+	called := false
+	NewFirestoreRepositoryFn = func(_ context.Context, projectID, databaseID string) (store.Repository, error) {
+		called = true
+		if projectID != "test-project" {
+			t.Errorf("projectID = %q, want test-project", projectID)
+		}
+		if databaseID != "test-db" {
+			t.Errorf("databaseID = %q, want test-db", databaseID)
+		}
+		return fakeFirestoreRepo{}, nil
+	}
+
+	repo, err := NewRepositoryFromEnv(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repo == nil {
+		t.Fatal("expected non-nil Repository")
+	}
+	if !called {
+		t.Error("NewFirestoreRepositoryFn was not called")
+	}
+}
+
+// TestNewRepositoryFromEnv_FirestoreFactoryError は firestore factory がエラーを返すケースを検証する。
+func TestNewRepositoryFromEnv_FirestoreFactoryError(t *testing.T) {
+	setFirestoreEnv(t)
+	saveNewFirestoreRepositoryFn(t)
+
+	NewFirestoreRepositoryFn = func(context.Context, string, string) (store.Repository, error) {
+		return nil, errors.New("factory failed")
+	}
+
+	_, err := NewRepositoryFromEnv(context.Background())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "factory failed") {
+		t.Errorf("error = %q, want to contain factory error", err.Error())
+	}
+}
+
+// TestNewRepositoryFromEnv_FirestoreMissingProject は BUNSHIN_STORE=firestore で GOOGLE_CLOUD_PROJECT 未設定時にエラーを返すことを検証する。
+func TestNewRepositoryFromEnv_FirestoreMissingProject(t *testing.T) {
+	setFirestoreEnv(t)
+	t.Setenv("GOOGLE_CLOUD_PROJECT", "")
+
+	_, err := NewRepositoryFromEnv(context.Background())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "GOOGLE_CLOUD_PROJECT") {
+		t.Errorf("error = %q, want to contain GOOGLE_CLOUD_PROJECT", err.Error())
+	}
+}
+
+// TestNewRepositoryFromEnv_FirestoreMissingDatabase は BUNSHIN_STORE=firestore で FIRESTORE_DATABASE 未設定時にエラーを返すことを検証する。
+func TestNewRepositoryFromEnv_FirestoreMissingDatabase(t *testing.T) {
+	setFirestoreEnv(t)
+	t.Setenv("FIRESTORE_DATABASE", "")
+
+	_, err := NewRepositoryFromEnv(context.Background())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "FIRESTORE_DATABASE") {
+		t.Errorf("error = %q, want to contain FIRESTORE_DATABASE", err.Error())
 	}
 }

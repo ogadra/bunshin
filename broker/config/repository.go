@@ -23,11 +23,30 @@ func NewRepositoryFromEnv(ctx context.Context) (store.Repository, error) {
 	switch kind := os.Getenv("BUNSHIN_STORE"); kind {
 	case "dynamodb":
 		return newDynamoFromEnv(ctx)
+	case "firestore":
+		return newFirestoreFromEnv(ctx)
 	case "":
 		return nil, fmt.Errorf("missing required environment variable: BUNSHIN_STORE")
 	default:
-		return nil, fmt.Errorf("unsupported BUNSHIN_STORE %q (expected dynamodb)", kind)
+		return nil, fmt.Errorf("unsupported BUNSHIN_STORE %q (expected dynamodb or firestore)", kind)
 	}
+}
+
+// NewFirestoreRepositoryFn は unit test で本物の Firestore client 生成を差し替えるための注入点。
+var NewFirestoreRepositoryFn = func(ctx context.Context, projectID, databaseID string) (store.Repository, error) {
+	return store.NewFirestoreRepository(ctx, projectID, databaseID)
+}
+
+func newFirestoreFromEnv(ctx context.Context) (store.Repository, error) {
+	projectID := os.Getenv("GOOGLE_CLOUD_PROJECT")
+	if projectID == "" {
+		return nil, fmt.Errorf("missing required environment variable: GOOGLE_CLOUD_PROJECT")
+	}
+	databaseID := os.Getenv("FIRESTORE_DATABASE")
+	if databaseID == "" {
+		return nil, fmt.Errorf("missing required environment variable: FIRESTORE_DATABASE")
+	}
+	return NewFirestoreRepositoryFn(ctx, projectID, databaseID)
 }
 
 func newDynamoFromEnv(ctx context.Context) (store.Repository, error) {

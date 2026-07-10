@@ -5,10 +5,14 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 
+# firestore_stub tag は unit / race stage で real Firestore adapter を除外するために使う。
+# adapter は Firestore SDK の具象型を直接触るため mock 不可で、unit test の 100% coverage が
+# 保てない。integration test では tag を付けず real adapter を emulator で回す。
+
 # test stage
 FROM build AS test
 SHELL ["/bin/ash", "-o", "pipefail", "-c"]
-RUN CGO_ENABLED=0 go test -v -coverpkg=./... -coverprofile=cover.out ./... \
+RUN CGO_ENABLED=0 go test -v -tags=firestore_stub -coverpkg=./... -coverprofile=cover.out ./... \
     && total=$(go tool cover -func=cover.out | grep ^total: | awk '{print $NF}') \
     && echo "Total coverage: ${total}" \
     && test "${total}" = "100.0%" || { echo "FAIL: coverage ${total} is below 100.0%"; exit 1; }
@@ -20,7 +24,7 @@ CMD ["go", "test", "-v", "-count=1", "-tags=integration", "./..."]
 # test with race detector (requires cgo + gcc)
 FROM build AS test-race
 RUN apk add --no-cache gcc musl-dev \
-    && CGO_ENABLED=1 go test -race -v ./...
+    && CGO_ENABLED=1 go test -race -tags=firestore_stub -v ./...
 
 # binary build
 # not FROM build: that stage runs on the target platform, which puts the compiler under QEMU
