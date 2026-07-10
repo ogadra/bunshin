@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -56,18 +57,62 @@ var fatalf = log.Fatalf
 // signalNotify は os/signal.Notify のラッパー。テスト時に差し替える。
 var signalNotify = signal.Notify
 
-// initHandler は DynamoDB クライアントを初期化し Handler を生成する関数。テスト時に差し替える。
+// initHandler はストアクライアントを初期化し Handler を生成する関数。テスト時に差し替える。
 var initHandler = defaultInitHandler
 
 // loadAWSConfig は AWS SDK の設定をロードする関数。テスト時に差し替える。
 var loadAWSConfig = config.LoadDefaultConfig
 
-var newBrokerService = func(repo store.Repository, region string, checker healthcheck.Checker) service.Service {
-	return service.NewBrokerService(repo, region, service.WithChecker(checker))
+var newBrokerService = func(repo store.Repository, stack string, checker healthcheck.Checker) service.Service {
+	return service.NewBrokerService(repo, stack, service.WithChecker(checker))
 }
 
-// defaultInitHandler は環境変数から DynamoDB クライアントを構築し Handler を返す。
+// defaultInitHandler は環境変数から Repository を構築し Handler を返す。
 func defaultInitHandler() (*handler.Handler, error) {
+	stack := os.Getenv("STACK_NAME")
+	if stack == "" {
+		return nil, fmt.Errorf("missing required environment variable: STACK_NAME")
+	}
+	stackList := os.Getenv("BUNSHIN_STACKS")
+	if err := verifyStackInList(stack, stackList); err != nil {
+		return nil, err
+	}
+
+	repo, err := newRepositoryFromEnv(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	checker := healthcheck.NewHTTPChecker(&http.Client{Timeout: 3 * time.Second})
+	svc := newBrokerService(repo, stack, checker)
+	return handler.NewHandler(svc, handler.FallbackStacksFromStackList(stackList, stack)), nil
+}
+
+// verifyStackInList は BUNSHIN_STACKS が設定されている場合に STACK_NAME がその中に含まれることを検証する。
+// BUNSHIN_STACKS 未設定 (single stack 想定) は許容する。
+func verifyStackInList(stack, rawList string) error {
+	if rawList == "" {
+		return nil
+	}
+	for _, s := range strings.Split(rawList, ",") {
+		if strings.TrimSpace(s) == stack {
+			return nil
+		}
+	}
+	return fmt.Errorf("STACK_NAME %q is not listed in BUNSHIN_STACKS %q", stack, rawList)
+}
+
+func newRepositoryFromEnv(ctx context.Context) (store.Repository, error) {
+	switch kind := os.Getenv("BUNSHIN_STORE"); kind {
+	case "dynamodb":
+		return newDynamoRepositoryFromEnv(ctx)
+	case "":
+		return nil, fmt.Errorf("missing required environment variable: BUNSHIN_STORE")
+	default:
+		return nil, fmt.Errorf("unsupported BUNSHIN_STORE %q (expected dynamodb)", kind)
+	}
+}
+
+func newDynamoRepositoryFromEnv(ctx context.Context) (store.Repository, error) {
 	region := os.Getenv("AWS_REGION")
 	if region == "" {
 		return nil, fmt.Errorf("missing required environment variable: AWS_REGION")
@@ -85,29 +130,19 @@ func defaultInitHandler() (*handler.Handler, error) {
 	if accessKey != "" {
 		opts = append(opts, config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")))
 	}
-
-	ctx := context.Background()
 	cfg, err := loadAWSConfig(ctx, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("load aws config: %w", err)
 	}
 
-	endpoint := os.Getenv("DYNAMODB_ENDPOINT")
 	var ddbOpts []func(*dynamodb.Options)
-	if endpoint != "" {
+	if endpoint := os.Getenv("DYNAMODB_ENDPOINT"); endpoint != "" {
 		ddbOpts = append(ddbOpts, func(o *dynamodb.Options) {
 			o.BaseEndpoint = aws.String(endpoint)
 		})
 	}
 	client := dynamodb.NewFromConfig(cfg, ddbOpts...)
-	repo := store.NewDynamoRepository(client, "bunshin-runners")
-	checker := healthcheck.NewHTTPChecker(&http.Client{Timeout: 3 * time.Second})
-	svc := newBrokerService(repo, region, checker)
-	return handler.NewHandler(svc, fallbackStacks(region)), nil
-}
-
-func fallbackStacks(self string) []string {
-	return handler.FallbackStacksFromStackList(os.Getenv("BUNSHIN_STACKS"), self)
+	return store.NewDynamoRepository(client, "bunshin-runners"), nil
 }
 
 // run はサーバーの起動とグレースフルシャットダウンを行う。

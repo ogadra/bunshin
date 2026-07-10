@@ -22,6 +22,17 @@ import (
 	"github.com/ogadra/bunshin/broker/store"
 )
 
+// setDynamoEnv は dynamodb 経路で必要な env をまとめて設定する。
+func setDynamoEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("STACK_NAME", "ap-northeast-1")
+	t.Setenv("BUNSHIN_STORE", "dynamodb")
+	t.Setenv("DYNAMODB_ENDPOINT", "http://localhost:18000")
+	t.Setenv("AWS_REGION", "ap-northeast-1")
+	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "localdev")
+}
+
 // saveAndRestore は全てのパッケージレベル変数を退避し、テスト終了時に復元する。
 func saveAndRestore(t *testing.T) {
 	t.Helper()
@@ -102,7 +113,6 @@ func TestRunListenError(t *testing.T) {
 	stdout = io.Discard
 	shutdownTimeout = 1 * time.Second
 
-	// ポートを占有してリッスンエラーを発生させる
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	defer srv.Close()
 	addr = srv.Listener.Addr().String()
@@ -163,11 +173,7 @@ func TestRunInitHandlerError(t *testing.T) {
 // TestDefaultInitHandler は defaultInitHandler が全環境変数指定時に Handler を返すことを検証する。
 func TestDefaultInitHandler(t *testing.T) {
 	saveAndRestore(t)
-
-	t.Setenv("DYNAMODB_ENDPOINT", "http://localhost:18000")
-	t.Setenv("AWS_REGION", "ap-northeast-1")
-	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "localdev")
+	setDynamoEnv(t)
 
 	h, err := defaultInitHandler()
 	if err != nil {
@@ -194,9 +200,9 @@ func (fakeNoIdleService) ListBusyRunners(context.Context) ([]model.Runner, error
 func TestDefaultInitHandler_FallbackSignal(t *testing.T) {
 	origNewBrokerService := newBrokerService
 	t.Cleanup(func() { newBrokerService = origNewBrokerService })
-	newBrokerService = func(_ store.Repository, region string, checker healthcheck.Checker) service.Service {
-		if region != "ap-northeast-1" {
-			t.Errorf("region = %q, want %q", region, "ap-northeast-1")
+	newBrokerService = func(_ store.Repository, stack string, checker healthcheck.Checker) service.Service {
+		if stack != "ap-northeast-1" {
+			t.Errorf("stack = %q, want %q", stack, "ap-northeast-1")
 		}
 		if checker == nil {
 			t.Error("checker is nil")
@@ -204,10 +210,7 @@ func TestDefaultInitHandler_FallbackSignal(t *testing.T) {
 		return fakeNoIdleService{}
 	}
 
-	t.Setenv("DYNAMODB_ENDPOINT", "http://localhost:18000")
-	t.Setenv("AWS_REGION", "ap-northeast-1")
-	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "localdev")
+	setDynamoEnv(t)
 	t.Setenv("BUNSHIN_STACKS", "ap-northeast-1,ap-northeast-3")
 
 	h, err := defaultInitHandler()
@@ -230,10 +233,76 @@ func TestDefaultInitHandler_FallbackSignal(t *testing.T) {
 	}
 }
 
-// TestDefaultInitHandler_MissingRegion は AWS_REGION が未設定時にエラーを返すことを検証する。
+// TestDefaultInitHandler_MissingStack は STACK_NAME 未設定時にエラーを返すことを検証する。
+func TestDefaultInitHandler_MissingStack(t *testing.T) {
+	saveAndRestore(t)
+
+	t.Setenv("STACK_NAME", "")
+
+	_, err := defaultInitHandler()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "STACK_NAME") {
+		t.Errorf("error = %q, want to contain %q", err.Error(), "STACK_NAME")
+	}
+}
+
+// TestDefaultInitHandler_StackNotInList は STACK_NAME が BUNSHIN_STACKS の列挙外なら起動失敗することを検証する。
+func TestDefaultInitHandler_StackNotInList(t *testing.T) {
+	saveAndRestore(t)
+	setDynamoEnv(t)
+
+	t.Setenv("STACK_NAME", "ap-northeast-1")
+	t.Setenv("BUNSHIN_STACKS", "ap-northeast-2,ap-northeast-3")
+
+	_, err := defaultInitHandler()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "BUNSHIN_STACKS") {
+		t.Errorf("error = %q, want to mention BUNSHIN_STACKS", err.Error())
+	}
+}
+
+// TestDefaultInitHandler_MissingStore は BUNSHIN_STORE 未設定時にエラーを返すことを検証する。
+func TestDefaultInitHandler_MissingStore(t *testing.T) {
+	saveAndRestore(t)
+
+	t.Setenv("STACK_NAME", "ap-northeast-1")
+	t.Setenv("BUNSHIN_STORE", "")
+
+	_, err := defaultInitHandler()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "BUNSHIN_STORE") {
+		t.Errorf("error = %q, want to contain BUNSHIN_STORE", err.Error())
+	}
+}
+
+// TestDefaultInitHandler_UnsupportedStore は BUNSHIN_STORE の値が未対応の場合にエラーを返すことを検証する。
+func TestDefaultInitHandler_UnsupportedStore(t *testing.T) {
+	saveAndRestore(t)
+
+	t.Setenv("STACK_NAME", "ap-northeast-1")
+	t.Setenv("BUNSHIN_STORE", "cassandra")
+
+	_, err := defaultInitHandler()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "cassandra") {
+		t.Errorf("error = %q, want to mention unsupported store", err.Error())
+	}
+}
+
+// TestDefaultInitHandler_MissingRegion は BUNSHIN_STORE=dynamodb で AWS_REGION が未設定時にエラーを返すことを検証する。
 func TestDefaultInitHandler_MissingRegion(t *testing.T) {
 	saveAndRestore(t)
 
+	t.Setenv("STACK_NAME", "ap-northeast-1")
+	t.Setenv("BUNSHIN_STORE", "dynamodb")
 	t.Setenv("AWS_REGION", "")
 
 	_, err := defaultInitHandler()
@@ -248,9 +317,8 @@ func TestDefaultInitHandler_MissingRegion(t *testing.T) {
 // TestDefaultInitHandler_WithoutStaticCredentials は静的クレデンシャルなしでも Handler を返すことを検証する。
 func TestDefaultInitHandler_WithoutStaticCredentials(t *testing.T) {
 	saveAndRestore(t)
+	setDynamoEnv(t)
 
-	t.Setenv("DYNAMODB_ENDPOINT", "http://localhost:18000")
-	t.Setenv("AWS_REGION", "ap-northeast-1")
 	t.Setenv("AWS_ACCESS_KEY_ID", "")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "")
 
@@ -266,11 +334,9 @@ func TestDefaultInitHandler_WithoutStaticCredentials(t *testing.T) {
 // TestDefaultInitHandler_WithoutEndpoint は DYNAMODB_ENDPOINT なしでも Handler を返すことを検証する。
 func TestDefaultInitHandler_WithoutEndpoint(t *testing.T) {
 	saveAndRestore(t)
+	setDynamoEnv(t)
 
 	t.Setenv("DYNAMODB_ENDPOINT", "")
-	t.Setenv("AWS_REGION", "ap-northeast-1")
-	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "localdev")
 
 	h, err := defaultInitHandler()
 	if err != nil {
@@ -284,8 +350,8 @@ func TestDefaultInitHandler_WithoutEndpoint(t *testing.T) {
 // TestDefaultInitHandler_PartialCredentials は片側のクレデンシャルのみ設定時にエラーを返すことを検証する。
 func TestDefaultInitHandler_PartialCredentials(t *testing.T) {
 	saveAndRestore(t)
+	setDynamoEnv(t)
 
-	t.Setenv("AWS_REGION", "ap-northeast-1")
 	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "")
 
@@ -301,11 +367,8 @@ func TestDefaultInitHandler_PartialCredentials(t *testing.T) {
 // TestNewRouter_WithHandler は handler が non-nil の場合に全ルートが登録されることを検証する。
 func TestNewRouter_WithHandler(t *testing.T) {
 	saveAndRestore(t)
+	setDynamoEnv(t)
 
-	t.Setenv("DYNAMODB_ENDPOINT", "http://localhost:18000")
-	t.Setenv("AWS_REGION", "ap-northeast-1")
-	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "localdev")
 	h, err := defaultInitHandler()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -333,11 +396,8 @@ func TestNewRouter_WithHandler(t *testing.T) {
 // TestDefaultInitHandler_LoadConfigError は AWS config ロードが失敗した場合にエラーを返すことを検証する。
 func TestDefaultInitHandler_LoadConfigError(t *testing.T) {
 	saveAndRestore(t)
+	setDynamoEnv(t)
 
-	t.Setenv("DYNAMODB_ENDPOINT", "http://localhost:18000")
-	t.Setenv("AWS_REGION", "ap-northeast-1")
-	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "localdev")
 	loadAWSConfig = func(_ context.Context, _ ...func(*config.LoadOptions) error) (aws.Config, error) {
 		return aws.Config{}, errors.New("config load failed")
 	}
@@ -358,7 +418,6 @@ func TestMainServerError(t *testing.T) {
 	stdout = io.Discard
 	shutdownTimeout = 1 * time.Second
 
-	// ポートを占有してリッスンエラーを発生させる
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	defer srv.Close()
 	addr = srv.Listener.Addr().String()
