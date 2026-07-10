@@ -5,8 +5,6 @@ services:
       args:
         NGINX_RESOLVER: 127.0.0.11
         BROKER_HOST: broker
-      cache_from:
-        - type=gha,scope=nginx
     ports:
       - "${NGINX_PORT}:8080"
     volumes:
@@ -23,8 +21,6 @@ services:
     platform: linux/arm64
     build:
       context: broker/
-      cache_from:
-        - type=gha,scope=broker
     ports:
       - "${BROKER_PORT}:8080"
     env_file:
@@ -45,8 +41,6 @@ services:
     build:
       context: broker/
       target: test-integration
-      cache_from:
-        - type=gha,scope=broker
     env_file:
       - broker/.env.example
     depends_on:
@@ -58,16 +52,12 @@ services:
   runner-1:
     build:
       context: runner/
-      cache_from:
-        - type=gha,scope=runner
     env_file:
       - runner/.env.example
 
   runner-2:
     build:
       context: runner/
-      cache_from:
-        - type=gha,scope=runner
     env_file:
       - runner/.env.example
     profiles:
@@ -76,8 +66,6 @@ services:
   integration-test:
     build:
       context: integration/
-      cache_from:
-        - type=gha,scope=integration
     environment:
       NGINX_URL: "http://nginx:8080"
       BROKER_URL: "http://broker:8080"
