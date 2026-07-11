@@ -14,6 +14,28 @@ resource "google_storage_bucket" "static" {
     enabled = true
   }
 
+  soft_delete_policy {
+    retention_duration_seconds = 0
+  }
+
+  lifecycle_rule {
+    action {
+      type = "Delete"
+    }
+    condition {
+      days_since_noncurrent_time = 7
+    }
+  }
+
+  lifecycle_rule {
+    action {
+      type = "AbortIncompleteMultipartUpload"
+    }
+    condition {
+      age = 1
+    }
+  }
+
   uniform_bucket_level_access = true
   public_access_prevention    = "enforced"
 
