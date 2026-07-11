@@ -196,6 +196,7 @@ resource "aws_ecs_task_definition" "runner" {
 
     environment = [
       { name = "AWS_REGION", value = data.aws_region.current.region },
+      { name = "STACK_NAME", value = data.aws_region.current.region },
       { name = "RUNNER_PORT", value = tostring(local.ecs_services["runner"].port) },
       { name = "BROKER_URL", value = "http://${aws_service_discovery_service.broker.name}.${aws_service_discovery_private_dns_namespace.internal.name}:${local.ecs_services["broker"].port}" },
     ]

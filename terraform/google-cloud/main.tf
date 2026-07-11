@@ -5,6 +5,7 @@ resource "google_project_service" "apis" {
     "cloudresourcemanager.googleapis.com",
     "compute.googleapis.com",
     "dns.googleapis.com",
+    "firestore.googleapis.com",
     "iam.googleapis.com",
     "logging.googleapis.com",
   ])

@@ -19,6 +19,7 @@ import (
 
 func TestMainSuccess(t *testing.T) {
 	t.Setenv("RUNNER_PORT", "3000")
+	t.Setenv("STACK_NAME", "local")
 
 	registered := make(chan registerRequest, 1)
 	broker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -468,6 +469,7 @@ func TestRunShutdownTimeout(t *testing.T) {
 // leftover SIGTERM signals from other tests canceling the registration context.
 func TestStartAndShutdown(t *testing.T) {
 	t.Setenv("BROKER_URL", "http://dummy:8080")
+	t.Setenv("STACK_NAME", "local")
 
 	origReg := registerFn
 	defer func() { registerFn = origReg }()
@@ -596,6 +598,7 @@ func TestStartEphemeralPort(t *testing.T) {
 // BROKER_URL is not set.
 func TestStartMissingBrokerURL(t *testing.T) {
 	t.Setenv("BROKER_URL", "")
+	t.Setenv("STACK_NAME", "local")
 
 	err := start("127.0.0.1:0")
 	if err == nil {
@@ -610,6 +613,7 @@ func TestStartMissingBrokerURL(t *testing.T) {
 // broker registration fails.
 func TestStartRegisterError(t *testing.T) {
 	t.Setenv("BROKER_URL", "http://broker:8080")
+	t.Setenv("STACK_NAME", "local")
 
 	orig := registerFn
 	defer func() { registerFn = orig }()
@@ -631,6 +635,7 @@ func TestStartRegisterError(t *testing.T) {
 // when a termination signal is received during the registration phase.
 func TestStartRegisterCanceledBySignal(t *testing.T) {
 	t.Setenv("BROKER_URL", "http://broker:8080")
+	t.Setenv("STACK_NAME", "local")
 
 	orig := registerFn
 	defer func() { registerFn = orig }()
@@ -656,6 +661,7 @@ func TestStartRegisterReceivesBrokerURL(t *testing.T) {
 	}))
 	defer broker.Close()
 	t.Setenv("BROKER_URL", broker.URL)
+	t.Setenv("STACK_NAME", "local")
 
 	orig := registerFn
 	defer func() { registerFn = orig }()

@@ -6,7 +6,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+)
+
+// stackName values for privateURL resolution. There is intentionally no
+// default: an unset or unrecognized STACK_NAME must fail startup rather than
+// silently pick a resolution strategy.
+const (
+	stackAPNortheast1   = "ap-northeast-1"
+	stackAPNortheast3   = "ap-northeast-3"
+	stackAsiaNortheast1 = "asia-northeast1"
+	stackAsiaNortheast2 = "asia-northeast2"
+	stackLocal          = "local"
 )
 
 // Identity holds the runner registration parameters resolved at startup.
@@ -19,11 +31,12 @@ type Identity struct {
 
 // identityDeps holds injectable dependencies for identity resolution.
 type identityDeps struct {
-	getenv   func(string) string
-	hostname func() (string, error)
-	httpGet  func(ctx context.Context, url string) ([]byte, error)
-	randRead func([]byte) (int, error)
-	port     string
+	getenv         func(string) string
+	hostname       func() (string, error)
+	httpGet        func(ctx context.Context, url string) ([]byte, error)
+	interfaceAddrs func() ([]net.Addr, error)
+	randRead       func([]byte) (int, error)
+	port           string
 }
 
 // ecsNetwork represents a single network attachment in ECS container metadata.
@@ -66,13 +79,24 @@ func generateRunnerID(randRead func([]byte) (int, error)) (string, error) {
 }
 
 func resolvePrivateURL(ctx context.Context, deps identityDeps) (string, error) {
-	if ecsURI := deps.getenv("ECS_CONTAINER_METADATA_URI_V4"); ecsURI != "" {
-		return privateURLFromECS(ctx, deps, ecsURI)
+	stackName := deps.getenv("STACK_NAME")
+	switch stackName {
+	case stackAPNortheast1, stackAPNortheast3:
+		return privateURLFromECS(ctx, deps)
+	case stackAsiaNortheast1, stackAsiaNortheast2:
+		return privateURLFromPodIP(deps)
+	case stackLocal:
+		return privateURLFromHostname(deps)
+	default:
+		return "", fmt.Errorf("unsupported STACK_NAME: %q", stackName)
 	}
-	return privateURLFromHostname(deps)
 }
 
-func privateURLFromECS(ctx context.Context, deps identityDeps, ecsURI string) (string, error) {
+func privateURLFromECS(ctx context.Context, deps identityDeps) (string, error) {
+	ecsURI := deps.getenv("ECS_CONTAINER_METADATA_URI_V4")
+	if ecsURI == "" {
+		return "", fmt.Errorf("missing required environment variable: ECS_CONTAINER_METADATA_URI_V4")
+	}
 	body, err := deps.httpGet(ctx, ecsURI)
 	if err != nil {
 		return "", fmt.Errorf("fetch ECS container metadata: %w", err)
@@ -85,6 +109,26 @@ func privateURLFromECS(ctx context.Context, deps identityDeps, ecsURI string) (s
 		return "", fmt.Errorf("no IPv4 address in ECS container metadata")
 	}
 	return "http://" + container.Networks[0].IPv4Addresses[0] + ":" + deps.port, nil
+}
+
+// privateURLFromPodIP resolves the runner's own address on GKE, where there is
+// no metadata endpoint analogous to ECS: the Pod's IP is only observable from
+// inside the container via its network interfaces.
+func privateURLFromPodIP(deps identityDeps) (string, error) {
+	addrs, err := deps.interfaceAddrs()
+	if err != nil {
+		return "", fmt.Errorf("get interface addresses: %w", err)
+	}
+	for _, addr := range addrs {
+		ipNet, ok := addr.(*net.IPNet)
+		if !ok || ipNet.IP.IsLoopback() {
+			continue
+		}
+		if ip4 := ipNet.IP.To4(); ip4 != nil {
+			return "http://" + ip4.String() + ":" + deps.port, nil
+		}
+	}
+	return "", fmt.Errorf("no non-loopback IPv4 address found")
 }
 
 func privateURLFromHostname(deps identityDeps) (string, error) {
