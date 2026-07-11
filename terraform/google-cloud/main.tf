@@ -1,5 +1,5 @@
 resource "google_project_service" "apis" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   for_each = toset([
     "artifactregistry.googleapis.com",
     "cloudresourcemanager.googleapis.com",

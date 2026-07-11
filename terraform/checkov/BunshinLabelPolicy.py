@@ -1,4 +1,4 @@
-"""Custom Checkov policy to enforce Project=Bunshin tag on AWS taggable resources."""
+"""Custom Checkov policy to enforce project=bunshin label on Google Cloud labelable resources."""
 
 from typing import Any
 
@@ -6,32 +6,32 @@ from checkov.terraform.checks.resource.base_resource_check import BaseResourceCh
 from checkov.common.models.enums import CheckCategories, CheckResult
 
 
-class BunshinTagPolicy(BaseResourceCheck):
-    """Ensure AWS taggable resources have the Project=Bunshin tag for cost management."""
+class BunshinLabelPolicy(BaseResourceCheck):
+    """Ensure Google Cloud labelable resources have the project=bunshin label for cost management."""
 
     def __init__(self) -> None:
         """Initialize the check with ID, supported resources, and category."""
-        name = "Ensure Project=Bunshin tag is present on AWS resources"
-        check_id = "CKV_BUNSHIN_1"
+        name = "Ensure project=bunshin label is present on Google Cloud resources"
+        check_id = "CKV_BUNSHIN_2"
         supported_resources = ["*"]
         categories = [CheckCategories.CONVENTION]
         super().__init__(name=name, id=check_id, categories=categories, supported_resources=supported_resources)
 
     def scan_resource_conf(self, conf: dict[str, list[Any]]) -> CheckResult:
-        """Check that the AWS resource has a Project=Bunshin tag."""
-        if not getattr(self, "entity_type", "").startswith("aws_"):
+        """Check that the Google Cloud resource has a project=bunshin label."""
+        if not getattr(self, "entity_type", "").startswith("google_"):
             return CheckResult.PASSED
-        tags = conf.get("tags", [{}])
-        if isinstance(tags, list):
-            tags = tags[0] if tags else {}
-        if not isinstance(tags, dict):
+        labels = conf.get("labels", [{}])
+        if isinstance(labels, list):
+            labels = labels[0] if labels else {}
+        if not isinstance(labels, dict):
             return CheckResult.UNKNOWN
-        project_value = tags.get("Project", "")
+        project_value = labels.get("project", "")
         if isinstance(project_value, list) and project_value:
             project_value = project_value[0]
-        if project_value == "Bunshin":
+        if project_value == "bunshin":
             return CheckResult.PASSED
         return CheckResult.FAILED
 
 
-check = BunshinTagPolicy()
+check = BunshinLabelPolicy()
