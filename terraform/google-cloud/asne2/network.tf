@@ -1,6 +1,5 @@
 resource "google_compute_network" "bunshin" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
-  # checkov:skip=CKV2_GCP_18:Firewall rules are added only when a reachability source exists
   name                    = "bunshin-asne2-vpc"
   auto_create_subnetworks = false
   routing_mode            = "REGIONAL"
