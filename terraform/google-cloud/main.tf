@@ -8,6 +8,7 @@ resource "google_project_service" "apis" {
     "firestore.googleapis.com",
     "iam.googleapis.com",
     "logging.googleapis.com",
+    "storage.googleapis.com",
   ])
 
   project = data.google_project.current.project_id
