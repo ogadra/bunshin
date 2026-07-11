@@ -1,12 +1,12 @@
 resource "google_compute_network" "bunshin" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   name                    = "bunshin-asne1-vpc"
   auto_create_subnetworks = false
   routing_mode            = "REGIONAL"
 }
 
 resource "google_compute_subnetwork" "workload" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   name          = "bunshin-asne1-workload"
   region        = local.region
   network       = google_compute_network.bunshin.id
@@ -34,7 +34,7 @@ resource "google_compute_subnetwork" "workload" {
 
 # trivy:ignore:AVD-GCP-0075 -- REGIONAL_MANAGED_PROXY subnets host Envoy proxies only and cannot enable Private Google Access
 resource "google_compute_subnetwork" "proxy_only" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   name          = "bunshin-asne1-proxy-only"
   region        = local.region
   network       = google_compute_network.bunshin.id
@@ -44,14 +44,14 @@ resource "google_compute_subnetwork" "proxy_only" {
 }
 
 resource "google_compute_router" "bunshin" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   name    = "bunshin-asne1-router"
   region  = local.region
   network = google_compute_network.bunshin.id
 }
 
 resource "google_compute_router_nat" "bunshin" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   name                               = "bunshin-asne1-nat"
   router                             = google_compute_router.bunshin.name
   region                             = local.region

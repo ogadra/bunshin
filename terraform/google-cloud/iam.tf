@@ -1,5 +1,5 @@
 resource "google_service_account" "broker" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   account_id   = "bunshin-broker"
   display_name = "bunshin broker (Workload Identity)"
 
@@ -7,7 +7,7 @@ resource "google_service_account" "broker" {
 }
 
 resource "google_project_iam_member" "broker_datastore_user" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   project = data.google_project.current.project_id
   role    = "roles/datastore.user"
   member  = google_service_account.broker.member
