@@ -1,5 +1,5 @@
 resource "google_firestore_database" "runners" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   name                              = "bunshin-runners-asne2"
   location_id                       = "asia-northeast2"
   type                              = "FIRESTORE_NATIVE"
