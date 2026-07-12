@@ -32,7 +32,7 @@ func setDynamoEnv(t *testing.T) {
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "localdev")
 }
 
-// saveAndRestore は全てのパッケージレベル変数を退避し、テスト終了時に復元する。
+// saveAndRestore は server lifecycle 用のパッケージレベル変数を退避し、テスト終了時に復元する。
 func saveAndRestore(t *testing.T) {
 	t.Helper()
 	origStdout := stdout
@@ -40,17 +40,17 @@ func saveAndRestore(t *testing.T) {
 	origShutdownTimeout := shutdownTimeout
 	origFatalf := fatalf
 	origSignalNotify := signalNotify
-	origInitHandler := initHandler
 	t.Cleanup(func() {
 		stdout = origStdout
 		addr = origAddr
 		shutdownTimeout = origShutdownTimeout
 		fatalf = origFatalf
 		signalNotify = origSignalNotify
-		initHandler = origInitHandler
 	})
-	initHandler = func() (*handler.Handler, error) { return nil, nil }
 }
+
+// noopInit は init 失敗を再現しない no-op initHandler。
+func noopInit() (*handler.Handler, error) { return nil, nil }
 
 // TestHealthEndpoint は GET /health が 200 OK を返すことを検証する。
 func TestHealthEndpoint(t *testing.T) {
@@ -85,7 +85,7 @@ func TestRunGracefulShutdown(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- run()
+		done <- run(noopInit)
 	}()
 
 	time.Sleep(100 * time.Millisecond)
@@ -116,7 +116,7 @@ func TestRunListenError(t *testing.T) {
 
 	signalNotify = func(c chan<- os.Signal, _ ...os.Signal) {}
 
-	err := run()
+	err := run(noopInit)
 	if err == nil {
 		t.Error("expected error, got nil")
 	}
@@ -125,6 +125,7 @@ func TestRunListenError(t *testing.T) {
 // TestMainSuccess は main がサーバー起動後シグナルで正常終了することを検証する。
 func TestMainSuccess(t *testing.T) {
 	saveAndRestore(t)
+	setDynamoEnv(t)
 
 	stdout = io.Discard
 	addr = ":0"
@@ -149,16 +150,14 @@ func TestMainSuccess(t *testing.T) {
 	<-done
 }
 
-// TestRunInitHandlerError は initHandler がエラーを返す場合に run がエラーを返すことを検証する。
+// TestRunInitHandlerError は init 関数がエラーを返す場合に run がエラーを返すことを検証する。
 func TestRunInitHandlerError(t *testing.T) {
 	saveAndRestore(t)
 
 	stdout = io.Discard
-	initHandler = func() (*handler.Handler, error) {
-		return nil, errors.New("init failed")
-	}
+	errInit := func() (*handler.Handler, error) { return nil, errors.New("init failed") }
 
-	err := run()
+	err := run(errInit)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -169,7 +168,6 @@ func TestRunInitHandlerError(t *testing.T) {
 
 // TestDefaultInitHandler は defaultInitHandler が全環境変数指定時に Handler を返すことを検証する。
 func TestDefaultInitHandler(t *testing.T) {
-	saveAndRestore(t)
 	setDynamoEnv(t)
 
 	h, err := defaultInitHandler()
@@ -208,7 +206,6 @@ func TestDefaultInitHandler_FallbackSignal(t *testing.T) {
 	}
 
 	setDynamoEnv(t)
-	t.Setenv("BUNSHIN_STACKS", "ap-northeast-1,ap-northeast-3")
 
 	h, err := defaultInitHandler()
 	if err != nil {
@@ -230,10 +227,8 @@ func TestDefaultInitHandler_FallbackSignal(t *testing.T) {
 	}
 }
 
-// TestDefaultInitHandler_MissingStack は STACK_NAME 未設定時にエラーを返すことを検証する。
-func TestDefaultInitHandler_MissingStack(t *testing.T) {
-	saveAndRestore(t)
-
+// TestDefaultInitHandler_StackError は config.NewStackFromEnv がエラーを返す場合に defaultInitHandler が伝播することを検証する。
+func TestDefaultInitHandler_StackError(t *testing.T) {
 	t.Setenv("STACK_NAME", "")
 
 	_, err := defaultInitHandler()
@@ -241,47 +236,12 @@ func TestDefaultInitHandler_MissingStack(t *testing.T) {
 		t.Fatal("expected error")
 	}
 	if !strings.Contains(err.Error(), "STACK_NAME") {
-		t.Errorf("error = %q, want to contain %q", err.Error(), "STACK_NAME")
-	}
-}
-
-// TestDefaultInitHandler_StackNotInList は STACK_NAME が BUNSHIN_STACKS の列挙外なら起動失敗することを検証する。
-func TestDefaultInitHandler_StackNotInList(t *testing.T) {
-	saveAndRestore(t)
-	setDynamoEnv(t)
-
-	t.Setenv("STACK_NAME", "ap-northeast-1")
-	t.Setenv("BUNSHIN_STACKS", "ap-northeast-2,ap-northeast-3")
-
-	_, err := defaultInitHandler()
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !strings.Contains(err.Error(), "BUNSHIN_STACKS") {
-		t.Errorf("error = %q, want to mention BUNSHIN_STACKS", err.Error())
-	}
-}
-
-// TestDefaultInitHandler_MissingStacks は BUNSHIN_STACKS 未設定時にエラーを返すことを検証する。
-func TestDefaultInitHandler_MissingStacks(t *testing.T) {
-	saveAndRestore(t)
-	setDynamoEnv(t)
-
-	t.Setenv("BUNSHIN_STACKS", "")
-
-	_, err := defaultInitHandler()
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !strings.Contains(err.Error(), "BUNSHIN_STACKS") {
-		t.Errorf("error = %q, want to mention BUNSHIN_STACKS", err.Error())
+		t.Errorf("error = %q, want to propagate stack error", err.Error())
 	}
 }
 
 // TestDefaultInitHandler_RepositoryError は config.NewRepositoryFromEnv がエラーを返す場合に defaultInitHandler が伝播することを検証する。
 func TestDefaultInitHandler_RepositoryError(t *testing.T) {
-	saveAndRestore(t)
-
 	t.Setenv("STACK_NAME", "ap-northeast-1")
 	t.Setenv("BUNSHIN_STACKS", "ap-northeast-1")
 	t.Setenv("BUNSHIN_STORE", "")
@@ -291,13 +251,12 @@ func TestDefaultInitHandler_RepositoryError(t *testing.T) {
 		t.Fatal("expected error")
 	}
 	if !strings.Contains(err.Error(), "BUNSHIN_STORE") {
-		t.Errorf("error = %q, want to propagate config error, got %q", err.Error(), "BUNSHIN_STORE")
+		t.Errorf("error = %q, want to propagate repository error", err.Error())
 	}
 }
 
 // TestNewRouter_WithHandler は handler が non-nil の場合に全ルートが登録されることを検証する。
 func TestNewRouter_WithHandler(t *testing.T) {
-	saveAndRestore(t)
 	setDynamoEnv(t)
 
 	h, err := defaultInitHandler()
@@ -327,6 +286,7 @@ func TestNewRouter_WithHandler(t *testing.T) {
 // TestMainServerError は main がサーバー起動失敗時に fatalf を呼ぶことを検証する。
 func TestMainServerError(t *testing.T) {
 	saveAndRestore(t)
+	setDynamoEnv(t)
 
 	stdout = io.Discard
 	shutdownTimeout = 1 * time.Second
