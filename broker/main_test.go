@@ -26,6 +26,7 @@ import (
 func setDynamoEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("STACK_NAME", "ap-northeast-1")
+	t.Setenv("BUNSHIN_STACKS", "ap-northeast-1,ap-northeast-3")
 	t.Setenv("BUNSHIN_STORE", "dynamodb")
 	t.Setenv("DYNAMODB_ENDPOINT", "http://localhost:18000")
 	t.Setenv("AWS_REGION", "ap-northeast-1")
@@ -265,11 +266,28 @@ func TestDefaultInitHandler_StackNotInList(t *testing.T) {
 	}
 }
 
+// TestDefaultInitHandler_MissingStacks は BUNSHIN_STACKS 未設定時にエラーを返すことを検証する。
+func TestDefaultInitHandler_MissingStacks(t *testing.T) {
+	saveAndRestore(t)
+	setDynamoEnv(t)
+
+	t.Setenv("BUNSHIN_STACKS", "")
+
+	_, err := defaultInitHandler()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "BUNSHIN_STACKS") {
+		t.Errorf("error = %q, want to mention BUNSHIN_STACKS", err.Error())
+	}
+}
+
 // TestDefaultInitHandler_MissingStore は BUNSHIN_STORE 未設定時にエラーを返すことを検証する。
 func TestDefaultInitHandler_MissingStore(t *testing.T) {
 	saveAndRestore(t)
 
 	t.Setenv("STACK_NAME", "ap-northeast-1")
+	t.Setenv("BUNSHIN_STACKS", "ap-northeast-1")
 	t.Setenv("BUNSHIN_STORE", "")
 
 	_, err := defaultInitHandler()
@@ -286,6 +304,7 @@ func TestDefaultInitHandler_UnsupportedStore(t *testing.T) {
 	saveAndRestore(t)
 
 	t.Setenv("STACK_NAME", "ap-northeast-1")
+	t.Setenv("BUNSHIN_STACKS", "ap-northeast-1")
 	t.Setenv("BUNSHIN_STORE", "cassandra")
 
 	_, err := defaultInitHandler()
@@ -302,6 +321,7 @@ func TestDefaultInitHandler_MissingRegion(t *testing.T) {
 	saveAndRestore(t)
 
 	t.Setenv("STACK_NAME", "ap-northeast-1")
+	t.Setenv("BUNSHIN_STACKS", "ap-northeast-1")
 	t.Setenv("BUNSHIN_STORE", "dynamodb")
 	t.Setenv("AWS_REGION", "")
 

@@ -74,6 +74,9 @@ func defaultInitHandler() (*handler.Handler, error) {
 		return nil, fmt.Errorf("missing required environment variable: STACK_NAME")
 	}
 	stackList := os.Getenv("BUNSHIN_STACKS")
+	if stackList == "" {
+		return nil, fmt.Errorf("missing required environment variable: BUNSHIN_STACKS")
+	}
 	if err := verifyStackInList(stack, stackList); err != nil {
 		return nil, err
 	}
@@ -87,12 +90,8 @@ func defaultInitHandler() (*handler.Handler, error) {
 	return handler.NewHandler(svc, handler.FallbackStacksFromStackList(stackList, stack)), nil
 }
 
-// verifyStackInList は BUNSHIN_STACKS が設定されている場合に STACK_NAME がその中に含まれることを検証する。
-// BUNSHIN_STACKS 未設定 (single stack 想定) は許容する。
+// verifyStackInList は STACK_NAME が BUNSHIN_STACKS の中に含まれることを検証する。
 func verifyStackInList(stack, rawList string) error {
-	if rawList == "" {
-		return nil
-	}
 	for _, s := range strings.Split(rawList, ",") {
 		if strings.TrimSpace(s) == stack {
 			return nil
