@@ -131,14 +131,26 @@ func splitStacks(raw string) []string {
 	return stacks
 }
 
-func FallbackStacksFromStackList(raw, self string) []string {
-	stacks := []string{}
+// ParseStackList は BUNSHIN_STACKS のカンマ区切り値を 1 パスで走査し、
+// self を除いた fallback 一覧と self が列挙に含まれていたかを返す。
+// self 判定と fallback 抽出を別実装にすると format 変更時に片方だけ更新される
+// リスクがあるため、両操作を単一関数に集約している。
+func ParseStackList(raw, self string) (fallbacks []string, containsSelf bool) {
+	fallbacks = []string{}
 	for _, s := range splitStacks(raw) {
-		if s != self {
-			stacks = append(stacks, s)
+		if s == self {
+			containsSelf = true
+			continue
 		}
+		fallbacks = append(fallbacks, s)
 	}
-	return stacks
+	return
+}
+
+// FallbackStacksFromStackList は self を除いた fallback 一覧のみを返す ParseStackList のラッパー。
+func FallbackStacksFromStackList(raw, self string) []string {
+	fallbacks, _ := ParseStackList(raw, self)
+	return fallbacks
 }
 
 // runner の PrivateURL が http スキームの host[:port] 形式であることを検証する。

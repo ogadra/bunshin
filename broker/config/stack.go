@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/ogadra/bunshin/broker/handler"
 )
@@ -27,20 +26,12 @@ func NewStackFromEnv() (StackConfig, error) {
 	if rawList == "" {
 		return StackConfig{}, fmt.Errorf("missing required environment variable: BUNSHIN_STACKS")
 	}
-	if !stackListed(rawList, self) {
+	fallbacks, containsSelf := handler.ParseStackList(rawList, self)
+	if !containsSelf {
 		return StackConfig{}, fmt.Errorf("STACK_NAME %q is not listed in BUNSHIN_STACKS %q", self, rawList)
 	}
 	return StackConfig{
 		Self:      self,
-		Fallbacks: handler.FallbackStacksFromStackList(rawList, self),
+		Fallbacks: fallbacks,
 	}, nil
-}
-
-func stackListed(rawList, self string) bool {
-	for _, s := range strings.Split(rawList, ",") {
-		if strings.TrimSpace(s) == self {
-			return true
-		}
-	}
-	return false
 }
