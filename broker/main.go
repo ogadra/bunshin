@@ -13,11 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/gin-gonic/gin"
+	"github.com/ogadra/bunshin/broker/config"
 	"github.com/ogadra/bunshin/broker/handler"
 	"github.com/ogadra/bunshin/broker/healthcheck"
 	"github.com/ogadra/bunshin/broker/service"
@@ -60,14 +57,13 @@ var signalNotify = signal.Notify
 // initHandler はストアクライアントを初期化し Handler を生成する関数。テスト時に差し替える。
 var initHandler = defaultInitHandler
 
-// loadAWSConfig は AWS SDK の設定をロードする関数。テスト時に差し替える。
-var loadAWSConfig = config.LoadDefaultConfig
-
+// newBrokerService は BrokerService コンストラクタ。テスト時に差し替える。
 var newBrokerService = func(repo store.Repository, stack string, checker healthcheck.Checker) service.Service {
 	return service.NewBrokerService(repo, stack, service.WithChecker(checker))
 }
 
-// defaultInitHandler は環境変数から Repository を構築し Handler を返す。
+// defaultInitHandler は環境変数を解決して Handler を組み立てる。
+// 具体的な store 選択と client 生成は broker/config が担う。
 func defaultInitHandler() (*handler.Handler, error) {
 	stack := os.Getenv("STACK_NAME")
 	if stack == "" {
@@ -81,7 +77,7 @@ func defaultInitHandler() (*handler.Handler, error) {
 		return nil, err
 	}
 
-	repo, err := newRepositoryFromEnv(context.Background())
+	repo, err := config.NewRepositoryFromEnv(context.Background())
 	if err != nil {
 		return nil, err
 	}
@@ -98,50 +94,6 @@ func verifyStackInList(stack, rawList string) error {
 		}
 	}
 	return fmt.Errorf("STACK_NAME %q is not listed in BUNSHIN_STACKS %q", stack, rawList)
-}
-
-func newRepositoryFromEnv(ctx context.Context) (store.Repository, error) {
-	switch kind := os.Getenv("BUNSHIN_STORE"); kind {
-	case "dynamodb":
-		return newDynamoRepositoryFromEnv(ctx)
-	case "":
-		return nil, fmt.Errorf("missing required environment variable: BUNSHIN_STORE")
-	default:
-		return nil, fmt.Errorf("unsupported BUNSHIN_STORE %q (expected dynamodb)", kind)
-	}
-}
-
-func newDynamoRepositoryFromEnv(ctx context.Context) (store.Repository, error) {
-	region := os.Getenv("AWS_REGION")
-	if region == "" {
-		return nil, fmt.Errorf("missing required environment variable: AWS_REGION")
-	}
-
-	accessKey := os.Getenv("AWS_ACCESS_KEY_ID")
-	secretKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
-	if (accessKey == "") != (secretKey == "") {
-		return nil, fmt.Errorf("AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must both be set or both be empty")
-	}
-
-	opts := []func(*config.LoadOptions) error{
-		config.WithRegion(region),
-	}
-	if accessKey != "" {
-		opts = append(opts, config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")))
-	}
-	cfg, err := loadAWSConfig(ctx, opts...)
-	if err != nil {
-		return nil, fmt.Errorf("load aws config: %w", err)
-	}
-
-	var ddbOpts []func(*dynamodb.Options)
-	if endpoint := os.Getenv("DYNAMODB_ENDPOINT"); endpoint != "" {
-		ddbOpts = append(ddbOpts, func(o *dynamodb.Options) {
-			o.BaseEndpoint = aws.String(endpoint)
-		})
-	}
-	client := dynamodb.NewFromConfig(cfg, ddbOpts...)
-	return store.NewDynamoRepository(client, "bunshin-runners"), nil
 }
 
 // run はサーバーの起動とグレースフルシャットダウンを行う。

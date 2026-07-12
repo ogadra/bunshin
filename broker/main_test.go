@@ -13,8 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/ogadra/bunshin/broker/handler"
 	"github.com/ogadra/bunshin/broker/healthcheck"
 	"github.com/ogadra/bunshin/broker/model"
@@ -43,7 +41,6 @@ func saveAndRestore(t *testing.T) {
 	origFatalf := fatalf
 	origSignalNotify := signalNotify
 	origInitHandler := initHandler
-	origLoadAWSConfig := loadAWSConfig
 	t.Cleanup(func() {
 		stdout = origStdout
 		addr = origAddr
@@ -51,7 +48,6 @@ func saveAndRestore(t *testing.T) {
 		fatalf = origFatalf
 		signalNotify = origSignalNotify
 		initHandler = origInitHandler
-		loadAWSConfig = origLoadAWSConfig
 	})
 	initHandler = func() (*handler.Handler, error) { return nil, nil }
 }
@@ -282,8 +278,8 @@ func TestDefaultInitHandler_MissingStacks(t *testing.T) {
 	}
 }
 
-// TestDefaultInitHandler_MissingStore は BUNSHIN_STORE 未設定時にエラーを返すことを検証する。
-func TestDefaultInitHandler_MissingStore(t *testing.T) {
+// TestDefaultInitHandler_RepositoryError は config.NewRepositoryFromEnv がエラーを返す場合に defaultInitHandler が伝播することを検証する。
+func TestDefaultInitHandler_RepositoryError(t *testing.T) {
 	saveAndRestore(t)
 
 	t.Setenv("STACK_NAME", "ap-northeast-1")
@@ -295,92 +291,7 @@ func TestDefaultInitHandler_MissingStore(t *testing.T) {
 		t.Fatal("expected error")
 	}
 	if !strings.Contains(err.Error(), "BUNSHIN_STORE") {
-		t.Errorf("error = %q, want to contain BUNSHIN_STORE", err.Error())
-	}
-}
-
-// TestDefaultInitHandler_UnsupportedStore は BUNSHIN_STORE の値が未対応の場合にエラーを返すことを検証する。
-func TestDefaultInitHandler_UnsupportedStore(t *testing.T) {
-	saveAndRestore(t)
-
-	t.Setenv("STACK_NAME", "ap-northeast-1")
-	t.Setenv("BUNSHIN_STACKS", "ap-northeast-1")
-	t.Setenv("BUNSHIN_STORE", "cassandra")
-
-	_, err := defaultInitHandler()
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !strings.Contains(err.Error(), "cassandra") {
-		t.Errorf("error = %q, want to mention unsupported store", err.Error())
-	}
-}
-
-// TestDefaultInitHandler_MissingRegion は BUNSHIN_STORE=dynamodb で AWS_REGION が未設定時にエラーを返すことを検証する。
-func TestDefaultInitHandler_MissingRegion(t *testing.T) {
-	saveAndRestore(t)
-
-	t.Setenv("STACK_NAME", "ap-northeast-1")
-	t.Setenv("BUNSHIN_STACKS", "ap-northeast-1")
-	t.Setenv("BUNSHIN_STORE", "dynamodb")
-	t.Setenv("AWS_REGION", "")
-
-	_, err := defaultInitHandler()
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !strings.Contains(err.Error(), "AWS_REGION") {
-		t.Errorf("error = %q, want to contain %q", err.Error(), "AWS_REGION")
-	}
-}
-
-// TestDefaultInitHandler_WithoutStaticCredentials は静的クレデンシャルなしでも Handler を返すことを検証する。
-func TestDefaultInitHandler_WithoutStaticCredentials(t *testing.T) {
-	saveAndRestore(t)
-	setDynamoEnv(t)
-
-	t.Setenv("AWS_ACCESS_KEY_ID", "")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "")
-
-	h, err := defaultInitHandler()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if h == nil {
-		t.Fatal("expected non-nil handler")
-	}
-}
-
-// TestDefaultInitHandler_WithoutEndpoint は DYNAMODB_ENDPOINT なしでも Handler を返すことを検証する。
-func TestDefaultInitHandler_WithoutEndpoint(t *testing.T) {
-	saveAndRestore(t)
-	setDynamoEnv(t)
-
-	t.Setenv("DYNAMODB_ENDPOINT", "")
-
-	h, err := defaultInitHandler()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if h == nil {
-		t.Fatal("expected non-nil handler")
-	}
-}
-
-// TestDefaultInitHandler_PartialCredentials は片側のクレデンシャルのみ設定時にエラーを返すことを検証する。
-func TestDefaultInitHandler_PartialCredentials(t *testing.T) {
-	saveAndRestore(t)
-	setDynamoEnv(t)
-
-	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "")
-
-	_, err := defaultInitHandler()
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !strings.Contains(err.Error(), "AWS_ACCESS_KEY_ID") || !strings.Contains(err.Error(), "AWS_SECRET_ACCESS_KEY") {
-		t.Errorf("error = %q, want to mention both credential keys", err.Error())
+		t.Errorf("error = %q, want to propagate config error, got %q", err.Error(), "BUNSHIN_STORE")
 	}
 }
 
@@ -410,24 +321,6 @@ func TestNewRouter_WithHandler(t *testing.T) {
 	}
 	for key := range expected {
 		t.Errorf("missing route: %s", key)
-	}
-}
-
-// TestDefaultInitHandler_LoadConfigError は AWS config ロードが失敗した場合にエラーを返すことを検証する。
-func TestDefaultInitHandler_LoadConfigError(t *testing.T) {
-	saveAndRestore(t)
-	setDynamoEnv(t)
-
-	loadAWSConfig = func(_ context.Context, _ ...func(*config.LoadOptions) error) (aws.Config, error) {
-		return aws.Config{}, errors.New("config load failed")
-	}
-
-	_, err := defaultInitHandler()
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !strings.Contains(err.Error(), "load aws config") {
-		t.Errorf("error = %q, want to contain %q", err.Error(), "load aws config")
 	}
 }
 
