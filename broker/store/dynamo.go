@@ -77,14 +77,7 @@ func (r *DynamoRepository) Register(ctx context.Context, runnerID, privateURL st
 	if err != nil {
 		var condErr *types.ConditionalCheckFailedException
 		if isConditionalCheckFailed(err, &condErr) {
-			existing, findErr := r.FindByID(ctx, runnerID)
-			if findErr != nil {
-				return fmt.Errorf("find existing runner: %w", findErr)
-			}
-			if existing.PrivateURL != privateURL {
-				return ErrConflict
-			}
-			return nil
+			return ErrConflict
 		}
 		return fmt.Errorf("put item: %w", err)
 	}
