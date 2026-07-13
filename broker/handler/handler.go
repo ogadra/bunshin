@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/ogadra/bunshin/broker/model"
 	"github.com/ogadra/bunshin/broker/service"
+	"github.com/ogadra/bunshin/broker/stacklist"
 	"github.com/ogadra/bunshin/broker/store"
 )
 
@@ -91,7 +92,7 @@ func (h *Handler) GetResolve(c *gin.Context) {
 func (h *Handler) signalFallback(c *gin.Context) {
 	pool := h.fallbackStacks
 	if c.GetHeader(fallbackStackHeader) != "" {
-		pool = splitStacks(c.GetHeader(fallbackRemainingHeader))
+		pool = stacklist.Split(c.GetHeader(fallbackRemainingHeader))
 	}
 	if len(pool) == 0 {
 		log.Printf("fallback_signal unavailable request_id=%s session_id=%s", requestID(c), sessionCookie(c))
@@ -119,38 +120,6 @@ func requestID(c *gin.Context) string {
 func sessionCookie(c *gin.Context) string {
 	sessionID, _ := c.Cookie(sessionIDCookie)
 	return sessionID
-}
-
-func splitStacks(raw string) []string {
-	var stacks []string
-	for _, s := range strings.Split(raw, ",") {
-		if s = strings.TrimSpace(s); s != "" {
-			stacks = append(stacks, s)
-		}
-	}
-	return stacks
-}
-
-// ParseStackList は BUNSHIN_STACKS のカンマ区切り値を 1 パスで走査し、
-// self を除いた fallback 一覧と self が列挙に含まれていたかを返す。
-// self 判定と fallback 抽出を別実装にすると format 変更時に片方だけ更新される
-// リスクがあるため、両操作を単一関数に集約している。
-func ParseStackList(raw, self string) (fallbacks []string, containsSelf bool) {
-	fallbacks = []string{}
-	for _, s := range splitStacks(raw) {
-		if s == self {
-			containsSelf = true
-			continue
-		}
-		fallbacks = append(fallbacks, s)
-	}
-	return
-}
-
-// FallbackStacksFromStackList は self を除いた fallback 一覧のみを返す ParseStackList のラッパー。
-func FallbackStacksFromStackList(raw, self string) []string {
-	fallbacks, _ := ParseStackList(raw, self)
-	return fallbacks
 }
 
 // runner の PrivateURL が http スキームの host[:port] 形式であることを検証する。
