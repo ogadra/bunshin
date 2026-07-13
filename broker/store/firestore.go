@@ -22,10 +22,6 @@ const (
 	fieldCurrentSessionID = "currentSessionId"
 )
 
-// errFirestoreDocExists は firestoreDB.Create が既存 doc を検出した内部シグナル。
-// Repository が FindByID による conflict / idempotent 判定に分岐するためだけに使う。
-var errFirestoreDocExists = errors.New("firestore: doc already exists")
-
 // runnerDoc は Firestore の runners document の内部表現。
 // CurrentSessionID の空文字列は Firestore 上の null (idle) に対応する。
 type runnerDoc struct {
@@ -83,23 +79,7 @@ func (r *FirestoreRepository) Register(ctx context.Context, runnerID, privateURL
 	if privateURL == "" {
 		return fmt.Errorf("privateURL must not be empty")
 	}
-
-	err := r.db.Create(ctx, runnerID, privateURL)
-	if err == nil {
-		return nil
-	}
-	if !errors.Is(err, errFirestoreDocExists) {
-		return err
-	}
-
-	existing, findErr := r.FindByID(ctx, runnerID)
-	if findErr != nil {
-		return fmt.Errorf("find existing runner: %w", findErr)
-	}
-	if existing.PrivateURL != privateURL {
-		return ErrConflict
-	}
-	return nil
+	return r.db.Create(ctx, runnerID, privateURL)
 }
 
 func (r *FirestoreRepository) AcquireIdle(ctx context.Context, sessionID string) (*model.Runner, error) {

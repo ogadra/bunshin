@@ -38,7 +38,7 @@ func (c *firestoreClient) Create(ctx context.Context, docID, privateURL string) 
 	})
 	if err != nil {
 		if status.Code(err) == codes.AlreadyExists {
-			return errFirestoreDocExists
+			return ErrConflict
 		}
 		return fmt.Errorf("firestore create: %w", err)
 	}

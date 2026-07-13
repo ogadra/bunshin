@@ -191,45 +191,15 @@ func TestFirestoreRegister_Success(t *testing.T) {
 	}
 }
 
-// TestFirestoreRegister_AlreadyExists_Idempotent は同一 privateURL の再登録が冪等に成功することを検証する。
-func TestFirestoreRegister_AlreadyExists_Idempotent(t *testing.T) {
+// TestFirestoreRegister_Conflict は Create が ErrConflict を返した場合にそのまま伝播することを検証する。
+func TestFirestoreRegister_Conflict(t *testing.T) {
 	t.Parallel()
 	repo := newFirestoreRepoForTest(&mockFirestoreDB{
-		createFn: func(context.Context, string, string) error { return errFirestoreDocExists },
-		getFn: func(_ context.Context, docID string) (*runnerDoc, error) {
-			return &runnerDoc{RunnerID: docID, PrivateURL: "http://10.0.0.1:8080"}, nil
-		},
-	})
-	if err := repo.Register(context.Background(), firestoreTestRunnerID, "http://10.0.0.1:8080"); err != nil {
-		t.Fatalf("expected nil for idempotent register, got: %v", err)
-	}
-}
-
-// TestFirestoreRegister_AlreadyExists_Conflict は異なる privateURL の再登録が ErrConflict を返すことを検証する。
-func TestFirestoreRegister_AlreadyExists_Conflict(t *testing.T) {
-	t.Parallel()
-	repo := newFirestoreRepoForTest(&mockFirestoreDB{
-		createFn: func(context.Context, string, string) error { return errFirestoreDocExists },
-		getFn: func(_ context.Context, docID string) (*runnerDoc, error) {
-			return &runnerDoc{RunnerID: docID, PrivateURL: "http://10.0.0.1:8080"}, nil
-		},
-	})
-	err := repo.Register(context.Background(), firestoreTestRunnerID, "http://10.0.0.2:9090")
-	if !errors.Is(err, ErrConflict) {
-		t.Fatalf("expected ErrConflict, got: %v", err)
-	}
-}
-
-// TestFirestoreRegister_AlreadyExists_FindByIDError は AlreadyExists 後に FindByID がエラーを返すケースを検証する。
-func TestFirestoreRegister_AlreadyExists_FindByIDError(t *testing.T) {
-	t.Parallel()
-	repo := newFirestoreRepoForTest(&mockFirestoreDB{
-		createFn: func(context.Context, string, string) error { return errFirestoreDocExists },
-		getFn:    func(context.Context, string) (*runnerDoc, error) { return nil, errors.New("get error") },
+		createFn: func(context.Context, string, string) error { return ErrConflict },
 	})
 	err := repo.Register(context.Background(), firestoreTestRunnerID, "http://10.0.0.1:8080")
-	if err == nil {
-		t.Fatal("expected error")
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("expected ErrConflict, got: %v", err)
 	}
 }
 
