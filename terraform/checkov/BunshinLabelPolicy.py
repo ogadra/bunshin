@@ -21,7 +21,8 @@ class BunshinLabelPolicy(BaseResourceCheck):
         """Check that the Google Cloud resource has a project=bunshin label."""
         if not getattr(self, "entity_type", "").startswith("google_"):
             return CheckResult.PASSED
-        labels = conf.get("labels", [{}])
+        # GKE 系 resource は API 側で `resource_labels` を使うため、そのフィールドも同義に扱う
+        labels = conf.get("labels") or conf.get("resource_labels") or [{}]
         if isinstance(labels, list):
             labels = labels[0] if labels else {}
         if not isinstance(labels, dict):
