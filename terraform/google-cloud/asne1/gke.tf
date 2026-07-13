@@ -4,6 +4,7 @@ resource "google_container_cluster" "bunshin" {
   # checkov:skip=CKV_GCP_12:NetworkPolicy is enforced by Dataplane V2 on Autopilot; explicit network_policy block is not settable
   # checkov:skip=CKV_GCP_13:Autopilot disables client certificate authentication by default
   # checkov:skip=CKV_GCP_20:IP endpoints are disabled entirely; master authorized networks does not apply
+  # checkov:skip=CKV_GCP_61:VPC Flow Logs are enabled on the workload subnet in P4-b; intranode visibility is managed by Autopilot and cannot be set explicitly
   # checkov:skip=CKV_GCP_65:RBAC binds Google identities directly (P4-h); Google Groups is optional and not adopted
   # checkov:skip=CKV_GCP_66:Binary Authorization is out of scope; image trust is managed via Artifact Registry lifecycle
   # checkov:skip=CKV_GCP_69:Autopilot enables the Workload Identity metadata server by default
@@ -44,9 +45,6 @@ resource "google_container_cluster" "bunshin" {
       enable_relay   = true
     }
   }
-
-  # 同一 node 内の Pod-to-Pod 通信も VPC を経由させ、subnetwork flow log の対象に含める
-  enable_intranode_visibility = true
 
   resource_labels = local.common_labels
 
