@@ -41,8 +41,8 @@ func TestIntegration_RegisterAndFindByID(t *testing.T) {
 	}
 }
 
-// TestIntegration_RegisterConflict は既存 runnerId の再登録が privateURL によらず ErrConflict を返す統合テスト。
-func TestIntegration_RegisterConflict(t *testing.T) {
+// TestIntegration_RegisterConflict_SamePrivateURL は既存 runnerId への同一 privateURL 再登録が ErrConflict を返す統合テスト。
+func TestIntegration_RegisterConflict_SamePrivateURL(t *testing.T) {
 	t.Parallel()
 	client, tableName := setupIntegrationTable(t)
 	repo := NewDynamoRepository(client, tableName)
@@ -53,6 +53,23 @@ func TestIntegration_RegisterConflict(t *testing.T) {
 		t.Fatalf("first Register: %v", err)
 	}
 	err := repo.Register(ctx, "11111111111111111111111111111111", "http://10.0.0.1:8080")
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("expected ErrConflict, got: %v", err)
+	}
+}
+
+// TestIntegration_RegisterConflict_DifferentPrivateURL は既存 runnerId への異なる privateURL 再登録が ErrConflict を返す統合テスト。
+func TestIntegration_RegisterConflict_DifferentPrivateURL(t *testing.T) {
+	t.Parallel()
+	client, tableName := setupIntegrationTable(t)
+	repo := NewDynamoRepository(client, tableName)
+
+	ctx := context.Background()
+
+	if err := repo.Register(ctx, "11111111111111111111111111111111", "http://10.0.0.1:8080"); err != nil {
+		t.Fatalf("first Register: %v", err)
+	}
+	err := repo.Register(ctx, "11111111111111111111111111111111", "http://10.0.0.2:9090")
 	if !errors.Is(err, ErrConflict) {
 		t.Fatalf("expected ErrConflict, got: %v", err)
 	}
