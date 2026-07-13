@@ -54,16 +54,33 @@ func TestNewRepositoryFromEnv_MissingStore(t *testing.T) {
 	}
 }
 
-// TestNewRepositoryFromEnv_UnsupportedStore は BUNSHIN_STORE の値が未対応時にエラーを返すことを検証する。
+// TestNewRepositoryFromEnv_UnsupportedStore は BUNSHIN_STORE の値が未対応時に
+// 完全一致判定で fail-fast することを検証する。空白付き・大文字違いも
+// dynamodb には fold されない。
 func TestNewRepositoryFromEnv_UnsupportedStore(t *testing.T) {
-	t.Setenv("BUNSHIN_STORE", "cassandra")
-
-	_, err := NewRepositoryFromEnv(context.Background())
-	if err == nil {
-		t.Fatal("expected error")
+	tests := []struct {
+		name  string
+		store string
+	}{
+		{"other engine", "cassandra"},
+		{"with surrounding spaces", " dynamodb "},
+		{"different case", "DynamoDB"},
 	}
-	if !strings.Contains(err.Error(), "cassandra") {
-		t.Errorf("error = %q, want to mention unsupported store", err.Error())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("BUNSHIN_STORE", tt.store)
+
+			_, err := NewRepositoryFromEnv(context.Background())
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if !strings.Contains(err.Error(), "unsupported BUNSHIN_STORE") {
+				t.Errorf("error = %q, want unsupported BUNSHIN_STORE", err.Error())
+			}
+			if !strings.Contains(err.Error(), tt.store) {
+				t.Errorf("error = %q, want to include %q", err.Error(), tt.store)
+			}
+		})
 	}
 }
 
