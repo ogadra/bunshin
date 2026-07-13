@@ -20,8 +20,9 @@ func Split(raw string) []string {
 // Parse は raw を 1 パスで走査し、self を除いた fallback 一覧と self が列挙に含まれていたかを返す。
 // self 判定と fallback 抽出を別実装にすると format 変更時に片方だけ更新される
 // リスクがあるため、両操作を単一関数に集約している。
-func Parse(raw, self string) (fallbacks []string, containsSelf bool) {
-	fallbacks = []string{}
+func Parse(raw, self string) ([]string, bool) {
+	fallbacks := []string{}
+	containsSelf := false
 	for _, s := range Split(raw) {
 		if s == self {
 			containsSelf = true
@@ -29,5 +30,5 @@ func Parse(raw, self string) (fallbacks []string, containsSelf bool) {
 		}
 		fallbacks = append(fallbacks, s)
 	}
-	return
+	return fallbacks, containsSelf
 }
