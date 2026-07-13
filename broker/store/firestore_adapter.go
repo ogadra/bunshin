@@ -22,20 +22,18 @@ func NewFirestoreRepository(ctx context.Context, projectID, databaseID string) (
 	if err != nil {
 		return nil, fmt.Errorf("firestore client: %w", err)
 	}
-	return newFirestoreRepositoryWithDB(&firestoreClient{client: client}), nil
+	api := &firestoreClientAPIAdapter{client: client}
+	return newFirestoreRepositoryWithDB(newFirestoreClient(api)), nil
 }
 
-// firestoreClient は firestoreDB を Firestore SDK で実装するアダプタ。
-// SDK 型が具象のため unit test では触らず、integration test (emulator 実接続) で検証する。
-type firestoreClient struct {
+// firestoreClientAPIAdapter は firestoreClientAPI を Firestore SDK で実装する。
+// SDK 型が具象で unit test では触らず、integration test (emulator 実接続) で検証する。
+type firestoreClientAPIAdapter struct {
 	client *firestore.Client
 }
 
-func (c *firestoreClient) Create(ctx context.Context, docID, privateURL string) error {
-	_, err := c.client.Collection(firestoreCollection).Doc(docID).Create(ctx, map[string]any{
-		fieldPrivateURL:       privateURL,
-		fieldCurrentSessionID: nil,
-	})
+func (a *firestoreClientAPIAdapter) Create(ctx context.Context, docID string, data map[string]any) error {
+	_, err := a.client.Collection(firestoreCollection).Doc(docID).Create(ctx, data)
 	if err != nil {
 		if status.Code(err) == codes.AlreadyExists {
 			return ErrConflict
@@ -45,26 +43,26 @@ func (c *firestoreClient) Create(ctx context.Context, docID, privateURL string) 
 	return nil
 }
 
-func (c *firestoreClient) Get(ctx context.Context, docID string) (*runnerDoc, error) {
-	snap, err := c.client.Collection(firestoreCollection).Doc(docID).Get(ctx)
+func (a *firestoreClientAPIAdapter) Get(ctx context.Context, docID string) (map[string]any, bool, error) {
+	snap, err := a.client.Collection(firestoreCollection).Doc(docID).Get(ctx)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
-			return nil, nil
+			return nil, false, nil
 		}
-		return nil, fmt.Errorf("firestore get: %w", err)
+		return nil, false, fmt.Errorf("firestore get: %w", err)
 	}
-	return snapshotToDoc(docID, snap.Data()), nil
+	return snap.Data(), true, nil
 }
 
-func (c *firestoreClient) Delete(ctx context.Context, docID string) error {
-	if _, err := c.client.Collection(firestoreCollection).Doc(docID).Delete(ctx); err != nil {
+func (a *firestoreClientAPIAdapter) Delete(ctx context.Context, docID string) error {
+	if _, err := a.client.Collection(firestoreCollection).Doc(docID).Delete(ctx); err != nil {
 		return fmt.Errorf("firestore delete: %w", err)
 	}
 	return nil
 }
 
-func (c *firestoreClient) QueryIdle(ctx context.Context, startAt string) (*runnerDoc, error) {
-	q := c.client.Collection(firestoreCollection).
+func (a *firestoreClientAPIAdapter) QueryIdle(ctx context.Context, startAt string) (string, map[string]any, bool, error) {
+	q := a.client.Collection(firestoreCollection).
 		Where(fieldCurrentSessionID, "==", nil).
 		OrderBy(firestore.DocumentID, firestore.Asc)
 	if startAt != "" {
@@ -74,69 +72,92 @@ func (c *firestoreClient) QueryIdle(ctx context.Context, startAt string) (*runne
 	defer iter.Stop()
 	snap, err := iter.Next()
 	if errors.Is(err, iterator.Done) {
-		return nil, nil
+		return "", nil, false, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("firestore query idle: %w", err)
+		return "", nil, false, fmt.Errorf("firestore query idle: %w", err)
 	}
-	return snapshotToDoc(snap.Ref.ID, snap.Data()), nil
+	return snap.Ref.ID, snap.Data(), true, nil
 }
 
-func (c *firestoreClient) ListBusy(ctx context.Context) ([]runnerDoc, error) {
-	iter := c.client.Collection(firestoreCollection).
-		Where(fieldCurrentSessionID, "!=", nil).
-		Documents(ctx)
-	defer iter.Stop()
-
-	var docs []runnerDoc
-	for {
-		snap, err := iter.Next()
-		if errors.Is(err, iterator.Done) {
-			return docs, nil
-		}
-		if err != nil {
-			return nil, fmt.Errorf("firestore list busy: %w", err)
-		}
-		docs = append(docs, *snapshotToDoc(snap.Ref.ID, snap.Data()))
+func (a *firestoreClientAPIAdapter) IterBusy(ctx context.Context) firestoreDocIter {
+	return &firestoreDocIterAdapter{
+		iter: a.client.Collection(firestoreCollection).
+			Where(fieldCurrentSessionID, "!=", nil).
+			Documents(ctx),
 	}
 }
 
-func (c *firestoreClient) FindBySession(ctx context.Context, sessionID string) (*runnerDoc, error) {
-	iter := c.client.Collection(firestoreCollection).
+func (a *firestoreClientAPIAdapter) QueryBySession(ctx context.Context, sessionID string) (string, map[string]any, bool, error) {
+	iter := a.client.Collection(firestoreCollection).
 		Where(fieldCurrentSessionID, "==", sessionID).
 		Limit(1).
 		Documents(ctx)
 	defer iter.Stop()
 	snap, err := iter.Next()
 	if errors.Is(err, iterator.Done) {
-		return nil, nil
+		return "", nil, false, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("firestore find by session: %w", err)
+		return "", nil, false, fmt.Errorf("firestore find by session: %w", err)
 	}
-	return snapshotToDoc(snap.Ref.ID, snap.Data()), nil
+	return snap.Ref.ID, snap.Data(), true, nil
 }
 
-func (c *firestoreClient) AssignSession(ctx context.Context, docID, sessionID string) error {
-	ref := c.client.Collection(firestoreCollection).Doc(docID)
-	err := c.client.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
-		snap, err := tx.Get(ref)
-		if err != nil {
-			if status.Code(err) == codes.NotFound {
-				return ErrConditionFailed
-			}
-			return err
-		}
-		if v, ok := snap.Data()[fieldCurrentSessionID]; !ok || v != nil {
-			return ErrConditionFailed
-		}
-		return tx.Update(ref, []firestore.Update{{Path: fieldCurrentSessionID, Value: sessionID}})
+func (a *firestoreClientAPIAdapter) RunTx(ctx context.Context, fn func(tx firestoreTx) error) error {
+	err := a.client.RunTransaction(ctx, func(ctx context.Context, sdkTx *firestore.Transaction) error {
+		return fn(&firestoreTxAdapter{client: a.client, tx: sdkTx})
 	})
 	if err != nil {
 		if errors.Is(err, ErrConditionFailed) {
 			return ErrConditionFailed
 		}
-		return fmt.Errorf("firestore assign session: %w", err)
+		return fmt.Errorf("firestore run tx: %w", err)
+	}
+	return nil
+}
+
+// firestoreDocIterAdapter は firestoreDocIter を Firestore SDK iterator で実装する。
+type firestoreDocIterAdapter struct {
+	iter *firestore.DocumentIterator
+}
+
+func (a *firestoreDocIterAdapter) Next() (string, map[string]any, bool, error) {
+	snap, err := a.iter.Next()
+	if errors.Is(err, iterator.Done) {
+		return "", nil, true, nil
+	}
+	if err != nil {
+		return "", nil, false, fmt.Errorf("firestore iter next: %w", err)
+	}
+	return snap.Ref.ID, snap.Data(), false, nil
+}
+
+func (a *firestoreDocIterAdapter) Stop() {
+	a.iter.Stop()
+}
+
+// firestoreTxAdapter は firestoreTx を Firestore SDK transaction で実装する。
+type firestoreTxAdapter struct {
+	client *firestore.Client
+	tx     *firestore.Transaction
+}
+
+func (a *firestoreTxAdapter) Get(docID string) (map[string]any, bool, error) {
+	snap, err := a.tx.Get(a.client.Collection(firestoreCollection).Doc(docID))
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("firestore tx get: %w", err)
+	}
+	return snap.Data(), true, nil
+}
+
+func (a *firestoreTxAdapter) Update(docID, field string, value any) error {
+	ref := a.client.Collection(firestoreCollection).Doc(docID)
+	if _, err := a.tx.Update(ref, []firestore.Update{{Path: field, Value: value}}); err != nil {
+		return fmt.Errorf("firestore tx update: %w", err)
 	}
 	return nil
 }
