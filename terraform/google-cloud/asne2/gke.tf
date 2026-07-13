@@ -27,7 +27,7 @@ resource "google_container_cluster" "bunshin" {
     enable_private_nodes = true
   }
 
-  # inbound endpoint を全無効化。deploy / kubectl / kubernetes provider はすべて fleet 登録 + Connect Gateway 経由
+  # deploy / kubectl / kubernetes provider はすべて fleet 登録 + Connect Gateway 経由
   control_plane_endpoints_config {
     dns_endpoint_config {
       allow_external_traffic = false
@@ -37,7 +37,7 @@ resource "google_container_cluster" "bunshin" {
     }
   }
 
-  # Dataplane V2 Observability。VPC Flow Logs (L3/4) + Cloud DNS query log (domain) の上位で Pod L7 egress を可視化する
+  # 既存の VPC Flow Logs / Cloud DNS query log では L7 egress が見えないため有効化
   monitoring_config {
     advanced_datapath_observability_config {
       enable_metrics = true
