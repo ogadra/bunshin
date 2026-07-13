@@ -1,8 +1,11 @@
+data "google_service_account" "gke_node" {
+  account_id = "bunshin-gke-node"
+}
+
 # trivy:ignore:AVD-GCP-0061 -- IP endpoints are disabled entirely; master authorized networks does not apply
-# trivy:ignore:AVD-GCP-0050 -- Application access flows through Workload Identity per-pod GSAs; a hardened node SA is scheduled as a follow-up
+# trivy:ignore:AVD-GCP-0050 -- node_config.service_account resolves to the custom bunshin-gke-node SA at plan time; trivy static analysis cannot follow the data source lookup
 resource "google_container_cluster" "bunshin" {
   # checkov:skip=CKV_GCP_12:NetworkPolicy is enforced by Dataplane V2 on Autopilot; explicit network_policy block is not settable
-  # checkov:skip=CKV_GCP_13:Autopilot disables client certificate authentication by default
   # checkov:skip=CKV_GCP_20:IP endpoints are disabled entirely; master authorized networks does not apply
   # checkov:skip=CKV_GCP_61:VPC Flow Logs are enabled on the workload subnet in P4-b; intranode visibility is managed by Autopilot and cannot be set explicitly
   # checkov:skip=CKV_GCP_65:RBAC binds Google identities directly (P4-h); Google Groups is optional and not adopted
@@ -43,6 +46,27 @@ resource "google_container_cluster" "bunshin" {
     advanced_datapath_observability_config {
       enable_metrics = true
       enable_relay   = true
+    }
+  }
+
+  # Autopilot 側で他の node_config 属性は管理される。SA / scope / Shielded Node / metadata server 隔離だけを明示する
+  node_config {
+    service_account = data.google_service_account.gke_node.email
+    oauth_scopes    = ["https://www.googleapis.com/auth/cloud-platform"]
+
+    shielded_instance_config {
+      enable_secure_boot          = true
+      enable_integrity_monitoring = true
+    }
+
+    workload_metadata_config {
+      mode = "GKE_METADATA"
+    }
+  }
+
+  master_auth {
+    client_certificate_config {
+      issue_client_certificate = false
     }
   }
 
