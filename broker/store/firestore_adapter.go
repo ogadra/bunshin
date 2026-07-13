@@ -156,7 +156,7 @@ func (a *firestoreTxAdapter) Get(docID string) (map[string]any, bool, error) {
 
 func (a *firestoreTxAdapter) Update(docID, field string, value any) error {
 	ref := a.client.Collection(firestoreCollection).Doc(docID)
-	if _, err := a.tx.Update(ref, []firestore.Update{{Path: field, Value: value}}); err != nil {
+	if err := a.tx.Update(ref, []firestore.Update{{Path: field, Value: value}}); err != nil {
 		return fmt.Errorf("firestore tx update: %w", err)
 	}
 	return nil
