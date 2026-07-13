@@ -41,23 +41,7 @@ func TestIntegration_RegisterAndFindByID(t *testing.T) {
 	}
 }
 
-// TestIntegration_RegisterIdempotent は登録の冪等性を検証する統合テスト。
-func TestIntegration_RegisterIdempotent(t *testing.T) {
-	t.Parallel()
-	client, tableName := setupIntegrationTable(t)
-	repo := NewDynamoRepository(client, tableName)
-
-	ctx := context.Background()
-
-	if err := repo.Register(ctx, "11111111111111111111111111111111", "http://10.0.0.1:8080"); err != nil {
-		t.Fatalf("first Register: %v", err)
-	}
-	if err := repo.Register(ctx, "11111111111111111111111111111111", "http://10.0.0.1:8080"); err != nil {
-		t.Fatalf("second Register should be idempotent: %v", err)
-	}
-}
-
-// TestIntegration_RegisterConflict は同一 runnerID で異なる privateURL の登録が ErrConflict を返す統合テスト。
+// TestIntegration_RegisterConflict は既存 runnerId の再登録が privateURL によらず ErrConflict を返す統合テスト。
 func TestIntegration_RegisterConflict(t *testing.T) {
 	t.Parallel()
 	client, tableName := setupIntegrationTable(t)
@@ -68,7 +52,7 @@ func TestIntegration_RegisterConflict(t *testing.T) {
 	if err := repo.Register(ctx, "11111111111111111111111111111111", "http://10.0.0.1:8080"); err != nil {
 		t.Fatalf("first Register: %v", err)
 	}
-	err := repo.Register(ctx, "11111111111111111111111111111111", "http://10.0.0.2:9090")
+	err := repo.Register(ctx, "11111111111111111111111111111111", "http://10.0.0.1:8080")
 	if !errors.Is(err, ErrConflict) {
 		t.Fatalf("expected ErrConflict, got: %v", err)
 	}
