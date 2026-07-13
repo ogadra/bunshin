@@ -21,7 +21,7 @@ type StackConfig struct {
 // "" と 空白のみ の入力に対して失敗経路を分岐させると設定ミスの原因を切り分けにくいため、
 // TrimSpace 後の空文字は一律「missing」として扱う。
 func NewStackFromEnv() (StackConfig, error) {
-	self := os.Getenv("STACK_NAME")
+	self := strings.TrimSpace(os.Getenv("STACK_NAME"))
 	if self == "" {
 		return StackConfig{}, fmt.Errorf("missing required environment variable: STACK_NAME")
 	}

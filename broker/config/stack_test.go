@@ -37,17 +37,29 @@ func TestNewStackFromEnv_SingleStackNoFallback(t *testing.T) {
 	}
 }
 
-// TestNewStackFromEnv_MissingStack は STACK_NAME 未設定時にエラーを返すことを検証する。
+// TestNewStackFromEnv_MissingStack は STACK_NAME が未設定・空白のみ時に
+// いずれも "missing" エラーとして扱われることを検証する。
 func TestNewStackFromEnv_MissingStack(t *testing.T) {
-	t.Setenv("STACK_NAME", "")
-	t.Setenv("BUNSHIN_STACKS", "ap-northeast-1")
-
-	_, err := NewStackFromEnv()
-	if err == nil {
-		t.Fatal("expected error")
+	tests := []struct {
+		name  string
+		stack string
+	}{
+		{"empty", ""},
+		{"whitespace only", "   "},
 	}
-	if !strings.Contains(err.Error(), "STACK_NAME") {
-		t.Errorf("error = %q, want to contain STACK_NAME", err.Error())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("STACK_NAME", tt.stack)
+			t.Setenv("BUNSHIN_STACKS", "ap-northeast-1")
+
+			_, err := NewStackFromEnv()
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if !strings.Contains(err.Error(), "missing required environment variable: STACK_NAME") {
+				t.Errorf("error = %q, want missing STACK_NAME", err.Error())
+			}
+		})
 	}
 }
 
@@ -91,10 +103,10 @@ func TestNewStackFromEnv_StackNotInList(t *testing.T) {
 	}
 }
 
-// TestNewStackFromEnv_StackListedWithSpaces は BUNSHIN_STACKS 内の空白付き要素も
-// 一致判定され、fallback 側もトリム済みで返ることを検証する。
-func TestNewStackFromEnv_StackListedWithSpaces(t *testing.T) {
-	t.Setenv("STACK_NAME", "ap-northeast-3")
+// TestNewStackFromEnv_TrimsWhitespace は STACK_NAME / BUNSHIN_STACKS 双方の要素が
+// 前後空白付きでも trim 後の値で一致判定され、fallback もトリム済みで返ることを検証する。
+func TestNewStackFromEnv_TrimsWhitespace(t *testing.T) {
+	t.Setenv("STACK_NAME", " ap-northeast-3 ")
 	t.Setenv("BUNSHIN_STACKS", " ap-northeast-1 , ap-northeast-3 ")
 
 	got, err := NewStackFromEnv()
