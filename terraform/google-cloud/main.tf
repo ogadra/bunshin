@@ -27,10 +27,7 @@ module "asne1" {
     google = google.asne1
   }
 
-  depends_on = [
-    google_project_service.apis,
-    google_project_iam_member.gke_node,
-  ]
+  depends_on = [google_project_service.apis]
 }
 
 module "asne2" {
@@ -40,8 +37,5 @@ module "asne2" {
     google = google.asne2
   }
 
-  depends_on = [
-    google_project_service.apis,
-    google_project_iam_member.gke_node,
-  ]
+  depends_on = [google_project_service.apis]
 }

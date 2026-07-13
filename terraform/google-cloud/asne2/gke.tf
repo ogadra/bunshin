@@ -1,9 +1,5 @@
-data "google_service_account" "gke_node" {
-  account_id = "bunshin-gke-node"
-}
-
 # trivy:ignore:AVD-GCP-0061 -- IP endpoints are disabled entirely; master authorized networks does not apply
-# trivy:ignore:AVD-GCP-0050 -- node_config.service_account resolves to the custom bunshin-gke-node SA at plan time; trivy static analysis cannot follow the data source lookup
+# trivy:ignore:AVD-GCP-0050 -- node_config.service_account references google_service_account.gke_node.email (managed in iam.tf); trivy cannot statically resolve provider-computed attributes
 resource "google_container_cluster" "bunshin" {
   # checkov:skip=CKV_GCP_12:NetworkPolicy is enforced by Dataplane V2 on Autopilot; explicit network_policy block is not settable
   # checkov:skip=CKV_GCP_20:IP endpoints are disabled entirely; master authorized networks does not apply
@@ -51,7 +47,7 @@ resource "google_container_cluster" "bunshin" {
 
   # Autopilot 側で他の node_config 属性は管理される。SA / scope / Shielded Node / metadata server 隔離だけを明示する
   node_config {
-    service_account = data.google_service_account.gke_node.email
+    service_account = google_service_account.gke_node.email
     oauth_scopes    = ["https://www.googleapis.com/auth/cloud-platform"]
 
     shielded_instance_config {
