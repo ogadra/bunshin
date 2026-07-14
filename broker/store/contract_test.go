@@ -47,15 +47,19 @@ func runContract(t *testing.T, fn func(t *testing.T, repo store.Repository)) {
 	}
 }
 
+// dynamoTableSeq は t.Parallel() 下で同一 nanosecond に time.Now() が並ぶ race を排除するプロセス内カウンタ。
+// setupFirestore の firestoreProjectSeq と対称。
+var dynamoTableSeq atomic.Uint64
+
 // setupDynamo は DynamoDB Local に isolated table を作った Repository を返す。
-// tableName はナノ秒 timestamp で unique 化し、t.Cleanup で削除する。
+// tableName はナノ秒 timestamp + atomic seq で unique 化し、t.Cleanup で削除する。
 func setupDynamo(t *testing.T) store.Repository {
 	t.Helper()
 	endpoint := os.Getenv("DYNAMODB_ENDPOINT")
 	if endpoint == "" {
 		t.Skip("DYNAMODB_ENDPOINT not set, skipping DynamoDB contract test")
 	}
-	tableName := fmt.Sprintf("runners-%d", time.Now().UnixNano())
+	tableName := fmt.Sprintf("runners-%d-%d", time.Now().UnixNano(), dynamoTableSeq.Add(1))
 	cfg, err := awsconfig.LoadDefaultConfig(context.Background(),
 		awsconfig.WithRegion("ap-northeast-1"),
 		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("dummy", "dummy", "")),
