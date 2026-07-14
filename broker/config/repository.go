@@ -32,8 +32,9 @@ func NewRepositoryFromEnv(ctx context.Context) (store.Repository, error) {
 	}
 }
 
-// newFirestoreRepositoryFn は loadAWSConfig と同じ抽象レベルの test seam。
-var newFirestoreRepositoryFn = func(ctx context.Context, projectID, databaseID string) (store.Repository, error) {
+// NewFirestoreRepositoryFn は Firestore backend factory の test seam。
+// 上位パッケージ (broker main_test) の Handler 組み立てテストからも差し替える必要があるため export する。
+var NewFirestoreRepositoryFn = func(ctx context.Context, projectID, databaseID string) (store.Repository, error) {
 	return store.NewFirestoreRepository(ctx, projectID, databaseID)
 }
 
@@ -46,7 +47,7 @@ func newFirestoreFromEnv(ctx context.Context) (store.Repository, error) {
 	if databaseID == "" {
 		return nil, fmt.Errorf("missing required environment variable: FIRESTORE_DATABASE")
 	}
-	return newFirestoreRepositoryFn(ctx, projectID, databaseID)
+	return NewFirestoreRepositoryFn(ctx, projectID, databaseID)
 }
 
 func newDynamoFromEnv(ctx context.Context) (store.Repository, error) {

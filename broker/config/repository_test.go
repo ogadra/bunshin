@@ -159,8 +159,8 @@ func setFirestoreEnv(t *testing.T) {
 
 func saveNewFirestoreRepositoryFn(t *testing.T) {
 	t.Helper()
-	orig := newFirestoreRepositoryFn
-	t.Cleanup(func() { newFirestoreRepositoryFn = orig })
+	orig := NewFirestoreRepositoryFn
+	t.Cleanup(func() { NewFirestoreRepositoryFn = orig })
 }
 
 type fakeFirestoreRepo struct{ store.Repository }
@@ -170,7 +170,7 @@ func TestNewRepositoryFromEnv_FirestoreSuccess(t *testing.T) {
 	saveNewFirestoreRepositoryFn(t)
 
 	called := false
-	newFirestoreRepositoryFn = func(_ context.Context, projectID, databaseID string) (store.Repository, error) {
+	NewFirestoreRepositoryFn = func(_ context.Context, projectID, databaseID string) (store.Repository, error) {
 		called = true
 		if projectID != "test-project" {
 			t.Errorf("projectID = %q, want test-project", projectID)
@@ -189,7 +189,7 @@ func TestNewRepositoryFromEnv_FirestoreSuccess(t *testing.T) {
 		t.Fatal("expected non-nil Repository")
 	}
 	if !called {
-		t.Error("newFirestoreRepositoryFn was not called")
+		t.Error("NewFirestoreRepositoryFn was not called")
 	}
 }
 
@@ -197,7 +197,7 @@ func TestNewRepositoryFromEnv_FirestoreFactoryError(t *testing.T) {
 	setFirestoreEnv(t)
 	saveNewFirestoreRepositoryFn(t)
 
-	newFirestoreRepositoryFn = func(context.Context, string, string) (store.Repository, error) {
+	NewFirestoreRepositoryFn = func(context.Context, string, string) (store.Repository, error) {
 		return nil, errors.New("factory failed")
 	}
 
