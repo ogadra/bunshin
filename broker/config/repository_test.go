@@ -75,26 +75,37 @@ func TestNewRepositoryFromEnv_DynamoFactoryError(t *testing.T) {
 	}
 }
 
+// TrimSpace 後の空文字は missing に fold される (stack.go と同じ扱い)。
 func TestNewRepositoryFromEnv_MissingStore(t *testing.T) {
-	t.Setenv("BUNSHIN_STORE", "")
-
-	_, err := NewRepositoryFromEnv(context.Background())
-	if err == nil {
-		t.Fatal("expected error")
+	tests := []struct {
+		name  string
+		store string
+	}{
+		{"empty", ""},
+		{"whitespace only", "   "},
 	}
-	if !strings.Contains(err.Error(), "BUNSHIN_STORE") {
-		t.Errorf("error = %q, want to contain BUNSHIN_STORE", err.Error())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("BUNSHIN_STORE", tt.store)
+
+			_, err := NewRepositoryFromEnv(context.Background())
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if !strings.Contains(err.Error(), "missing required environment variable: BUNSHIN_STORE") {
+				t.Errorf("error = %q, want missing BUNSHIN_STORE", err.Error())
+			}
+		})
 	}
 }
 
-// 完全一致判定: 空白付きや case 違いは dynamodb / firestore に fold されない。
+// case 違いは dynamodb / firestore に fold されない (surrounding whitespace は TrimSpace で受容)。
 func TestNewRepositoryFromEnv_UnsupportedStore(t *testing.T) {
 	tests := []struct {
 		name  string
 		store string
 	}{
 		{"other engine", "cassandra"},
-		{"with surrounding spaces", " dynamodb "},
 		{"different case", "DynamoDB"},
 	}
 	for _, tt := range tests {

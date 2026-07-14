@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/ogadra/bunshin/broker/store"
 	"github.com/ogadra/bunshin/broker/store/firestoreadapter"
@@ -13,8 +14,9 @@ import (
 
 // NewRepositoryFromEnv は BUNSHIN_STORE を読み対応する Repository を組み立てる。
 // dynamodb / firestore 以外の値・未設定は起動失敗させる (default は持たない)。
+// stack.go と揃えて TrimSpace 後の空文字は「missing」に fold する。
 func NewRepositoryFromEnv(ctx context.Context) (store.Repository, error) {
-	switch kind := os.Getenv("BUNSHIN_STORE"); kind {
+	switch kind := strings.TrimSpace(os.Getenv("BUNSHIN_STORE")); kind {
 	case "dynamodb":
 		return newDynamoFromEnv(ctx)
 	case "firestore":
