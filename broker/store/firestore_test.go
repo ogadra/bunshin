@@ -864,7 +864,9 @@ func TestFirestoreFindByID_NotFound(t *testing.T) {
 func TestFirestoreFindByID_Error(t *testing.T) {
 	t.Parallel()
 	api := &mockFirestoreClientAPI{
-		getFn: func(context.Context, string) (map[string]any, bool, error) { return nil, false, errors.New("get error") },
+		getFn: func(context.Context, string) (map[string]any, bool, error) {
+			return nil, false, errors.New("get error")
+		},
 	}
 	repo := newFirestoreRepositoryWithAPI(api)
 	if _, err := repo.FindByID(context.Background(), "r1"); err == nil {
