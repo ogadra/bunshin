@@ -1,0 +1,4 @@
+domain_name          = "example.bunshin.dev"
+image_tag            = "0000000000000000000000000000000000000000"
+runner_desired_count = 300
+deployer_iam_member  = "user:example@example.com"
