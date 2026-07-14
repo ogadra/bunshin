@@ -339,6 +339,46 @@ func TestAcquireIdle_SecondSegment(t *testing.T) {
 	}
 }
 
+// TestAcquireIdle_ExactMatchStart は runnerId が乱数開始位置と完全一致する item が
+// segment 1 (runnerId > :v) では除外され、segment 2 (runnerId <= :v) で拾われることを検証する。
+// BETWEEN (両端 inclusive) から exclusive/inclusive の非対称な 2 segment に変えたことによる境界挙動。
+func TestAcquireIdle_ExactMatchStart(t *testing.T) {
+	t.Parallel()
+	sawFirst, sawSecond := false, false
+	mock := &mockDynamoDBAPI{
+		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
+			switch *params.KeyConditionExpression {
+			case "#s = :s AND " + segFirstCond:
+				sawFirst = true
+				assertStateIdxRange(t, params, segFirstCond, testStart)
+				return &dynamodb.QueryOutput{Items: nil}, nil
+			case "#s = :s AND " + segSecondCond:
+				sawSecond = true
+				assertStateIdxRange(t, params, segSecondCond, testStart)
+				return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{idleItem(testStart)}}, nil
+			}
+			t.Fatalf("unexpected KeyConditionExpression %q", *params.KeyConditionExpression)
+			return nil, nil
+		},
+		updateItemFn: func(_ context.Context, _ *dynamodb.UpdateItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error) {
+			return &dynamodb.UpdateItemOutput{}, nil
+		},
+	}
+	repo := NewDynamoRepository(mock, "t")
+	repo.randHexFn = func() string { return testStart }
+
+	runner, err := repo.AcquireIdle(context.Background(), "sess-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if runner.RunnerID != testStart {
+		t.Errorf("runnerID = %q, want %q", runner.RunnerID, testStart)
+	}
+	if !sawFirst || !sawSecond {
+		t.Errorf("expected both segments to be queried, sawFirst=%v sawSecond=%v", sawFirst, sawSecond)
+	}
+}
+
 // TestAcquireIdle_NoIdleRunner は両 segment が空の場合に 2 query で ErrNoIdleRunner を返すことを検証する。
 func TestAcquireIdle_NoIdleRunner(t *testing.T) {
 	t.Parallel()
