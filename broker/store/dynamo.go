@@ -17,15 +17,8 @@ import (
 	"github.com/ogadra/bunshin/broker/model"
 )
 
-// item は 1 KB 未満で 0.5 RCU 固定のため Limit 1 と同コスト。stale item が混ざったときに再クエリを避けたいので複数取る。
-const acquireQueryLimit = 5
-
-// AcquireIdle は [minRunnerID, maxRunnerID] の BETWEEN scan で走査するため、この閉区間から外れた runnerId を書き込むと取りこぼす。Register で形式を強制する。
-const (
-	minRunnerID = "00000000000000000000000000000000"
-	maxRunnerID = "ffffffffffffffffffffffffffffffff"
-)
-
+// AcquireIdle は runnerId の lex 順で 2 segment を走査するため、
+// 32 桁小文字 hex 以外を書き込むと GSI 上の順序が崩れ取りこぼす。Register で形式を強制する。
 var runnerIDRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 type DynamoRepository struct {
@@ -91,13 +84,16 @@ func (r *DynamoRepository) Register(ctx context.Context, runnerID, privateURL st
 	return nil
 }
 
+// AcquireIdle は (start, ∞) → [∅, start] の 2 segment を acquireQueryLimit 件ずつ paginate し、
+// assignSession で precondition 競合した runner は tried に記録して次候補へ進む。
+// 全 segment を辿り切れば idle 枯渇として ErrNoIdleRunner を返す (Firestore 側と同構造)。
 func (r *DynamoRepository) AcquireIdle(ctx context.Context, sessionID string) (*model.Runner, error) {
 	tried := map[string]struct{}{}
 	start := r.randHexFn()
-	for _, seg := range [][2]string{{start, maxRunnerID}, {minRunnerID, start}} {
+	for _, cond := range []string{"runnerId > :v", "runnerId <= :v"} {
 		var exclusiveStart map[string]types.AttributeValue
 		for {
-			runners, next, err := r.queryIdlePage(ctx, seg[0], seg[1], exclusiveStart)
+			runners, next, err := r.queryIdlePage(ctx, cond, start, exclusiveStart)
 			if err != nil {
 				return nil, err
 			}
@@ -134,16 +130,15 @@ func (r *DynamoRepository) assignFirst(ctx context.Context, sessionID string, ca
 	return nil, nil
 }
 
-func (r *DynamoRepository) queryIdlePage(ctx context.Context, lo, hi string, exclusiveStart map[string]types.AttributeValue) ([]model.Runner, map[string]types.AttributeValue, error) {
+func (r *DynamoRepository) queryIdlePage(ctx context.Context, cond, value string, exclusiveStart map[string]types.AttributeValue) ([]model.Runner, map[string]types.AttributeValue, error) {
 	out, err := r.client.Query(ctx, &dynamodb.QueryInput{
 		TableName:                aws.String(r.tableName),
 		IndexName:                aws.String("state-index"),
-		KeyConditionExpression:   aws.String("#s = :s AND runnerId BETWEEN :lo AND :hi"),
+		KeyConditionExpression:   aws.String("#s = :s AND " + cond),
 		ExpressionAttributeNames: map[string]string{"#s": "state"},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":s":  &types.AttributeValueMemberS{Value: string(model.StateIdle)},
-			":lo": &types.AttributeValueMemberS{Value: lo},
-			":hi": &types.AttributeValueMemberS{Value: hi},
+			":s": &types.AttributeValueMemberS{Value: string(model.StateIdle)},
+			":v": &types.AttributeValueMemberS{Value: value},
 		},
 		Limit:             aws.Int32(acquireQueryLimit),
 		ExclusiveStartKey: exclusiveStart,

@@ -280,31 +280,35 @@ func TestRegister_PutItemError(t *testing.T) {
 	}
 }
 
-// assertStateIdxRange は state-index query の KeyConditionExpression・区間 [lo, hi]・Limit を検証する。
-func assertStateIdxRange(t *testing.T, params *dynamodb.QueryInput, wantLo, wantHi string) {
+// segFirstCond / segSecondCond は AcquireIdle が 2 segment 走査で使う KeyConditionExpression の右辺。
+const (
+	segFirstCond  = "runnerId > :v"
+	segSecondCond = "runnerId <= :v"
+)
+
+// assertStateIdxRange は state-index query の KeyConditionExpression・:v の値・Limit を検証する。
+func assertStateIdxRange(t *testing.T, params *dynamodb.QueryInput, wantCond, wantValue string) {
 	t.Helper()
 	if params.IndexName == nil || *params.IndexName != "state-index" {
 		t.Fatalf("IndexName = %v, want state-index", params.IndexName)
 	}
-	if *params.KeyConditionExpression != "#s = :s AND runnerId BETWEEN :lo AND :hi" {
-		t.Errorf("KeyConditionExpression = %q", *params.KeyConditionExpression)
+	wantExpr := "#s = :s AND " + wantCond
+	if *params.KeyConditionExpression != wantExpr {
+		t.Errorf("KeyConditionExpression = %q, want %q", *params.KeyConditionExpression, wantExpr)
 	}
 	if got := params.ExpressionAttributeValues[":s"].(*types.AttributeValueMemberS).Value; got != string(model.StateIdle) {
 		t.Errorf(":s = %q, want %q", got, model.StateIdle)
 	}
-	if got := params.ExpressionAttributeValues[":lo"].(*types.AttributeValueMemberS).Value; got != wantLo {
-		t.Errorf(":lo = %q, want %q", got, wantLo)
-	}
-	if got := params.ExpressionAttributeValues[":hi"].(*types.AttributeValueMemberS).Value; got != wantHi {
-		t.Errorf(":hi = %q, want %q", got, wantHi)
+	if got := params.ExpressionAttributeValues[":v"].(*types.AttributeValueMemberS).Value; got != wantValue {
+		t.Errorf(":v = %q, want %q", got, wantValue)
 	}
 	if params.Limit == nil || *params.Limit != acquireQueryLimit {
 		t.Errorf("Limit = %v, want %d", params.Limit, acquireQueryLimit)
 	}
 }
 
-// testStart は AcquireIdle テストで固定するランダム開始 runnerId。区間 [start, max] と [min, start] が
-// どちらも非空になるよう中間の 32 hex を使う。
+// testStart は AcquireIdle テストで固定するランダム開始 runnerId。中間の 32 hex を使い
+// (start, ∞) / [∅, start] の両 segment が非空になるようにする。
 const testStart = "88888888888888888888888888888888"
 
 // TestAcquireIdle_Success は最初の区間 [start, max] の先頭ページで idle runner を確保できることを検証する。
@@ -314,7 +318,7 @@ func TestAcquireIdle_Success(t *testing.T) {
 	mock := &mockDynamoDBAPI{
 		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
 			queryCount++
-			assertStateIdxRange(t, params, testStart, maxRunnerID)
+			assertStateIdxRange(t, params, segFirstCond, testStart)
 			return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{
 				idleItem("r1"), idleItem("r2"), idleItem("r3"), idleItem("r4"), idleItem("r5"),
 			}}, nil
@@ -362,19 +366,17 @@ func TestAcquireIdle_SecondSegment(t *testing.T) {
 	sawFirst, sawSecond := false, false
 	mock := &mockDynamoDBAPI{
 		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			lo := params.ExpressionAttributeValues[":lo"].(*types.AttributeValueMemberS).Value
-			hi := params.ExpressionAttributeValues[":hi"].(*types.AttributeValueMemberS).Value
-			switch {
-			case lo == testStart && hi == maxRunnerID:
+			switch *params.KeyConditionExpression {
+			case "#s = :s AND " + segFirstCond:
 				sawFirst = true
-				assertStateIdxRange(t, params, testStart, maxRunnerID)
+				assertStateIdxRange(t, params, segFirstCond, testStart)
 				return &dynamodb.QueryOutput{Items: nil}, nil
-			case lo == minRunnerID && hi == testStart:
+			case "#s = :s AND " + segSecondCond:
 				sawSecond = true
-				assertStateIdxRange(t, params, minRunnerID, testStart)
+				assertStateIdxRange(t, params, segSecondCond, testStart)
 				return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{idleItem("r-low")}}, nil
 			}
-			t.Fatalf("unexpected range [%q, %q]", lo, hi)
+			t.Fatalf("unexpected KeyConditionExpression %q", *params.KeyConditionExpression)
 			return nil, nil
 		},
 		updateItemFn: func(_ context.Context, _ *dynamodb.UpdateItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error) {
@@ -396,23 +398,21 @@ func TestAcquireIdle_SecondSegment(t *testing.T) {
 	}
 }
 
-// TestAcquireIdle_NoIdleRunner は両区間が空の場合に 2 query で ErrNoIdleRunner を返すことを検証する。
+// TestAcquireIdle_NoIdleRunner は両 segment が空の場合に 2 query で ErrNoIdleRunner を返すことを検証する。
 func TestAcquireIdle_NoIdleRunner(t *testing.T) {
 	t.Parallel()
 	sawFirst, sawSecond := false, false
 	mock := &mockDynamoDBAPI{
 		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			lo := params.ExpressionAttributeValues[":lo"].(*types.AttributeValueMemberS).Value
-			hi := params.ExpressionAttributeValues[":hi"].(*types.AttributeValueMemberS).Value
-			switch {
-			case lo == testStart && hi == maxRunnerID:
+			switch *params.KeyConditionExpression {
+			case "#s = :s AND " + segFirstCond:
 				sawFirst = true
-				assertStateIdxRange(t, params, testStart, maxRunnerID)
-			case lo == minRunnerID && hi == testStart:
+				assertStateIdxRange(t, params, segFirstCond, testStart)
+			case "#s = :s AND " + segSecondCond:
 				sawSecond = true
-				assertStateIdxRange(t, params, minRunnerID, testStart)
+				assertStateIdxRange(t, params, segSecondCond, testStart)
 			default:
-				t.Fatalf("unexpected range [%q, %q]", lo, hi)
+				t.Fatalf("unexpected KeyConditionExpression %q", *params.KeyConditionExpression)
 			}
 			return &dynamodb.QueryOutput{Items: nil}, nil
 		},
@@ -434,7 +434,7 @@ func TestAcquireIdle_QueryError(t *testing.T) {
 	t.Parallel()
 	mock := &mockDynamoDBAPI{
 		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			assertStateIdxRange(t, params, testStart, maxRunnerID)
+			assertStateIdxRange(t, params, segFirstCond, testStart)
 			return nil, errors.New("query error")
 		},
 	}
@@ -453,7 +453,7 @@ func TestAcquireIdle_RetryWithinBatch(t *testing.T) {
 	tried := map[string]struct{}{}
 	mock := &mockDynamoDBAPI{
 		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			assertStateIdxRange(t, params, testStart, maxRunnerID)
+			assertStateIdxRange(t, params, segFirstCond, testStart)
 			return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{
 				idleItem("r1"), idleItem("r2"), idleItem("r3"), idleItem("r4"), idleItem("r5"),
 			}}, nil
@@ -496,13 +496,13 @@ func TestAcquireIdle_SecondSegmentReachesMaskedIdle(t *testing.T) {
 	seg1Queries, seg2Queries := 0, 0
 	mock := &mockDynamoDBAPI{
 		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			if params.ExpressionAttributeValues[":lo"].(*types.AttributeValueMemberS).Value != minRunnerID {
-				seg1Queries++ // 区間 [start, max]: stale で満杯、全 conflict
-				assertStateIdxRange(t, params, testStart, maxRunnerID)
+			if *params.KeyConditionExpression == "#s = :s AND "+segFirstCond {
+				seg1Queries++ // (start, ∞): stale で満杯、全 conflict
+				assertStateIdxRange(t, params, segFirstCond, testStart)
 				return &dynamodb.QueryOutput{Items: stale}, nil
 			}
-			seg2Queries++ // 区間 [min, start]: 先頭ページは tried 済み stale、続きに masked idle
-			assertStateIdxRange(t, params, minRunnerID, testStart)
+			seg2Queries++ // [∅, start]: 先頭ページは tried 済み stale、続きに masked idle
+			assertStateIdxRange(t, params, segSecondCond, testStart)
 			if params.ExclusiveStartKey == nil {
 				return &dynamodb.QueryOutput{Items: stale, LastEvaluatedKey: cursor}, nil
 			}
@@ -533,24 +533,22 @@ func TestAcquireIdle_SecondSegmentReachesMaskedIdle(t *testing.T) {
 	}
 }
 
-// TestAcquireIdle_StaleGSI は stale item を返し続ける GSI でも tried set で両区間を走査し切り
+// TestAcquireIdle_StaleGSI は stale item を返し続ける GSI でも tried set で両 segment を走査し切り
 // 有限時間で ErrNoIdleRunner に収束することを検証する。
 func TestAcquireIdle_StaleGSI(t *testing.T) {
 	t.Parallel()
 	sawFirst, sawSecond := false, false
 	mock := &mockDynamoDBAPI{
 		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			lo := params.ExpressionAttributeValues[":lo"].(*types.AttributeValueMemberS).Value
-			hi := params.ExpressionAttributeValues[":hi"].(*types.AttributeValueMemberS).Value
-			switch {
-			case lo == testStart && hi == maxRunnerID:
+			switch *params.KeyConditionExpression {
+			case "#s = :s AND " + segFirstCond:
 				sawFirst = true
-				assertStateIdxRange(t, params, testStart, maxRunnerID)
-			case lo == minRunnerID && hi == testStart:
+				assertStateIdxRange(t, params, segFirstCond, testStart)
+			case "#s = :s AND " + segSecondCond:
 				sawSecond = true
-				assertStateIdxRange(t, params, minRunnerID, testStart)
+				assertStateIdxRange(t, params, segSecondCond, testStart)
 			default:
-				t.Fatalf("unexpected range [%q, %q]", lo, hi)
+				t.Fatalf("unexpected KeyConditionExpression %q", *params.KeyConditionExpression)
 			}
 			return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{idleItem("r-stale")}}, nil
 		},
@@ -575,7 +573,7 @@ func TestAcquireIdle_UpdateError(t *testing.T) {
 	t.Parallel()
 	mock := &mockDynamoDBAPI{
 		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			assertStateIdxRange(t, params, testStart, maxRunnerID)
+			assertStateIdxRange(t, params, segFirstCond, testStart)
 			return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{idleItem("r1")}}, nil
 		},
 		updateItemFn: func(_ context.Context, params *dynamodb.UpdateItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error) {
@@ -599,7 +597,7 @@ func TestAcquireIdle_UnmarshalError(t *testing.T) {
 	t.Parallel()
 	mock := &mockDynamoDBAPI{
 		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			assertStateIdxRange(t, params, testStart, maxRunnerID)
+			assertStateIdxRange(t, params, segFirstCond, testStart)
 			return &dynamodb.QueryOutput{
 				Items: []map[string]types.AttributeValue{
 					{"runnerId": &types.AttributeValueMemberL{Value: []types.AttributeValue{}}},

@@ -18,6 +18,10 @@ var (
 	ErrInvalidPrivateURL = errors.New("privateURL must not be empty")
 )
 
+// AcquireIdle が 1 ページで取得する idle 候補の件数上限。dynamo / firestore 両実装で共有する。
+// stale item に当たっても同ページ内の次候補で assign を試せるよう複数取る。
+const acquireQueryLimit = 5
+
 type Repository interface {
 	Register(ctx context.Context, runnerID, privateURL string) error
 	AcquireIdle(ctx context.Context, sessionID string) (*model.Runner, error)
