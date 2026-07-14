@@ -466,9 +466,6 @@ func TestFirestoreAcquireIdle_AdvanceCursor(t *testing.T) {
 			t.Fatalf("unexpected extra QueryIdleRange call")
 			return nil, nil
 		},
-		runTxFn: func(_ context.Context, _ func(FirestoreTx) error) error {
-			return nil
-		},
 	}
 	repo := NewFirestoreRepositoryWithAPI(api)
 	repo.randHexFn = func() string { return firestoreTestStart }
