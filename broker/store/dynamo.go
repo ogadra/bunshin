@@ -29,6 +29,25 @@ const (
 	segSecondCond = "runnerId <= :v"
 )
 
+// 走査開始位置は暗号強度を要求しないので crypto/rand ではなく math/rand/v2 を使う。
+func defaultRandHexFn() string {
+	var b [16]byte
+	binary.LittleEndian.PutUint64(b[:8], rand.Uint64())
+	binary.LittleEndian.PutUint64(b[8:], rand.Uint64())
+	return hex.EncodeToString(b[:])
+}
+
+// dynamoDBAPI は DynamoDB SDK から使う operation subset。
+// DynamoRepository が触る API だけを絞ることで mock を書きやすくする。
+// パッケージ外には露出させない (utilizer は同一パッケージの dynamo_test.go のみ)。
+type dynamoDBAPI interface {
+	PutItem(ctx context.Context, params *dynamodb.PutItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.PutItemOutput, error)
+	GetItem(ctx context.Context, params *dynamodb.GetItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.GetItemOutput, error)
+	UpdateItem(ctx context.Context, params *dynamodb.UpdateItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error)
+	DeleteItem(ctx context.Context, params *dynamodb.DeleteItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.DeleteItemOutput, error)
+	Query(ctx context.Context, params *dynamodb.QueryInput, optFns ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error)
+}
+
 // DynamoConfig は NewDynamoRepositoryFromEnv に渡す SDK 設定。
 // AccessKey / SecretKey が空文字なら IAM Role / instance profile などの
 // default credential chain を SDK に任せる。Endpoint が空文字なら AWS の
@@ -41,27 +60,19 @@ type DynamoConfig struct {
 }
 
 type DynamoRepository struct {
-	client    DynamoDBAPI
+	client    dynamoDBAPI
 	tableName string
 	randHexFn func() string
 	marshalFn func(in interface{}) (map[string]types.AttributeValue, error)
 }
 
-func NewDynamoRepository(client DynamoDBAPI, tableName string) *DynamoRepository {
+func NewDynamoRepository(client dynamoDBAPI, tableName string) *DynamoRepository {
 	return &DynamoRepository{
 		client:    client,
 		tableName: tableName,
 		randHexFn: defaultRandHexFn,
 		marshalFn: attributevalue.MarshalMap,
 	}
-}
-
-// 走査開始位置は暗号強度を要求しないので crypto/rand ではなく math/rand/v2 を使う。
-func defaultRandHexFn() string {
-	var b [16]byte
-	binary.LittleEndian.PutUint64(b[:8], rand.Uint64())
-	binary.LittleEndian.PutUint64(b[8:], rand.Uint64())
-	return hex.EncodeToString(b[:])
 }
 
 func (r *DynamoRepository) Register(ctx context.Context, runnerID, privateURL string) error {

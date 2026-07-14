@@ -19,7 +19,7 @@ const testRunnerID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 // state-index の Projection = ALL が壊れて privateUrl が消えた場合にテストで検出できるよう、ヘルパー側で必ず載せる。
 const testPrivateURL = "http://10.0.0.1:8080"
 
-// mockDynamoDBAPI は DynamoDBAPI のモック実装。
+// mockDynamoDBAPI は dynamoDBAPI のモック実装。
 type mockDynamoDBAPI struct {
 	putItemFn    func(ctx context.Context, params *dynamodb.PutItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.PutItemOutput, error)
 	getItemFn    func(ctx context.Context, params *dynamodb.GetItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.GetItemOutput, error)
