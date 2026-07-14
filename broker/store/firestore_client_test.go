@@ -10,29 +10,29 @@ import (
 
 // mockFirestoreClientAPI は firestoreClientAPI の mock 実装。
 type mockFirestoreClientAPI struct {
-	createFn         func(ctx context.Context, docID string, data map[string]any) error
-	getFn            func(ctx context.Context, docID string) (map[string]any, bool, error)
-	deleteFn         func(ctx context.Context, docID string) error
-	queryIdleFn      func(ctx context.Context, startAt string) (string, map[string]any, bool, error)
+	createFn         func(ctx context.Context, runnerID string, data map[string]any) error
+	getFn            func(ctx context.Context, runnerID string) (map[string]any, bool, error)
+	deleteFn         func(ctx context.Context, runnerID string) error
+	queryIdleRangeFn func(ctx context.Context, after, upTo string, limit int) ([]firestoreDocSnapshot, error)
 	iterBusyFn       func(ctx context.Context) firestoreDocIter
 	queryBySessionFn func(ctx context.Context, sessionID string) (string, map[string]any, bool, error)
 	runTxFn          func(ctx context.Context, fn func(tx firestoreTx) error) error
 }
 
-func (m *mockFirestoreClientAPI) Create(ctx context.Context, docID string, data map[string]any) error {
-	return m.createFn(ctx, docID, data)
+func (m *mockFirestoreClientAPI) Create(ctx context.Context, runnerID string, data map[string]any) error {
+	return m.createFn(ctx, runnerID, data)
 }
 
-func (m *mockFirestoreClientAPI) Get(ctx context.Context, docID string) (map[string]any, bool, error) {
-	return m.getFn(ctx, docID)
+func (m *mockFirestoreClientAPI) Get(ctx context.Context, runnerID string) (map[string]any, bool, error) {
+	return m.getFn(ctx, runnerID)
 }
 
-func (m *mockFirestoreClientAPI) Delete(ctx context.Context, docID string) error {
-	return m.deleteFn(ctx, docID)
+func (m *mockFirestoreClientAPI) Delete(ctx context.Context, runnerID string) error {
+	return m.deleteFn(ctx, runnerID)
 }
 
-func (m *mockFirestoreClientAPI) QueryIdle(ctx context.Context, startAt string) (string, map[string]any, bool, error) {
-	return m.queryIdleFn(ctx, startAt)
+func (m *mockFirestoreClientAPI) QueryIdleRange(ctx context.Context, after, upTo string, limit int) ([]firestoreDocSnapshot, error) {
+	return m.queryIdleRangeFn(ctx, after, upTo, limit)
 }
 
 func (m *mockFirestoreClientAPI) IterBusy(ctx context.Context) firestoreDocIter {
@@ -81,16 +81,16 @@ func (m *mockFirestoreDocIter) Stop() {
 
 // mockFirestoreTx は firestoreTx の mock 実装。
 type mockFirestoreTx struct {
-	getFn    func(docID string) (map[string]any, bool, error)
-	updateFn func(docID, field string, value any) error
+	getFn    func(runnerID string) (map[string]any, bool, error)
+	updateFn func(runnerID, field string, value any) error
 }
 
-func (m *mockFirestoreTx) Get(docID string) (map[string]any, bool, error) {
-	return m.getFn(docID)
+func (m *mockFirestoreTx) Get(runnerID string) (map[string]any, bool, error) {
+	return m.getFn(runnerID)
 }
 
-func (m *mockFirestoreTx) Update(docID, field string, value any) error {
-	return m.updateFn(docID, field, value)
+func (m *mockFirestoreTx) Update(runnerID, field string, value any) error {
+	return m.updateFn(runnerID, field, value)
 }
 
 // TestFirestoreClient_ImplementsFirestoreDB は firestoreClient が firestoreDB interface を満たすことを検証する。
@@ -104,9 +104,9 @@ func TestFirestoreClient_Create(t *testing.T) {
 	t.Parallel()
 	var gotData map[string]any
 	api := &mockFirestoreClientAPI{
-		createFn: func(_ context.Context, docID string, data map[string]any) error {
-			if docID != "r1" {
-				t.Errorf("docID = %q, want r1", docID)
+		createFn: func(_ context.Context, runnerID string, data map[string]any) error {
+			if runnerID != "r1" {
+				t.Errorf("runnerID = %q, want r1", runnerID)
 			}
 			gotData = data
 			return nil
@@ -139,9 +139,9 @@ func TestFirestoreClient_Create_Error(t *testing.T) {
 func TestFirestoreClient_Get_Exists(t *testing.T) {
 	t.Parallel()
 	api := &mockFirestoreClientAPI{
-		getFn: func(_ context.Context, docID string) (map[string]any, bool, error) {
-			if docID != "r1" {
-				t.Errorf("docID = %q", docID)
+		getFn: func(_ context.Context, runnerID string) (map[string]any, bool, error) {
+			if runnerID != "r1" {
+				t.Errorf("runnerID = %q", runnerID)
 			}
 			return map[string]any{fieldPrivateURL: "http://10.0.0.1:8080", fieldCurrentSessionID: "sess-1"}, true, nil
 		},
@@ -193,10 +193,10 @@ func TestFirestoreClient_Delete(t *testing.T) {
 	t.Parallel()
 	called := false
 	api := &mockFirestoreClientAPI{
-		deleteFn: func(_ context.Context, docID string) error {
+		deleteFn: func(_ context.Context, runnerID string) error {
 			called = true
-			if docID != "r1" {
-				t.Errorf("docID = %q", docID)
+			if runnerID != "r1" {
+				t.Errorf("runnerID = %q", runnerID)
 			}
 			return nil
 		},
@@ -209,54 +209,60 @@ func TestFirestoreClient_Delete(t *testing.T) {
 	}
 }
 
-// TestFirestoreClient_QueryIdle_Exists は QueryIdle が data を runnerDoc に変換して返すことを検証する。
-func TestFirestoreClient_QueryIdle_Exists(t *testing.T) {
+// TestFirestoreClient_QueryIdleRange_Multiple は snapshot 配列を runnerDoc 配列に変換して返すことを検証する。
+func TestFirestoreClient_QueryIdleRange_Multiple(t *testing.T) {
 	t.Parallel()
 	api := &mockFirestoreClientAPI{
-		queryIdleFn: func(_ context.Context, startAt string) (string, map[string]any, bool, error) {
-			if startAt != "abcd" {
-				t.Errorf("startAt = %q", startAt)
+		queryIdleRangeFn: func(_ context.Context, after, upTo string, limit int) ([]firestoreDocSnapshot, error) {
+			if after != "abcd" || upTo != "efgh" || limit != 5 {
+				t.Errorf("args = (%q,%q,%d)", after, upTo, limit)
 			}
-			return "r2", map[string]any{fieldPrivateURL: "http://10.0.0.2:8080"}, true, nil
+			return []firestoreDocSnapshot{
+				{ID: "r1", Data: map[string]any{fieldPrivateURL: "http://10.0.0.1:8080"}},
+				{ID: "r2", Data: map[string]any{fieldPrivateURL: "http://10.0.0.2:8080"}},
+			}, nil
 		},
 	}
-	doc, err := newFirestoreClient(api).QueryIdle(context.Background(), "abcd")
+	docs, err := newFirestoreClient(api).QueryIdleRange(context.Background(), "abcd", "efgh", 5)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want := &runnerDoc{RunnerID: "r2", PrivateURL: "http://10.0.0.2:8080"}
-	if !reflect.DeepEqual(doc, want) {
-		t.Errorf("doc = %+v, want %+v", doc, want)
+	want := []runnerDoc{
+		{RunnerID: "r1", PrivateURL: "http://10.0.0.1:8080"},
+		{RunnerID: "r2", PrivateURL: "http://10.0.0.2:8080"},
+	}
+	if !reflect.DeepEqual(docs, want) {
+		t.Errorf("docs = %+v, want %+v", docs, want)
 	}
 }
 
-// TestFirestoreClient_QueryIdle_NotFound は QueryIdle が exists=false のとき nil, nil を返すことを検証する。
-func TestFirestoreClient_QueryIdle_NotFound(t *testing.T) {
+// TestFirestoreClient_QueryIdleRange_Empty は snapshot 空のとき空 slice を返すことを検証する。
+func TestFirestoreClient_QueryIdleRange_Empty(t *testing.T) {
 	t.Parallel()
 	api := &mockFirestoreClientAPI{
-		queryIdleFn: func(context.Context, string) (string, map[string]any, bool, error) {
-			return "", nil, false, nil
+		queryIdleRangeFn: func(context.Context, string, string, int) ([]firestoreDocSnapshot, error) {
+			return nil, nil
 		},
 	}
-	doc, err := newFirestoreClient(api).QueryIdle(context.Background(), "")
+	docs, err := newFirestoreClient(api).QueryIdleRange(context.Background(), "", "", 5)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if doc != nil {
-		t.Errorf("doc = %+v, want nil", doc)
+	if len(docs) != 0 {
+		t.Errorf("docs = %+v, want empty", docs)
 	}
 }
 
-// TestFirestoreClient_QueryIdle_Error は QueryIdle エラーが伝播することを検証する。
-func TestFirestoreClient_QueryIdle_Error(t *testing.T) {
+// TestFirestoreClient_QueryIdleRange_Error は QueryIdleRange エラーが伝播することを検証する。
+func TestFirestoreClient_QueryIdleRange_Error(t *testing.T) {
 	t.Parallel()
 	want := errors.New("query boom")
 	api := &mockFirestoreClientAPI{
-		queryIdleFn: func(context.Context, string) (string, map[string]any, bool, error) {
-			return "", nil, false, want
+		queryIdleRangeFn: func(context.Context, string, string, int) ([]firestoreDocSnapshot, error) {
+			return nil, want
 		},
 	}
-	_, err := newFirestoreClient(api).QueryIdle(context.Background(), "")
+	_, err := newFirestoreClient(api).QueryIdleRange(context.Background(), "", "", 5)
 	if !errors.Is(err, want) {
 		t.Errorf("expected %v, got %v", want, err)
 	}
@@ -391,16 +397,16 @@ func TestFirestoreClient_AssignSession_Success(t *testing.T) {
 	t.Parallel()
 	updateCalled := false
 	tx := &mockFirestoreTx{
-		getFn: func(docID string) (map[string]any, bool, error) {
-			if docID != "r1" {
-				t.Errorf("docID = %q", docID)
+		getFn: func(runnerID string) (map[string]any, bool, error) {
+			if runnerID != "r1" {
+				t.Errorf("runnerID = %q", runnerID)
 			}
 			return map[string]any{fieldCurrentSessionID: nil}, true, nil
 		},
-		updateFn: func(docID, field string, value any) error {
+		updateFn: func(runnerID, field string, value any) error {
 			updateCalled = true
-			if docID != "r1" || field != fieldCurrentSessionID || value != "sess-1" {
-				t.Errorf("Update args = (%q, %q, %v)", docID, field, value)
+			if runnerID != "r1" || field != fieldCurrentSessionID || value != "sess-1" {
+				t.Errorf("Update args = (%q, %q, %v)", runnerID, field, value)
 			}
 			return nil
 		},

@@ -9,10 +9,6 @@ import (
 	"github.com/ogadra/bunshin/broker/model"
 )
 
-// maxAcquireRetries は AcquireIdle のリトライ上限。この回数を超えても取れなければ ErrNoIdleRunner に落とす。
-// stale document による無限ループ回避と、実際に idle が枯渇した状態のフェイルクローズを兼ねる。
-const maxAcquireRetries = 20
-
 // firestoreCollection は runner document を格納するコレクション名。
 const firestoreCollection = "runners"
 
@@ -47,13 +43,20 @@ func (d runnerDoc) toModel() *model.Runner {
 // firestoreDB は Firestore の runners コレクションに対する semantic 操作。
 // Repository はこの interface に依存し、mock による unit test で全経路をカバーする。
 type firestoreDB interface {
-	Create(ctx context.Context, docID, privateURL string) error
-	Get(ctx context.Context, docID string) (*runnerDoc, error)
-	Delete(ctx context.Context, docID string) error
-	QueryIdle(ctx context.Context, startAt string) (*runnerDoc, error)
+	Create(ctx context.Context, runnerID, privateURL string) error
+	Get(ctx context.Context, runnerID string) (*runnerDoc, error)
+	Delete(ctx context.Context, runnerID string) error
+	QueryIdleRange(ctx context.Context, after, upTo string, limit int) ([]runnerDoc, error)
 	ListBusy(ctx context.Context) ([]runnerDoc, error)
 	FindBySession(ctx context.Context, sessionID string) (*runnerDoc, error)
-	AssignSession(ctx context.Context, docID, sessionID string) error
+	AssignSession(ctx context.Context, runnerID, sessionID string) error
+}
+
+// firestoreDocSnapshot は Firestore query の 1 doc 分を primitive レベルで表現する。
+// firestoreClientAPI から複数 doc を返すために使う。
+type firestoreDocSnapshot struct {
+	ID   string
+	Data map[string]any
 }
 
 // firestoreClientAPI は Firestore SDK 呼出を primitive レベルで抽象化する。
@@ -61,10 +64,10 @@ type firestoreDB interface {
 // return は SDK 具象型を露出せず map[string]any / bool / 独自 interface のみを使う。
 // production では firestore_adapter.go の SDK 実装、unit test では mock が実装する。
 type firestoreClientAPI interface {
-	Create(ctx context.Context, docID string, data map[string]any) error
-	Get(ctx context.Context, docID string) (data map[string]any, exists bool, err error)
-	Delete(ctx context.Context, docID string) error
-	QueryIdle(ctx context.Context, startAt string) (id string, data map[string]any, exists bool, err error)
+	Create(ctx context.Context, runnerID string, data map[string]any) error
+	Get(ctx context.Context, runnerID string) (data map[string]any, exists bool, err error)
+	Delete(ctx context.Context, runnerID string) error
+	QueryIdleRange(ctx context.Context, after, upTo string, limit int) ([]firestoreDocSnapshot, error)
 	IterBusy(ctx context.Context) firestoreDocIter
 	QueryBySession(ctx context.Context, sessionID string) (id string, data map[string]any, exists bool, err error)
 	RunTx(ctx context.Context, fn func(tx firestoreTx) error) error
@@ -80,8 +83,8 @@ type firestoreDocIter interface {
 // firestoreTx は Firestore transaction 内で使う操作の抽象化。
 // SDK の *firestore.Transaction を隠蔽し、mock によるトランザクション orchestration の unit test を可能にする。
 type firestoreTx interface {
-	Get(docID string) (data map[string]any, exists bool, err error)
-	Update(docID, field string, value any) error
+	Get(runnerID string) (data map[string]any, exists bool, err error)
+	Update(runnerID, field string, value any) error
 }
 
 // firestoreClient は firestoreDB を firestoreClientAPI 経由で実装する。
@@ -95,37 +98,38 @@ func newFirestoreClient(api firestoreClientAPI) *firestoreClient {
 	return &firestoreClient{api: api}
 }
 
-func (c *firestoreClient) Create(ctx context.Context, docID, privateURL string) error {
-	return c.api.Create(ctx, docID, map[string]any{
+func (c *firestoreClient) Create(ctx context.Context, runnerID, privateURL string) error {
+	return c.api.Create(ctx, runnerID, map[string]any{
 		fieldPrivateURL:       privateURL,
 		fieldCurrentSessionID: nil,
 	})
 }
 
-func (c *firestoreClient) Get(ctx context.Context, docID string) (*runnerDoc, error) {
-	data, exists, err := c.api.Get(ctx, docID)
+func (c *firestoreClient) Get(ctx context.Context, runnerID string) (*runnerDoc, error) {
+	data, exists, err := c.api.Get(ctx, runnerID)
 	if err != nil {
 		return nil, err
 	}
 	if !exists {
 		return nil, nil
 	}
-	return snapshotToDoc(docID, data), nil
+	return snapshotToDoc(runnerID, data), nil
 }
 
-func (c *firestoreClient) Delete(ctx context.Context, docID string) error {
-	return c.api.Delete(ctx, docID)
+func (c *firestoreClient) Delete(ctx context.Context, runnerID string) error {
+	return c.api.Delete(ctx, runnerID)
 }
 
-func (c *firestoreClient) QueryIdle(ctx context.Context, startAt string) (*runnerDoc, error) {
-	id, data, exists, err := c.api.QueryIdle(ctx, startAt)
+func (c *firestoreClient) QueryIdleRange(ctx context.Context, after, upTo string, limit int) ([]runnerDoc, error) {
+	snaps, err := c.api.QueryIdleRange(ctx, after, upTo, limit)
 	if err != nil {
 		return nil, err
 	}
-	if !exists {
-		return nil, nil
+	docs := make([]runnerDoc, 0, len(snaps))
+	for _, s := range snaps {
+		docs = append(docs, *snapshotToDoc(s.ID, s.Data))
 	}
-	return snapshotToDoc(id, data), nil
+	return docs, nil
 }
 
 func (c *firestoreClient) ListBusy(ctx context.Context) ([]runnerDoc, error) {
@@ -155,9 +159,9 @@ func (c *firestoreClient) FindBySession(ctx context.Context, sessionID string) (
 	return snapshotToDoc(id, data), nil
 }
 
-func (c *firestoreClient) AssignSession(ctx context.Context, docID, sessionID string) error {
+func (c *firestoreClient) AssignSession(ctx context.Context, runnerID, sessionID string) error {
 	return c.api.RunTx(ctx, func(tx firestoreTx) error {
-		data, exists, err := tx.Get(docID)
+		data, exists, err := tx.Get(runnerID)
 		if err != nil {
 			return err
 		}
@@ -167,7 +171,7 @@ func (c *firestoreClient) AssignSession(ctx context.Context, docID, sessionID st
 		if v, ok := data[fieldCurrentSessionID]; !ok || v != nil {
 			return ErrConditionFailed
 		}
-		return tx.Update(docID, fieldCurrentSessionID, sessionID)
+		return tx.Update(runnerID, fieldCurrentSessionID, sessionID)
 	})
 }
 
@@ -196,43 +200,55 @@ func (r *FirestoreRepository) Register(ctx context.Context, runnerID, privateURL
 	return r.db.Create(ctx, runnerID, privateURL)
 }
 
+// AcquireIdle は乱数開始位置から (start, ∞) → [∅, start] の 2 segment を acquireQueryLimit 件ずつ
+// paginate し、AssignSession で precondition 競合した runner は tried に記録して次候補へ進む。
+// 全 segment を辿り切れば idle 枯渇として ErrNoIdleRunner を返す (DynamoDB 側と同構造)。
 func (r *FirestoreRepository) AcquireIdle(ctx context.Context, sessionID string) (*model.Runner, error) {
-	for range maxAcquireRetries {
-		doc, err := r.findIdleCandidate(ctx)
-		if err != nil {
-			return nil, err
+	tried := map[string]struct{}{}
+	start := r.randHexFn()
+	for _, seg := range [][2]string{{start, ""}, {"", start}} {
+		after, upTo := seg[0], seg[1]
+		for {
+			docs, err := r.db.QueryIdleRange(ctx, after, upTo, acquireQueryLimit)
+			if err != nil {
+				return nil, err
+			}
+			if len(docs) == 0 {
+				break
+			}
+			runner, err := r.assignFirstIdle(ctx, sessionID, docs, tried)
+			if runner != nil || err != nil {
+				return runner, err
+			}
+			after = docs[len(docs)-1].RunnerID
+			if len(docs) < acquireQueryLimit {
+				break
+			}
 		}
-		if doc == nil {
-			return nil, ErrNoIdleRunner
-		}
-		err = r.db.AssignSession(ctx, doc.RunnerID, sessionID)
-		if errors.Is(err, ErrConditionFailed) {
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		return &model.Runner{
-			RunnerID:         doc.RunnerID,
-			State:            model.StateBusy,
-			PrivateURL:       doc.PrivateURL,
-			CurrentSessionID: sessionID,
-		}, nil
 	}
 	return nil, ErrNoIdleRunner
 }
 
-// findIdleCandidate は idle runner を 1 件返す。
-// 乱数開始位置で見つからなければ先頭から wrap query する。両方空なら nil を返す。
-func (r *FirestoreRepository) findIdleCandidate(ctx context.Context) (*runnerDoc, error) {
-	doc, err := r.db.QueryIdle(ctx, r.randHexFn())
-	if err != nil {
-		return nil, err
+func (r *FirestoreRepository) assignFirstIdle(ctx context.Context, sessionID string, candidates []runnerDoc, tried map[string]struct{}) (*model.Runner, error) {
+	for _, d := range candidates {
+		if _, done := tried[d.RunnerID]; done {
+			continue
+		}
+		err := r.db.AssignSession(ctx, d.RunnerID, sessionID)
+		if err == nil {
+			return &model.Runner{
+				RunnerID:         d.RunnerID,
+				State:            model.StateBusy,
+				PrivateURL:       d.PrivateURL,
+				CurrentSessionID: sessionID,
+			}, nil
+		}
+		if !errors.Is(err, ErrConditionFailed) {
+			return nil, err
+		}
+		tried[d.RunnerID] = struct{}{}
 	}
-	if doc != nil {
-		return doc, nil
-	}
-	return r.db.QueryIdle(ctx, "")
+	return nil, nil
 }
 
 func (r *FirestoreRepository) ListBusyRunners(ctx context.Context) ([]model.Runner, error) {
@@ -275,8 +291,8 @@ func (r *FirestoreRepository) Delete(ctx context.Context, runnerID string) error
 
 // snapshotToDoc は Firestore document snapshot の data と ID から runnerDoc を組み立てる。
 // unit test で adapter を経由せずに検証するため、firestore SDK に依存しないここに置く。
-func snapshotToDoc(docID string, data map[string]any) *runnerDoc {
-	doc := &runnerDoc{RunnerID: docID}
+func snapshotToDoc(runnerID string, data map[string]any) *runnerDoc {
+	doc := &runnerDoc{RunnerID: runnerID}
 	if v, ok := data[fieldPrivateURL].(string); ok {
 		doc.PrivateURL = v
 	}

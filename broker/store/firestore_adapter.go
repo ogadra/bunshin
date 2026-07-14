@@ -32,8 +32,8 @@ type firestoreClientAPIAdapter struct {
 	client *firestore.Client
 }
 
-func (a *firestoreClientAPIAdapter) Create(ctx context.Context, docID string, data map[string]any) error {
-	_, err := a.client.Collection(firestoreCollection).Doc(docID).Create(ctx, data)
+func (a *firestoreClientAPIAdapter) Create(ctx context.Context, runnerID string, data map[string]any) error {
+	_, err := a.client.Collection(firestoreCollection).Doc(runnerID).Create(ctx, data)
 	if err != nil {
 		if status.Code(err) == codes.AlreadyExists {
 			return ErrConflict
@@ -43,8 +43,8 @@ func (a *firestoreClientAPIAdapter) Create(ctx context.Context, docID string, da
 	return nil
 }
 
-func (a *firestoreClientAPIAdapter) Get(ctx context.Context, docID string) (map[string]any, bool, error) {
-	snap, err := a.client.Collection(firestoreCollection).Doc(docID).Get(ctx)
+func (a *firestoreClientAPIAdapter) Get(ctx context.Context, runnerID string) (map[string]any, bool, error) {
+	snap, err := a.client.Collection(firestoreCollection).Doc(runnerID).Get(ctx)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
 			return nil, false, nil
@@ -54,30 +54,40 @@ func (a *firestoreClientAPIAdapter) Get(ctx context.Context, docID string) (map[
 	return snap.Data(), true, nil
 }
 
-func (a *firestoreClientAPIAdapter) Delete(ctx context.Context, docID string) error {
-	if _, err := a.client.Collection(firestoreCollection).Doc(docID).Delete(ctx); err != nil {
+func (a *firestoreClientAPIAdapter) Delete(ctx context.Context, runnerID string) error {
+	if _, err := a.client.Collection(firestoreCollection).Doc(runnerID).Delete(ctx); err != nil {
 		return fmt.Errorf("firestore delete: %w", err)
 	}
 	return nil
 }
 
-func (a *firestoreClientAPIAdapter) QueryIdle(ctx context.Context, startAt string) (string, map[string]any, bool, error) {
+// QueryIdleRange は currentSessionId == nil の doc を __name__ 昇順で走査する。
+// after (exclusive) と upTo (inclusive) で範囲を絞り、limit で 1 ページ分だけ返す。
+// 空文字列を渡すとその側の境界は無効化される。
+func (a *firestoreClientAPIAdapter) QueryIdleRange(ctx context.Context, after, upTo string, limit int) ([]firestoreDocSnapshot, error) {
 	q := a.client.Collection(firestoreCollection).
 		Where(fieldCurrentSessionID, "==", nil).
 		OrderBy(firestore.DocumentID, firestore.Asc)
-	if startAt != "" {
-		q = q.StartAt(startAt)
+	if after != "" {
+		q = q.StartAfter(after)
 	}
-	iter := q.Limit(1).Documents(ctx)
+	if upTo != "" {
+		q = q.EndAt(upTo)
+	}
+	iter := q.Limit(limit).Documents(ctx)
 	defer iter.Stop()
-	snap, err := iter.Next()
-	if errors.Is(err, iterator.Done) {
-		return "", nil, false, nil
+
+	var snaps []firestoreDocSnapshot
+	for {
+		snap, err := iter.Next()
+		if errors.Is(err, iterator.Done) {
+			return snaps, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("firestore query idle range: %w", err)
+		}
+		snaps = append(snaps, firestoreDocSnapshot{ID: snap.Ref.ID, Data: snap.Data()})
 	}
-	if err != nil {
-		return "", nil, false, fmt.Errorf("firestore query idle: %w", err)
-	}
-	return snap.Ref.ID, snap.Data(), true, nil
 }
 
 func (a *firestoreClientAPIAdapter) IterBusy(ctx context.Context) firestoreDocIter {
@@ -143,8 +153,8 @@ type firestoreTxAdapter struct {
 	tx     *firestore.Transaction
 }
 
-func (a *firestoreTxAdapter) Get(docID string) (map[string]any, bool, error) {
-	snap, err := a.tx.Get(a.client.Collection(firestoreCollection).Doc(docID))
+func (a *firestoreTxAdapter) Get(runnerID string) (map[string]any, bool, error) {
+	snap, err := a.tx.Get(a.client.Collection(firestoreCollection).Doc(runnerID))
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
 			return nil, false, nil
@@ -154,8 +164,8 @@ func (a *firestoreTxAdapter) Get(docID string) (map[string]any, bool, error) {
 	return snap.Data(), true, nil
 }
 
-func (a *firestoreTxAdapter) Update(docID, field string, value any) error {
-	ref := a.client.Collection(firestoreCollection).Doc(docID)
+func (a *firestoreTxAdapter) Update(runnerID, field string, value any) error {
+	ref := a.client.Collection(firestoreCollection).Doc(runnerID)
 	if err := a.tx.Update(ref, []firestore.Update{{Path: field, Value: value}}); err != nil {
 		return fmt.Errorf("firestore tx update: %w", err)
 	}

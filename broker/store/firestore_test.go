@@ -17,29 +17,29 @@ const firestoreTestStart = "88888888888888888888888888888888"
 
 // mockFirestoreDB は firestoreDB の mock 実装。フィールドが nil の場合は t.Fatal する。
 type mockFirestoreDB struct {
-	createFn        func(ctx context.Context, docID, privateURL string) error
-	getFn           func(ctx context.Context, docID string) (*runnerDoc, error)
-	deleteFn        func(ctx context.Context, docID string) error
-	queryIdleFn     func(ctx context.Context, startAt string) (*runnerDoc, error)
-	listBusyFn      func(ctx context.Context) ([]runnerDoc, error)
-	findBySessionFn func(ctx context.Context, sessionID string) (*runnerDoc, error)
-	assignSessionFn func(ctx context.Context, docID, sessionID string) error
+	createFn         func(ctx context.Context, runnerID, privateURL string) error
+	getFn            func(ctx context.Context, runnerID string) (*runnerDoc, error)
+	deleteFn         func(ctx context.Context, runnerID string) error
+	queryIdleRangeFn func(ctx context.Context, after, upTo string, limit int) ([]runnerDoc, error)
+	listBusyFn       func(ctx context.Context) ([]runnerDoc, error)
+	findBySessionFn  func(ctx context.Context, sessionID string) (*runnerDoc, error)
+	assignSessionFn  func(ctx context.Context, runnerID, sessionID string) error
 }
 
-func (m *mockFirestoreDB) Create(ctx context.Context, docID, privateURL string) error {
-	return m.createFn(ctx, docID, privateURL)
+func (m *mockFirestoreDB) Create(ctx context.Context, runnerID, privateURL string) error {
+	return m.createFn(ctx, runnerID, privateURL)
 }
 
-func (m *mockFirestoreDB) Get(ctx context.Context, docID string) (*runnerDoc, error) {
-	return m.getFn(ctx, docID)
+func (m *mockFirestoreDB) Get(ctx context.Context, runnerID string) (*runnerDoc, error) {
+	return m.getFn(ctx, runnerID)
 }
 
-func (m *mockFirestoreDB) Delete(ctx context.Context, docID string) error {
-	return m.deleteFn(ctx, docID)
+func (m *mockFirestoreDB) Delete(ctx context.Context, runnerID string) error {
+	return m.deleteFn(ctx, runnerID)
 }
 
-func (m *mockFirestoreDB) QueryIdle(ctx context.Context, startAt string) (*runnerDoc, error) {
-	return m.queryIdleFn(ctx, startAt)
+func (m *mockFirestoreDB) QueryIdleRange(ctx context.Context, after, upTo string, limit int) ([]runnerDoc, error) {
+	return m.queryIdleRangeFn(ctx, after, upTo, limit)
 }
 
 func (m *mockFirestoreDB) ListBusy(ctx context.Context) ([]runnerDoc, error) {
@@ -50,8 +50,8 @@ func (m *mockFirestoreDB) FindBySession(ctx context.Context, sessionID string) (
 	return m.findBySessionFn(ctx, sessionID)
 }
 
-func (m *mockFirestoreDB) AssignSession(ctx context.Context, docID, sessionID string) error {
-	return m.assignSessionFn(ctx, docID, sessionID)
+func (m *mockFirestoreDB) AssignSession(ctx context.Context, runnerID, sessionID string) error {
+	return m.assignSessionFn(ctx, runnerID, sessionID)
 }
 
 func newFirestoreRepoForTest(db firestoreDB) *FirestoreRepository {
@@ -172,10 +172,10 @@ func TestFirestoreRegister_Success(t *testing.T) {
 	t.Parallel()
 	called := false
 	repo := newFirestoreRepoForTest(&mockFirestoreDB{
-		createFn: func(_ context.Context, docID, privateURL string) error {
+		createFn: func(_ context.Context, runnerID, privateURL string) error {
 			called = true
-			if docID != firestoreTestRunnerID {
-				t.Errorf("docID = %q", docID)
+			if runnerID != firestoreTestRunnerID {
+				t.Errorf("runnerID = %q", runnerID)
 			}
 			if privateURL != "http://10.0.0.1:8080" {
 				t.Errorf("privateURL = %q", privateURL)
@@ -216,20 +216,27 @@ func TestFirestoreRegister_CreateError(t *testing.T) {
 }
 
 // TestFirestoreAcquireIdle_Success は乱数開始位置で idle runner を確保できることを検証する。
+// (start, ∞) segment から acquireQueryLimit 件以内で候補を得て assign が通るケース。
 func TestFirestoreAcquireIdle_Success(t *testing.T) {
 	t.Parallel()
 	assigned := false
 	repo := newFirestoreRepoForTest(&mockFirestoreDB{
-		queryIdleFn: func(_ context.Context, startAt string) (*runnerDoc, error) {
-			if startAt != firestoreTestStart {
-				t.Errorf("startAt = %q, want %q", startAt, firestoreTestStart)
+		queryIdleRangeFn: func(_ context.Context, after, upTo string, limit int) ([]runnerDoc, error) {
+			if after != firestoreTestStart {
+				t.Errorf("after = %q, want %q", after, firestoreTestStart)
 			}
-			return &runnerDoc{RunnerID: "r1", PrivateURL: "http://10.0.0.1:8080"}, nil
+			if upTo != "" {
+				t.Errorf("upTo = %q, want empty", upTo)
+			}
+			if limit != acquireQueryLimit {
+				t.Errorf("limit = %d, want %d", limit, acquireQueryLimit)
+			}
+			return []runnerDoc{{RunnerID: "r1", PrivateURL: "http://10.0.0.1:8080"}}, nil
 		},
-		assignSessionFn: func(_ context.Context, docID, sessionID string) error {
+		assignSessionFn: func(_ context.Context, runnerID, sessionID string) error {
 			assigned = true
-			if docID != "r1" {
-				t.Errorf("docID = %q, want r1", docID)
+			if runnerID != "r1" {
+				t.Errorf("runnerID = %q, want r1", runnerID)
 			}
 			if sessionID != "sess-1" {
 				t.Errorf("sessionID = %q, want sess-1", sessionID)
@@ -260,26 +267,26 @@ func TestFirestoreAcquireIdle_Success(t *testing.T) {
 	}
 }
 
-// TestFirestoreAcquireIdle_WrapFromHead は乱数開始位置に doc がない場合に先頭から wrap query することを検証する。
+// TestFirestoreAcquireIdle_WrapFromHead は乱数開始位置の後に doc が無い場合に [∅, start] segment で拾えることを検証する。
 func TestFirestoreAcquireIdle_WrapFromHead(t *testing.T) {
 	t.Parallel()
 	calls := 0
 	repo := newFirestoreRepoForTest(&mockFirestoreDB{
-		queryIdleFn: func(_ context.Context, startAt string) (*runnerDoc, error) {
+		queryIdleRangeFn: func(_ context.Context, after, upTo string, _ int) ([]runnerDoc, error) {
 			calls++
 			switch calls {
 			case 1:
-				if startAt != firestoreTestStart {
-					t.Errorf("first startAt = %q", startAt)
+				if after != firestoreTestStart || upTo != "" {
+					t.Errorf("call1 (after,upTo) = (%q,%q), want (%q,\"\")", after, upTo, firestoreTestStart)
 				}
 				return nil, nil
 			case 2:
-				if startAt != "" {
-					t.Errorf("wrap startAt = %q, want empty", startAt)
+				if after != "" || upTo != firestoreTestStart {
+					t.Errorf("call2 (after,upTo) = (%q,%q), want (\"\",%q)", after, upTo, firestoreTestStart)
 				}
-				return &runnerDoc{RunnerID: "r-low", PrivateURL: "http://10.0.0.1:8080"}, nil
+				return []runnerDoc{{RunnerID: "r-low", PrivateURL: "http://10.0.0.1:8080"}}, nil
 			}
-			t.Fatalf("unexpected extra QueryIdle call")
+			t.Fatalf("unexpected extra QueryIdleRange call")
 			return nil, nil
 		},
 		assignSessionFn: func(context.Context, string, string) error { return nil },
@@ -294,7 +301,7 @@ func TestFirestoreAcquireIdle_WrapFromHead(t *testing.T) {
 		t.Errorf("runnerID = %q", runner.RunnerID)
 	}
 	if calls != 2 {
-		t.Errorf("QueryIdle calls = %d, want 2", calls)
+		t.Errorf("QueryIdleRange calls = %d, want 2", calls)
 	}
 }
 
@@ -302,7 +309,7 @@ func TestFirestoreAcquireIdle_WrapFromHead(t *testing.T) {
 func TestFirestoreAcquireIdle_NoIdleRunner(t *testing.T) {
 	t.Parallel()
 	repo := newFirestoreRepoForTest(&mockFirestoreDB{
-		queryIdleFn: func(context.Context, string) (*runnerDoc, error) { return nil, nil },
+		queryIdleRangeFn: func(context.Context, string, string, int) ([]runnerDoc, error) { return nil, nil },
 	})
 	repo.randHexFn = func() string { return firestoreTestStart }
 
@@ -312,11 +319,13 @@ func TestFirestoreAcquireIdle_NoIdleRunner(t *testing.T) {
 	}
 }
 
-// TestFirestoreAcquireIdle_QueryError は QueryIdle がエラーを返す場合を検証する。
+// TestFirestoreAcquireIdle_QueryError は QueryIdleRange がエラーを返す場合を検証する。
 func TestFirestoreAcquireIdle_QueryError(t *testing.T) {
 	t.Parallel()
 	repo := newFirestoreRepoForTest(&mockFirestoreDB{
-		queryIdleFn: func(context.Context, string) (*runnerDoc, error) { return nil, errors.New("query error") },
+		queryIdleRangeFn: func(context.Context, string, string, int) ([]runnerDoc, error) {
+			return nil, errors.New("query error")
+		},
 	})
 	repo.randHexFn = func() string { return firestoreTestStart }
 
@@ -326,33 +335,27 @@ func TestFirestoreAcquireIdle_QueryError(t *testing.T) {
 	}
 }
 
-// TestFirestoreAcquireIdle_RetryOnConditionFailure は precondition 失敗時に乱数を作り直して retry することを検証する。
-func TestFirestoreAcquireIdle_RetryOnConditionFailure(t *testing.T) {
+// TestFirestoreAcquireIdle_SkipStaleInPage は 1 ページ内で precondition 失敗した doc を tried に記録し、
+// 同ページ内の次候補で assign を試すことを検証する。
+func TestFirestoreAcquireIdle_SkipStaleInPage(t *testing.T) {
 	t.Parallel()
-	starts := []string{}
 	queryCalls := 0
 	repo := newFirestoreRepoForTest(&mockFirestoreDB{
-		queryIdleFn: func(_ context.Context, startAt string) (*runnerDoc, error) {
+		queryIdleRangeFn: func(context.Context, string, string, int) ([]runnerDoc, error) {
 			queryCalls++
-			starts = append(starts, startAt)
-			if queryCalls == 1 {
-				return &runnerDoc{RunnerID: "r-busy", PrivateURL: "http://10.0.0.1:8080"}, nil
-			}
-			return &runnerDoc{RunnerID: "r-good", PrivateURL: "http://10.0.0.2:8080"}, nil
+			return []runnerDoc{
+				{RunnerID: "r-busy", PrivateURL: "http://10.0.0.1:8080"},
+				{RunnerID: "r-good", PrivateURL: "http://10.0.0.2:8080"},
+			}, nil
 		},
-		assignSessionFn: func(_ context.Context, docID, _ string) error {
-			if docID == "r-busy" {
+		assignSessionFn: func(_ context.Context, runnerID, _ string) error {
+			if runnerID == "r-busy" {
 				return ErrConditionFailed
 			}
 			return nil
 		},
 	})
-	rands := []string{"start-1", "start-2"}
-	repo.randHexFn = func() string {
-		v := rands[0]
-		rands = rands[1:]
-		return v
-	}
+	repo.randHexFn = func() string { return firestoreTestStart }
 
 	runner, err := repo.AcquireIdle(context.Background(), "sess-1")
 	if err != nil {
@@ -361,8 +364,59 @@ func TestFirestoreAcquireIdle_RetryOnConditionFailure(t *testing.T) {
 	if runner.RunnerID != "r-good" {
 		t.Errorf("runnerID = %q, want r-good", runner.RunnerID)
 	}
-	if starts[0] != "start-1" || starts[1] != "start-2" {
-		t.Errorf("starts = %v, want [start-1 start-2]", starts)
+	if queryCalls != 1 {
+		t.Errorf("QueryIdleRange calls = %d, want 1 (all candidates from single page)", queryCalls)
+	}
+}
+
+// TestFirestoreAcquireIdle_AdvanceCursor は 1 ページ全 doc が precondition 失敗のとき、
+// cursor を最終 doc の RunnerID 直後まで進めて次ページを引き、そこで assign が通ることを検証する。
+func TestFirestoreAcquireIdle_AdvanceCursor(t *testing.T) {
+	t.Parallel()
+	queryCalls := 0
+	firstPage := []runnerDoc{
+		{RunnerID: "r-stale-1", PrivateURL: "http://10.0.0.1:8080"},
+		{RunnerID: "r-stale-2", PrivateURL: "http://10.0.0.2:8080"},
+		{RunnerID: "r-stale-3", PrivateURL: "http://10.0.0.3:8080"},
+		{RunnerID: "r-stale-4", PrivateURL: "http://10.0.0.4:8080"},
+		{RunnerID: "r-stale-5", PrivateURL: "http://10.0.0.5:8080"},
+	}
+	repo := newFirestoreRepoForTest(&mockFirestoreDB{
+		queryIdleRangeFn: func(_ context.Context, after, _ string, _ int) ([]runnerDoc, error) {
+			queryCalls++
+			switch queryCalls {
+			case 1:
+				if after != firestoreTestStart {
+					t.Errorf("call1 after = %q, want %q", after, firestoreTestStart)
+				}
+				return firstPage, nil
+			case 2:
+				if after != "r-stale-5" {
+					t.Errorf("call2 after = %q, want r-stale-5", after)
+				}
+				return []runnerDoc{{RunnerID: "r-good", PrivateURL: "http://10.0.0.9:8080"}}, nil
+			}
+			t.Fatalf("unexpected extra QueryIdleRange call")
+			return nil, nil
+		},
+		assignSessionFn: func(_ context.Context, runnerID, _ string) error {
+			if runnerID == "r-good" {
+				return nil
+			}
+			return ErrConditionFailed
+		},
+	})
+	repo.randHexFn = func() string { return firestoreTestStart }
+
+	runner, err := repo.AcquireIdle(context.Background(), "sess-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if runner.RunnerID != "r-good" {
+		t.Errorf("runnerID = %q, want r-good", runner.RunnerID)
+	}
+	if queryCalls != 2 {
+		t.Errorf("QueryIdleRange calls = %d, want 2", queryCalls)
 	}
 }
 
@@ -370,8 +424,8 @@ func TestFirestoreAcquireIdle_RetryOnConditionFailure(t *testing.T) {
 func TestFirestoreAcquireIdle_AssignError(t *testing.T) {
 	t.Parallel()
 	repo := newFirestoreRepoForTest(&mockFirestoreDB{
-		queryIdleFn: func(context.Context, string) (*runnerDoc, error) {
-			return &runnerDoc{RunnerID: "r1", PrivateURL: "http://10.0.0.1:8080"}, nil
+		queryIdleRangeFn: func(context.Context, string, string, int) ([]runnerDoc, error) {
+			return []runnerDoc{{RunnerID: "r1", PrivateURL: "http://10.0.0.1:8080"}}, nil
 		},
 		assignSessionFn: func(context.Context, string, string) error { return errors.New("assign error") },
 	})
@@ -386,25 +440,36 @@ func TestFirestoreAcquireIdle_AssignError(t *testing.T) {
 	}
 }
 
-// TestFirestoreAcquireIdle_MaxRetries は precondition が maxAcquireRetries 回連続で失敗した場合に ErrNoIdleRunner を返すことを検証する。
-func TestFirestoreAcquireIdle_MaxRetries(t *testing.T) {
+// TestFirestoreAcquireIdle_AllStale は全 idle doc が precondition 失敗を返し続ける場合に、
+// segment を走査し尽くして ErrNoIdleRunner を返すことを検証する。
+func TestFirestoreAcquireIdle_AllStale(t *testing.T) {
 	t.Parallel()
 	queryCalls := 0
+	assignCalls := 0
 	repo := newFirestoreRepoForTest(&mockFirestoreDB{
-		queryIdleFn: func(context.Context, string) (*runnerDoc, error) {
+		queryIdleRangeFn: func(_ context.Context, after, _ string, _ int) ([]runnerDoc, error) {
 			queryCalls++
-			return &runnerDoc{RunnerID: "r-stale", PrivateURL: "http://10.0.0.1:8080"}, nil
+			if after == "r-stale" {
+				return nil, nil
+			}
+			return []runnerDoc{{RunnerID: "r-stale", PrivateURL: "http://10.0.0.1:8080"}}, nil
 		},
-		assignSessionFn: func(context.Context, string, string) error { return ErrConditionFailed },
+		assignSessionFn: func(context.Context, string, string) error {
+			assignCalls++
+			return ErrConditionFailed
+		},
 	})
 	repo.randHexFn = func() string { return firestoreTestStart }
 
 	_, err := repo.AcquireIdle(context.Background(), "sess-1")
 	if !errors.Is(err, ErrNoIdleRunner) {
-		t.Fatalf("expected ErrNoIdleRunner after retry cap, got: %v", err)
+		t.Fatalf("expected ErrNoIdleRunner, got: %v", err)
 	}
-	if queryCalls != maxAcquireRetries {
-		t.Errorf("queryCalls = %d, want %d", queryCalls, maxAcquireRetries)
+	if assignCalls != 1 {
+		t.Errorf("AssignSession calls = %d, want 1 (tried set skips repeats across segments)", assignCalls)
+	}
+	if queryCalls == 0 {
+		t.Errorf("QueryIdleRange was never called")
 	}
 }
 
@@ -506,8 +571,8 @@ func TestFirestoreFindBySessionID_Error(t *testing.T) {
 func TestFirestoreFindByID_Success(t *testing.T) {
 	t.Parallel()
 	repo := newFirestoreRepoForTest(&mockFirestoreDB{
-		getFn: func(_ context.Context, docID string) (*runnerDoc, error) {
-			return &runnerDoc{RunnerID: docID, PrivateURL: "http://10.0.0.1:8080"}, nil
+		getFn: func(_ context.Context, runnerID string) (*runnerDoc, error) {
+			return &runnerDoc{RunnerID: runnerID, PrivateURL: "http://10.0.0.1:8080"}, nil
 		},
 	})
 	runner, err := repo.FindByID(context.Background(), "r1")
@@ -550,10 +615,10 @@ func TestFirestoreDelete_Success(t *testing.T) {
 	t.Parallel()
 	called := false
 	repo := newFirestoreRepoForTest(&mockFirestoreDB{
-		deleteFn: func(_ context.Context, docID string) error {
+		deleteFn: func(_ context.Context, runnerID string) error {
 			called = true
-			if docID != "r1" {
-				t.Errorf("docID = %q", docID)
+			if runnerID != "r1" {
+				t.Errorf("runnerID = %q", runnerID)
 			}
 			return nil
 		},
@@ -582,16 +647,16 @@ func TestFirestoreRegister_ModelRoundtrip(t *testing.T) {
 	t.Parallel()
 	stored := map[string]string{}
 	repo := newFirestoreRepoForTest(&mockFirestoreDB{
-		createFn: func(_ context.Context, docID, privateURL string) error {
-			stored[docID] = privateURL
+		createFn: func(_ context.Context, runnerID, privateURL string) error {
+			stored[runnerID] = privateURL
 			return nil
 		},
-		getFn: func(_ context.Context, docID string) (*runnerDoc, error) {
-			url, ok := stored[docID]
+		getFn: func(_ context.Context, runnerID string) (*runnerDoc, error) {
+			url, ok := stored[runnerID]
 			if !ok {
 				return nil, nil
 			}
-			return &runnerDoc{RunnerID: docID, PrivateURL: url}, nil
+			return &runnerDoc{RunnerID: runnerID, PrivateURL: url}, nil
 		},
 	})
 	if err := repo.Register(context.Background(), firestoreTestRunnerID, "http://10.0.0.9:8080"); err != nil {
