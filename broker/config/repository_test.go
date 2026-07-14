@@ -7,11 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/ogadra/bunshin/broker/store"
 )
 
-// setDynamoEnv は dynamodb 経路で必要な env をまとめて設定する。
 func setDynamoEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("BUNSHIN_STORE", "dynamodb")
@@ -21,16 +19,32 @@ func setDynamoEnv(t *testing.T) {
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "localdev")
 }
 
-// saveLoadAWSConfig は loadAWSConfig 変数を退避し、テスト終了時に復元する。
-func saveLoadAWSConfig(t *testing.T) {
+func saveNewDynamoRepositoryFn(t *testing.T) {
 	t.Helper()
-	orig := loadAWSConfig
-	t.Cleanup(func() { loadAWSConfig = orig })
+	orig := NewDynamoRepositoryFn
+	t.Cleanup(func() { NewDynamoRepositoryFn = orig })
 }
 
-// TestNewRepositoryFromEnv_DynamoSuccess は BUNSHIN_STORE=dynamodb で Repository が返ることを検証する。
-func TestNewRepositoryFromEnv_DynamoSuccess(t *testing.T) {
+type fakeDynamoRepo struct{ store.Repository }
+
+func TestNewRepositoryFromEnv_DynamoInjected(t *testing.T) {
 	setDynamoEnv(t)
+	saveNewDynamoRepositoryFn(t)
+
+	called := false
+	NewDynamoRepositoryFn = func(_ context.Context, cfg store.DynamoConfig) (store.Repository, error) {
+		called = true
+		want := store.DynamoConfig{
+			Region:    "ap-northeast-1",
+			AccessKey: "localdev",
+			SecretKey: "localdev",
+			Endpoint:  "http://localhost:18000",
+		}
+		if cfg != want {
+			t.Errorf("cfg = %+v, want %+v", cfg, want)
+		}
+		return fakeDynamoRepo{}, nil
+	}
 
 	repo, err := NewRepositoryFromEnv(context.Background())
 	if err != nil {
@@ -39,9 +53,28 @@ func TestNewRepositoryFromEnv_DynamoSuccess(t *testing.T) {
 	if repo == nil {
 		t.Fatal("expected non-nil Repository")
 	}
+	if !called {
+		t.Error("NewDynamoRepositoryFn was not called")
+	}
 }
 
-// TestNewRepositoryFromEnv_MissingStore は BUNSHIN_STORE 未設定時にエラーを返すことを検証する。
+func TestNewRepositoryFromEnv_DynamoFactoryError(t *testing.T) {
+	setDynamoEnv(t)
+	saveNewDynamoRepositoryFn(t)
+
+	NewDynamoRepositoryFn = func(context.Context, store.DynamoConfig) (store.Repository, error) {
+		return nil, errors.New("factory failed")
+	}
+
+	_, err := NewRepositoryFromEnv(context.Background())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "factory failed") {
+		t.Errorf("error = %q, want to contain factory error", err.Error())
+	}
+}
+
 func TestNewRepositoryFromEnv_MissingStore(t *testing.T) {
 	t.Setenv("BUNSHIN_STORE", "")
 
@@ -54,9 +87,7 @@ func TestNewRepositoryFromEnv_MissingStore(t *testing.T) {
 	}
 }
 
-// TestNewRepositoryFromEnv_UnsupportedStore は BUNSHIN_STORE の値が未対応時に
-// 完全一致判定で fail-fast することを検証する。空白付き・大文字違いも
-// dynamodb には fold されない。
+// 完全一致判定: 空白付きや case 違いは dynamodb / firestore に fold されない。
 func TestNewRepositoryFromEnv_UnsupportedStore(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -84,8 +115,7 @@ func TestNewRepositoryFromEnv_UnsupportedStore(t *testing.T) {
 	}
 }
 
-// TestNewRepositoryFromEnv_MissingRegion は BUNSHIN_STORE=dynamodb で AWS_REGION 未設定時にエラーを返すことを検証する。
-func TestNewRepositoryFromEnv_MissingRegion(t *testing.T) {
+func TestNewRepositoryFromEnv_DynamoMissingRegion(t *testing.T) {
 	t.Setenv("BUNSHIN_STORE", "dynamodb")
 	t.Setenv("AWS_REGION", "")
 
@@ -98,37 +128,7 @@ func TestNewRepositoryFromEnv_MissingRegion(t *testing.T) {
 	}
 }
 
-// TestNewRepositoryFromEnv_WithoutStaticCredentials は静的クレデンシャルなしでも Repository が返ることを検証する。
-func TestNewRepositoryFromEnv_WithoutStaticCredentials(t *testing.T) {
-	setDynamoEnv(t)
-	t.Setenv("AWS_ACCESS_KEY_ID", "")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "")
-
-	repo, err := NewRepositoryFromEnv(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if repo == nil {
-		t.Fatal("expected non-nil Repository")
-	}
-}
-
-// TestNewRepositoryFromEnv_WithoutEndpoint は DYNAMODB_ENDPOINT なしでも Repository が返ることを検証する。
-func TestNewRepositoryFromEnv_WithoutEndpoint(t *testing.T) {
-	setDynamoEnv(t)
-	t.Setenv("DYNAMODB_ENDPOINT", "")
-
-	repo, err := NewRepositoryFromEnv(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if repo == nil {
-		t.Fatal("expected non-nil Repository")
-	}
-}
-
-// TestNewRepositoryFromEnv_PartialCredentials は片側のクレデンシャルのみ設定時にエラーを返すことを検証する。
-func TestNewRepositoryFromEnv_PartialCredentials(t *testing.T) {
+func TestNewRepositoryFromEnv_DynamoPartialCredentials(t *testing.T) {
 	setDynamoEnv(t)
 	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "")
@@ -142,20 +142,88 @@ func TestNewRepositoryFromEnv_PartialCredentials(t *testing.T) {
 	}
 }
 
-// TestNewRepositoryFromEnv_LoadConfigError は AWS config ロードが失敗した場合にエラーを返すことを検証する。
-func TestNewRepositoryFromEnv_LoadConfigError(t *testing.T) {
-	setDynamoEnv(t)
-	saveLoadAWSConfig(t)
+func setFirestoreEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("BUNSHIN_STORE", "firestore")
+	t.Setenv("GOOGLE_CLOUD_PROJECT", "test-project")
+	t.Setenv("FIRESTORE_DATABASE", "test-db")
+}
 
-	loadAWSConfig = func(_ context.Context, _ ...func(*awsconfig.LoadOptions) error) (aws.Config, error) {
-		return aws.Config{}, errors.New("config load failed")
+func saveNewFirestoreRepositoryFn(t *testing.T) {
+	t.Helper()
+	orig := NewFirestoreRepositoryFn
+	t.Cleanup(func() { NewFirestoreRepositoryFn = orig })
+}
+
+type fakeFirestoreRepo struct{ store.Repository }
+
+func TestNewRepositoryFromEnv_FirestoreInjected(t *testing.T) {
+	setFirestoreEnv(t)
+	saveNewFirestoreRepositoryFn(t)
+
+	called := false
+	NewFirestoreRepositoryFn = func(_ context.Context, projectID, databaseID string) (store.Repository, error) {
+		called = true
+		if projectID != "test-project" {
+			t.Errorf("projectID = %q, want test-project", projectID)
+		}
+		if databaseID != "test-db" {
+			t.Errorf("databaseID = %q, want test-db", databaseID)
+		}
+		return fakeFirestoreRepo{}, nil
+	}
+
+	repo, err := NewRepositoryFromEnv(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repo == nil {
+		t.Fatal("expected non-nil Repository")
+	}
+	if !called {
+		t.Error("NewFirestoreRepositoryFn was not called")
+	}
+}
+
+func TestNewRepositoryFromEnv_FirestoreFactoryError(t *testing.T) {
+	setFirestoreEnv(t)
+	saveNewFirestoreRepositoryFn(t)
+
+	NewFirestoreRepositoryFn = func(context.Context, string, string) (store.Repository, error) {
+		return nil, errors.New("factory failed")
 	}
 
 	_, err := NewRepositoryFromEnv(context.Background())
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "load aws config") {
-		t.Errorf("error = %q, want to contain %q", err.Error(), "load aws config")
+	if !strings.Contains(err.Error(), "factory failed") {
+		t.Errorf("error = %q, want to contain factory error", err.Error())
+	}
+}
+
+func TestNewRepositoryFromEnv_FirestoreMissingProject(t *testing.T) {
+	setFirestoreEnv(t)
+	t.Setenv("GOOGLE_CLOUD_PROJECT", "")
+
+	_, err := NewRepositoryFromEnv(context.Background())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "GOOGLE_CLOUD_PROJECT") {
+		t.Errorf("error = %q, want to contain GOOGLE_CLOUD_PROJECT", err.Error())
+	}
+}
+
+func TestNewRepositoryFromEnv_FirestoreMissingDatabase(t *testing.T) {
+	setFirestoreEnv(t)
+	t.Setenv("FIRESTORE_DATABASE", "")
+
+	_, err := NewRepositoryFromEnv(context.Background())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "FIRESTORE_DATABASE") {
+		t.Errorf("error = %q, want to contain FIRESTORE_DATABASE", err.Error())
 	}
 }
