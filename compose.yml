@@ -37,7 +37,9 @@ services:
       dynamodb-init:
         condition: service_completed_successfully
 
-  broker-test:
+  # broker-test-{dynamodb,firestore}: -tags=integration で unit test も含めて全走行させる。
+  # 対象外 backend の env は env_file で unset にしておくため、その integration test は t.Skip される。
+  broker-test-dynamodb:
     platform: ${IMAGE_PLATFORM}
     build:
       context: broker/
@@ -48,7 +50,20 @@ services:
       dynamodb-init:
         condition: service_completed_successfully
     profiles:
-      - test
+      - test-dynamodb
+
+  broker-test-firestore:
+    platform: ${IMAGE_PLATFORM}
+    build:
+      context: broker/
+      target: test-integration
+    env_file:
+      - broker/.env.firestore.example
+    depends_on:
+      firestore-emulator:
+        condition: service_healthy
+    profiles:
+      - test-firestore
 
   runner-1:
     image: bunshin-runner
@@ -130,6 +145,19 @@ services:
       interval: 5s
       timeout: 5s
       retries: 3
+
+  firestore-emulator:
+    image: mtlynch/firestore-emulator:20210410@sha256:327f3c8cdc7d3a474e24ba183c14113e1d6883b30d0dee40da0708e532f5c3c3
+    environment:
+      PORT: 8080
+      FIRESTORE_PROJECT_ID: bunshin-firestore-test
+    healthcheck:
+      test: ["CMD", "/bin/bash", "-c", "echo > /dev/tcp/localhost/8080"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - test-firestore
 
 volumes:
   forward-target-certs:

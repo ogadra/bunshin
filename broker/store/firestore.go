@@ -56,6 +56,7 @@ type FirestoreClientAPI interface {
 	IterBusy(ctx context.Context) FirestoreDocIter
 	QueryBySession(ctx context.Context, sessionID string) (id string, data map[string]any, exists bool, err error)
 	RunTx(ctx context.Context, fn func(tx FirestoreTx) error) error
+	Close() error
 }
 
 type FirestoreDocIter interface {
@@ -80,6 +81,13 @@ func NewFirestoreRepositoryWithAPI(api FirestoreClientAPI) *FirestoreRepository 
 		api:       api,
 		randHexFn: defaultRandHexFn,
 	}
+}
+
+// Close は underlying Firestore client の gRPC connection を閉じる。
+// Repository interface には含めず FirestoreRepository 固有 API とする
+// (DynamoDB SDK は per-repo で明示 close する対象を持たないため対称化しない)。
+func (r *FirestoreRepository) Close() error {
+	return r.api.Close()
 }
 
 func (r *FirestoreRepository) Register(ctx context.Context, runnerID, privateURL string) error {
