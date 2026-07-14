@@ -32,8 +32,8 @@ func NewRepositoryFromEnv(ctx context.Context) (store.Repository, error) {
 	}
 }
 
-// NewFirestoreRepositoryFn は unit test で本物の Firestore client 生成を差し替えるための注入点。
-var NewFirestoreRepositoryFn = func(ctx context.Context, projectID, databaseID string) (store.Repository, error) {
+// newFirestoreRepositoryFn は loadAWSConfig と同じ抽象レベルの test seam。
+var newFirestoreRepositoryFn = func(ctx context.Context, projectID, databaseID string) (store.Repository, error) {
 	return store.NewFirestoreRepository(ctx, projectID, databaseID)
 }
 
@@ -46,7 +46,7 @@ func newFirestoreFromEnv(ctx context.Context) (store.Repository, error) {
 	if databaseID == "" {
 		return nil, fmt.Errorf("missing required environment variable: FIRESTORE_DATABASE")
 	}
-	return NewFirestoreRepositoryFn(ctx, projectID, databaseID)
+	return newFirestoreRepositoryFn(ctx, projectID, databaseID)
 }
 
 func newDynamoFromEnv(ctx context.Context) (store.Repository, error) {

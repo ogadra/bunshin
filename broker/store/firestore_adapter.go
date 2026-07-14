@@ -22,12 +22,9 @@ func NewFirestoreRepository(ctx context.Context, projectID, databaseID string) (
 	if err != nil {
 		return nil, fmt.Errorf("firestore client: %w", err)
 	}
-	api := &firestoreClientAPIAdapter{client: client}
-	return newFirestoreRepositoryWithDB(newFirestoreClient(api)), nil
+	return newFirestoreRepositoryWithAPI(&firestoreClientAPIAdapter{client: client}), nil
 }
 
-// firestoreClientAPIAdapter は firestoreClientAPI を Firestore SDK で実装する。
-// SDK 型が具象で unit test では触らず、integration test (emulator 実接続) で検証する。
 type firestoreClientAPIAdapter struct {
 	client *firestore.Client
 }
@@ -127,7 +124,6 @@ func (a *firestoreClientAPIAdapter) RunTx(ctx context.Context, fn func(tx firest
 	return nil
 }
 
-// firestoreDocIterAdapter は firestoreDocIter を Firestore SDK iterator で実装する。
 type firestoreDocIterAdapter struct {
 	iter *firestore.DocumentIterator
 }
@@ -147,7 +143,6 @@ func (a *firestoreDocIterAdapter) Stop() {
 	a.iter.Stop()
 }
 
-// firestoreTxAdapter は firestoreTx を Firestore SDK transaction で実装する。
 type firestoreTxAdapter struct {
 	client *firestore.Client
 	tx     *firestore.Transaction

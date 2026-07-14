@@ -12,7 +12,6 @@ import (
 	"github.com/ogadra/bunshin/broker/store"
 )
 
-// setDynamoEnv は dynamodb 経路で必要な env をまとめて設定する。
 func setDynamoEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("BUNSHIN_STORE", "dynamodb")
@@ -22,14 +21,12 @@ func setDynamoEnv(t *testing.T) {
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "localdev")
 }
 
-// saveLoadAWSConfig は loadAWSConfig 変数を退避し、テスト終了時に復元する。
 func saveLoadAWSConfig(t *testing.T) {
 	t.Helper()
 	orig := loadAWSConfig
 	t.Cleanup(func() { loadAWSConfig = orig })
 }
 
-// TestNewRepositoryFromEnv_DynamoSuccess は BUNSHIN_STORE=dynamodb で Repository が返ることを検証する。
 func TestNewRepositoryFromEnv_DynamoSuccess(t *testing.T) {
 	setDynamoEnv(t)
 
@@ -42,7 +39,6 @@ func TestNewRepositoryFromEnv_DynamoSuccess(t *testing.T) {
 	}
 }
 
-// TestNewRepositoryFromEnv_MissingStore は BUNSHIN_STORE 未設定時にエラーを返すことを検証する。
 func TestNewRepositoryFromEnv_MissingStore(t *testing.T) {
 	t.Setenv("BUNSHIN_STORE", "")
 
@@ -55,9 +51,7 @@ func TestNewRepositoryFromEnv_MissingStore(t *testing.T) {
 	}
 }
 
-// TestNewRepositoryFromEnv_UnsupportedStore は BUNSHIN_STORE の値が未対応時に
-// 完全一致判定で fail-fast することを検証する。空白付き・大文字違いも
-// dynamodb には fold されない。
+// 完全一致判定: 空白付きや case 違いは dynamodb に fold されない。
 func TestNewRepositoryFromEnv_UnsupportedStore(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -85,7 +79,6 @@ func TestNewRepositoryFromEnv_UnsupportedStore(t *testing.T) {
 	}
 }
 
-// TestNewRepositoryFromEnv_MissingRegion は BUNSHIN_STORE=dynamodb で AWS_REGION 未設定時にエラーを返すことを検証する。
 func TestNewRepositoryFromEnv_MissingRegion(t *testing.T) {
 	t.Setenv("BUNSHIN_STORE", "dynamodb")
 	t.Setenv("AWS_REGION", "")
@@ -99,7 +92,6 @@ func TestNewRepositoryFromEnv_MissingRegion(t *testing.T) {
 	}
 }
 
-// TestNewRepositoryFromEnv_WithoutStaticCredentials は静的クレデンシャルなしでも Repository が返ることを検証する。
 func TestNewRepositoryFromEnv_WithoutStaticCredentials(t *testing.T) {
 	setDynamoEnv(t)
 	t.Setenv("AWS_ACCESS_KEY_ID", "")
@@ -114,7 +106,6 @@ func TestNewRepositoryFromEnv_WithoutStaticCredentials(t *testing.T) {
 	}
 }
 
-// TestNewRepositoryFromEnv_WithoutEndpoint は DYNAMODB_ENDPOINT なしでも Repository が返ることを検証する。
 func TestNewRepositoryFromEnv_WithoutEndpoint(t *testing.T) {
 	setDynamoEnv(t)
 	t.Setenv("DYNAMODB_ENDPOINT", "")
@@ -128,7 +119,6 @@ func TestNewRepositoryFromEnv_WithoutEndpoint(t *testing.T) {
 	}
 }
 
-// TestNewRepositoryFromEnv_PartialCredentials は片側のクレデンシャルのみ設定時にエラーを返すことを検証する。
 func TestNewRepositoryFromEnv_PartialCredentials(t *testing.T) {
 	setDynamoEnv(t)
 	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
@@ -143,7 +133,6 @@ func TestNewRepositoryFromEnv_PartialCredentials(t *testing.T) {
 	}
 }
 
-// TestNewRepositoryFromEnv_LoadConfigError は AWS config ロードが失敗した場合にエラーを返すことを検証する。
 func TestNewRepositoryFromEnv_LoadConfigError(t *testing.T) {
 	setDynamoEnv(t)
 	saveLoadAWSConfig(t)
@@ -161,7 +150,6 @@ func TestNewRepositoryFromEnv_LoadConfigError(t *testing.T) {
 	}
 }
 
-// setFirestoreEnv は firestore 経路で必要な env をまとめて設定する。
 func setFirestoreEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("BUNSHIN_STORE", "firestore")
@@ -169,23 +157,20 @@ func setFirestoreEnv(t *testing.T) {
 	t.Setenv("FIRESTORE_DATABASE", "test-db")
 }
 
-// saveNewFirestoreRepositoryFn は NewFirestoreRepositoryFn 変数を退避し、テスト終了時に復元する。
 func saveNewFirestoreRepositoryFn(t *testing.T) {
 	t.Helper()
-	orig := NewFirestoreRepositoryFn
-	t.Cleanup(func() { NewFirestoreRepositoryFn = orig })
+	orig := newFirestoreRepositoryFn
+	t.Cleanup(func() { newFirestoreRepositoryFn = orig })
 }
 
-// fakeFirestoreRepo は firestore 経路の test で NewFirestoreRepositoryFn を差し替えるためのダミー Repository。
 type fakeFirestoreRepo struct{ store.Repository }
 
-// TestNewRepositoryFromEnv_FirestoreSuccess は firestore 経路が env と factory を通って Repository を返すことを検証する。
 func TestNewRepositoryFromEnv_FirestoreSuccess(t *testing.T) {
 	setFirestoreEnv(t)
 	saveNewFirestoreRepositoryFn(t)
 
 	called := false
-	NewFirestoreRepositoryFn = func(_ context.Context, projectID, databaseID string) (store.Repository, error) {
+	newFirestoreRepositoryFn = func(_ context.Context, projectID, databaseID string) (store.Repository, error) {
 		called = true
 		if projectID != "test-project" {
 			t.Errorf("projectID = %q, want test-project", projectID)
@@ -204,16 +189,15 @@ func TestNewRepositoryFromEnv_FirestoreSuccess(t *testing.T) {
 		t.Fatal("expected non-nil Repository")
 	}
 	if !called {
-		t.Error("NewFirestoreRepositoryFn was not called")
+		t.Error("newFirestoreRepositoryFn was not called")
 	}
 }
 
-// TestNewRepositoryFromEnv_FirestoreFactoryError は firestore factory がエラーを返すケースを検証する。
 func TestNewRepositoryFromEnv_FirestoreFactoryError(t *testing.T) {
 	setFirestoreEnv(t)
 	saveNewFirestoreRepositoryFn(t)
 
-	NewFirestoreRepositoryFn = func(context.Context, string, string) (store.Repository, error) {
+	newFirestoreRepositoryFn = func(context.Context, string, string) (store.Repository, error) {
 		return nil, errors.New("factory failed")
 	}
 
@@ -226,7 +210,6 @@ func TestNewRepositoryFromEnv_FirestoreFactoryError(t *testing.T) {
 	}
 }
 
-// TestNewRepositoryFromEnv_FirestoreMissingProject は BUNSHIN_STORE=firestore で GOOGLE_CLOUD_PROJECT 未設定時にエラーを返すことを検証する。
 func TestNewRepositoryFromEnv_FirestoreMissingProject(t *testing.T) {
 	setFirestoreEnv(t)
 	t.Setenv("GOOGLE_CLOUD_PROJECT", "")
@@ -240,7 +223,6 @@ func TestNewRepositoryFromEnv_FirestoreMissingProject(t *testing.T) {
 	}
 }
 
-// TestNewRepositoryFromEnv_FirestoreMissingDatabase は BUNSHIN_STORE=firestore で FIRESTORE_DATABASE 未設定時にエラーを返すことを検証する。
 func TestNewRepositoryFromEnv_FirestoreMissingDatabase(t *testing.T) {
 	setFirestoreEnv(t)
 	t.Setenv("FIRESTORE_DATABASE", "")

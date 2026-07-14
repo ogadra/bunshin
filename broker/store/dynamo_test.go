@@ -253,14 +253,14 @@ func TestRegister_ConflictFindByIDError(t *testing.T) {
 	}
 }
 
-// TestRegister_EmptyPrivateURL は privateURL が空の場合にエラーを返すことを検証する。
+// TestRegister_EmptyPrivateURL は privateURL が空の場合に ErrInvalidPrivateURL を返すことを検証する。
 func TestRegister_EmptyPrivateURL(t *testing.T) {
 	t.Parallel()
 	repo := NewDynamoRepository(&mockDynamoDBAPI{}, "t")
 
 	err := repo.Register(context.Background(), testRunnerID, "")
-	if err == nil {
-		t.Fatal("expected error for empty privateURL")
+	if !errors.Is(err, ErrInvalidPrivateURL) {
+		t.Fatalf("got %v, want ErrInvalidPrivateURL", err)
 	}
 }
 

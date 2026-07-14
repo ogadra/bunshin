@@ -10,11 +10,12 @@ import (
 )
 
 var (
-	ErrNotFound        = errors.New("runner not found")
-	ErrNoIdleRunner    = errors.New("no idle runner available")
-	ErrConditionFailed = errors.New("condition check failed")
-	ErrConflict        = errors.New("runner already exists with different attributes")
-	ErrInvalidRunnerID = errors.New("runnerID must be 32 lowercase hex characters")
+	ErrNotFound         = errors.New("runner not found")
+	ErrNoIdleRunner     = errors.New("no idle runner available")
+	ErrConditionFailed  = errors.New("condition check failed")
+	ErrConflict         = errors.New("runner already exists with different attributes")
+	ErrInvalidRunnerID  = errors.New("runnerID must be 32 lowercase hex characters")
+	ErrInvalidPrivateURL = errors.New("privateURL must not be empty")
 )
 
 type Repository interface {

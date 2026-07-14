@@ -57,7 +57,7 @@ func (r *DynamoRepository) Register(ctx context.Context, runnerID, privateURL st
 		return ErrInvalidRunnerID
 	}
 	if privateURL == "" {
-		return fmt.Errorf("privateURL must not be empty")
+		return ErrInvalidPrivateURL
 	}
 
 	item, err := r.marshalFn(model.Runner{
