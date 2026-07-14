@@ -3,12 +3,8 @@ package store
 
 import (
 	"context"
-	"encoding/binary"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"math/rand/v2"
-	"regexp"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -17,10 +13,6 @@ import (
 	"github.com/ogadra/bunshin/broker/model"
 )
 
-// AcquireIdle は runnerId の lex 順で 2 segment を走査するため、
-// 32 桁小文字 hex 以外を書き込むと GSI 上の順序が崩れ取りこぼす。Register で形式を強制する。
-var runnerIDRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
-
 // segFirstCond / segSecondCond は AcquireIdle が (start, max] → [min, start] の順に走査する
 // state-index の KeyConditionExpression 右辺。segment 1 が strict >、segment 2 が <= なので
 // runnerId が start と完全一致する item は segment 2 で拾われる。
@@ -28,14 +20,6 @@ const (
 	segFirstCond  = "runnerId > :v"
 	segSecondCond = "runnerId <= :v"
 )
-
-// 走査開始位置は暗号強度を要求しないので crypto/rand ではなく math/rand/v2 を使う。
-func defaultRandHexFn() string {
-	var b [16]byte
-	binary.LittleEndian.PutUint64(b[:8], rand.Uint64())
-	binary.LittleEndian.PutUint64(b[8:], rand.Uint64())
-	return hex.EncodeToString(b[:])
-}
 
 // dynamoDBAPI は DynamoDB SDK から使う operation subset。
 // DynamoRepository が触る API だけを絞ることで mock を書きやすくする。
