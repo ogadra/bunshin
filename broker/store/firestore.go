@@ -5,9 +5,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 
 	"github.com/ogadra/bunshin/broker/model"
 )
+
+// firestoreLogPrintf は malformed doc スキップの通知先。テストで capture 可能にする。
+var firestoreLogPrintf = log.Printf
 
 // FirestoreCollection は runner document を格納する Firestore collection 名。
 const FirestoreCollection = "runners"
@@ -139,7 +143,9 @@ func (r *FirestoreRepository) assignFirstIdle(ctx context.Context, sessionID str
 		}
 		doc, err := snapshotToDoc(s.ID, s.Data)
 		if err != nil {
-			return nil, err
+			firestoreLogPrintf("firestore AcquireIdle: skip malformed runner doc: %v", err)
+			tried[s.ID] = struct{}{}
+			continue
 		}
 		err = r.assignSession(ctx, s.ID, sessionID)
 		if err == nil {
@@ -188,7 +194,8 @@ func (r *FirestoreRepository) ListBusyRunners(ctx context.Context) ([]model.Runn
 		}
 		doc, err := snapshotToDoc(id, data)
 		if err != nil {
-			return nil, err
+			firestoreLogPrintf("firestore ListBusyRunners: skip malformed runner doc: %v", err)
+			continue
 		}
 		runners = append(runners, *doc.toModel())
 	}

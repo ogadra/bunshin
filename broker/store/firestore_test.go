@@ -547,9 +547,16 @@ func TestFirestoreAcquireIdle_AllStale(t *testing.T) {
 	}
 }
 
-// snapshotToDoc が返すエラーが AcquireIdle から伝播する。
-func TestFirestoreAcquireIdle_SnapshotError(t *testing.T) {
+// 全 doc が malformed の場合は idle 枯渇として ErrNoIdleRunner を返し、log にスキップ理由を残す。
+func TestFirestoreAcquireIdle_AllMalformedNoIdleRunner(t *testing.T) {
 	t.Parallel()
+	origLog := firestoreLogPrintf
+	var logged []string
+	firestoreLogPrintf = func(format string, args ...any) {
+		logged = append(logged, format)
+	}
+	t.Cleanup(func() { firestoreLogPrintf = origLog })
+
 	api := &mockFirestoreClientAPI{
 		queryIdleRangeFn: func(context.Context, string, string, int) ([]FirestoreDocSnapshot, error) {
 			return []FirestoreDocSnapshot{{ID: "r1", Data: map[string]any{}}}, nil
@@ -559,8 +566,57 @@ func TestFirestoreAcquireIdle_SnapshotError(t *testing.T) {
 	repo.randHexFn = func() string { return firestoreTestStart }
 
 	_, err := repo.AcquireIdle(context.Background(), "sess-1")
-	if err == nil {
-		t.Fatal("expected snapshotToDoc error to propagate")
+	if !errors.Is(err, ErrNoIdleRunner) {
+		t.Fatalf("expected ErrNoIdleRunner, got: %v", err)
+	}
+	if len(logged) == 0 {
+		t.Error("expected malformed skip to be logged")
+	}
+}
+
+// batch に malformed doc と有効な doc が混在する場合、malformed は tried に記録して skip し、
+// 有効な doc に assign する。単一の壊れた document で AcquireIdle 全体が失敗しない。
+func TestFirestoreAcquireIdle_SkipMalformedContinueToNext(t *testing.T) {
+	t.Parallel()
+	origLog := firestoreLogPrintf
+	firestoreLogPrintf = func(string, ...any) {}
+	t.Cleanup(func() { firestoreLogPrintf = origLog })
+
+	updateCalled := ""
+	tx := &mockFirestoreTx{
+		getFn: func(runnerID string) (map[string]any, bool, error) {
+			return map[string]any{FieldCurrentSessionID: nil}, true, nil
+		},
+		updateFn: func(runnerID, _ string, _ any) error {
+			updateCalled = runnerID
+			return nil
+		},
+	}
+	queryCalls := 0
+	api := &mockFirestoreClientAPI{
+		queryIdleRangeFn: func(context.Context, string, string, int) ([]FirestoreDocSnapshot, error) {
+			queryCalls++
+			return []FirestoreDocSnapshot{
+				{ID: "r-bad", Data: map[string]any{}},
+				{ID: "r-good", Data: idleData("http://10.0.0.2:8080")},
+			}, nil
+		},
+		runTxFn: func(_ context.Context, fn func(FirestoreTx) error) error {
+			return fn(tx)
+		},
+	}
+	repo := NewFirestoreRepositoryWithAPI(api)
+	repo.randHexFn = func() string { return firestoreTestStart }
+
+	runner, err := repo.AcquireIdle(context.Background(), "sess-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if runner.RunnerID != "r-good" {
+		t.Errorf("runnerID = %q, want r-good", runner.RunnerID)
+	}
+	if updateCalled != "r-good" {
+		t.Errorf("assignSession called for %q, want r-good", updateCalled)
 	}
 }
 
@@ -765,18 +821,39 @@ func TestFirestoreListBusyRunners_IterError(t *testing.T) {
 	}
 }
 
-func TestFirestoreListBusyRunners_SnapshotError(t *testing.T) {
+// ListBusyRunners は malformed doc を skip し、残りの有効な doc を返す。
+// 単一の壊れた document で /runners/busy 全体が失敗しないようにする。
+func TestFirestoreListBusyRunners_SkipMalformed(t *testing.T) {
 	t.Parallel()
+	origLog := firestoreLogPrintf
+	var logged []string
+	firestoreLogPrintf = func(format string, args ...any) {
+		logged = append(logged, format)
+	}
+	t.Cleanup(func() { firestoreLogPrintf = origLog })
+
 	iter := &mockFirestoreDocIter{
-		results: []nextResult{{id: "r1", data: map[string]any{}}},
+		results: []nextResult{
+			{id: "r-bad", data: map[string]any{}},
+			{id: "r-good", data: busyData("http://10.0.0.2:8080", "sess-9")},
+		},
 	}
 	api := &mockFirestoreClientAPI{
 		iterBusyFn: func(context.Context) FirestoreDocIter { return iter },
 	}
 	repo := NewFirestoreRepositoryWithAPI(api)
-	_, err := repo.ListBusyRunners(context.Background())
-	if err == nil {
-		t.Fatal("expected snapshotToDoc error to propagate")
+	runners, err := repo.ListBusyRunners(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(runners) != 1 {
+		t.Fatalf("len(runners) = %d, want 1", len(runners))
+	}
+	if runners[0].RunnerID != "r-good" {
+		t.Errorf("runnerID = %q, want r-good", runners[0].RunnerID)
+	}
+	if len(logged) == 0 {
+		t.Error("expected malformed skip to be logged")
 	}
 }
 
