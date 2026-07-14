@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/ogadra/bunshin/broker/store"
+	"github.com/ogadra/bunshin/broker/store/firestoreadapter"
 )
 
 // loadAWSConfig は AWS SDK の設定をロードする関数。テスト時に差し替える。
@@ -35,7 +36,7 @@ func NewRepositoryFromEnv(ctx context.Context) (store.Repository, error) {
 // NewFirestoreRepositoryFn は Firestore backend factory の test seam。
 // 上位パッケージ (broker main_test) の Handler 組み立てテストからも差し替える必要があるため export する。
 var NewFirestoreRepositoryFn = func(ctx context.Context, projectID, databaseID string) (store.Repository, error) {
-	return store.NewFirestoreRepository(ctx, projectID, databaseID)
+	return firestoreadapter.NewRepository(ctx, projectID, databaseID)
 }
 
 func newFirestoreFromEnv(ctx context.Context) (store.Repository, error) {

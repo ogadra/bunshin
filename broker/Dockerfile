@@ -5,11 +5,13 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 
-# firestore_stub: real Firestore adapter を除外し unit / race stage で 100% coverage を維持するため。
+# broker/store/firestoreadapter は Firestore SDK 具象型を直接触るため unit test で mock 不能。
+# integration test で担保するため -coverpkg から除外する。
 
 FROM build AS test
 SHELL ["/bin/ash", "-o", "pipefail", "-c"]
-RUN CGO_ENABLED=0 go test -v -tags=firestore_stub -coverpkg=./... -coverprofile=cover.out ./... \
+RUN COVERPKG=$(go list ./... | grep -v /firestoreadapter | tr '\n' ',' | sed 's/,$//') \
+    && CGO_ENABLED=0 go test -v -coverpkg="$COVERPKG" -coverprofile=cover.out ./... \
     && total=$(go tool cover -func=cover.out | grep ^total: | awk '{print $NF}') \
     && echo "Total coverage: ${total}" \
     && test "${total}" = "100.0%" || { echo "FAIL: coverage ${total} is below 100.0%"; exit 1; }
@@ -21,7 +23,7 @@ CMD ["go", "test", "-v", "-count=1", "-tags=integration", "./..."]
 # test with race detector (requires cgo + gcc)
 FROM build AS test-race
 RUN apk add --no-cache gcc musl-dev \
-    && CGO_ENABLED=1 go test -race -tags=firestore_stub -v ./...
+    && CGO_ENABLED=1 go test -race -v ./...
 
 # binary build
 # not FROM build: that stage runs on the target platform, which puts the compiler under QEMU

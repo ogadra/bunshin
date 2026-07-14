@@ -9,12 +9,13 @@ import (
 	"github.com/ogadra/bunshin/broker/model"
 )
 
-const firestoreCollection = "runners"
+// FirestoreCollection は runner document を格納する Firestore collection 名。
+const FirestoreCollection = "runners"
 
-// DynamoDB 側の属性名と揃える。
+// FieldPrivateURL / FieldCurrentSessionID は runner document の field 名。DynamoDB 側の属性名と揃える。
 const (
-	fieldPrivateURL       = "privateUrl"
-	fieldCurrentSessionID = "currentSessionId"
+	FieldPrivateURL       = "privateUrl"
+	FieldCurrentSessionID = "currentSessionId"
 )
 
 type runnerDoc struct {
@@ -37,41 +38,44 @@ func (d runnerDoc) toModel() *model.Runner {
 	return r
 }
 
-// firestoreDocSnapshot は Firestore query から返る 1 doc 分。
-type firestoreDocSnapshot struct {
+// FirestoreDocSnapshot は Firestore query から返る 1 doc 分。
+type FirestoreDocSnapshot struct {
 	ID   string
 	Data map[string]any
 }
 
-// firestoreClientAPI は SDK 呼出を semantic 単位にまとめる。
+// FirestoreClientAPI は SDK 呼出を semantic 単位にまとめる。
 // SDK 型を露出せず map[string]any / bool / 独自 interface だけを扱うことで
 // FirestoreRepository を mock でテストする。DynamoDBAPI 1 段構成と対称。
-type firestoreClientAPI interface {
+// 実装は broker/store/firestoreadapter package。
+type FirestoreClientAPI interface {
 	Create(ctx context.Context, runnerID string, data map[string]any) error
 	Get(ctx context.Context, runnerID string) (data map[string]any, exists bool, err error)
 	Delete(ctx context.Context, runnerID string) error
-	QueryIdleRange(ctx context.Context, after, upTo string, limit int) ([]firestoreDocSnapshot, error)
-	IterBusy(ctx context.Context) firestoreDocIter
+	QueryIdleRange(ctx context.Context, after, upTo string, limit int) ([]FirestoreDocSnapshot, error)
+	IterBusy(ctx context.Context) FirestoreDocIter
 	QueryBySession(ctx context.Context, sessionID string) (id string, data map[string]any, exists bool, err error)
-	RunTx(ctx context.Context, fn func(tx firestoreTx) error) error
+	RunTx(ctx context.Context, fn func(tx FirestoreTx) error) error
 }
 
-type firestoreDocIter interface {
+type FirestoreDocIter interface {
 	Next() (id string, data map[string]any, done bool, err error)
 	Stop()
 }
 
-type firestoreTx interface {
+type FirestoreTx interface {
 	Get(runnerID string) (data map[string]any, exists bool, err error)
 	Update(runnerID, field string, value any) error
 }
 
 type FirestoreRepository struct {
-	api       firestoreClientAPI
+	api       FirestoreClientAPI
 	randHexFn func() string
 }
 
-func newFirestoreRepositoryWithAPI(api firestoreClientAPI) *FirestoreRepository {
+// NewFirestoreRepositoryWithAPI は FirestoreClientAPI を差し替え可能にする test-friendly コンストラクタ。
+// production では firestoreadapter package の adapter を渡して組み立てる。
+func NewFirestoreRepositoryWithAPI(api FirestoreClientAPI) *FirestoreRepository {
 	return &FirestoreRepository{
 		api:       api,
 		randHexFn: defaultRandHexFn,
@@ -86,8 +90,8 @@ func (r *FirestoreRepository) Register(ctx context.Context, runnerID, privateURL
 		return ErrInvalidPrivateURL
 	}
 	return r.api.Create(ctx, runnerID, map[string]any{
-		fieldPrivateURL:       privateURL,
-		fieldCurrentSessionID: nil,
+		FieldPrivateURL:       privateURL,
+		FieldCurrentSessionID: nil,
 	})
 }
 
@@ -120,7 +124,7 @@ func (r *FirestoreRepository) AcquireIdle(ctx context.Context, sessionID string)
 	return nil, ErrNoIdleRunner
 }
 
-func (r *FirestoreRepository) assignFirstIdle(ctx context.Context, sessionID string, candidates []firestoreDocSnapshot, tried map[string]struct{}) (*model.Runner, error) {
+func (r *FirestoreRepository) assignFirstIdle(ctx context.Context, sessionID string, candidates []FirestoreDocSnapshot, tried map[string]struct{}) (*model.Runner, error) {
 	for _, s := range candidates {
 		if _, done := tried[s.ID]; done {
 			continue
@@ -147,7 +151,7 @@ func (r *FirestoreRepository) assignFirstIdle(ctx context.Context, sessionID str
 }
 
 func (r *FirestoreRepository) assignSession(ctx context.Context, runnerID, sessionID string) error {
-	return r.api.RunTx(ctx, func(tx firestoreTx) error {
+	return r.api.RunTx(ctx, func(tx FirestoreTx) error {
 		data, exists, err := tx.Get(runnerID)
 		if err != nil {
 			return err
@@ -155,10 +159,10 @@ func (r *FirestoreRepository) assignSession(ctx context.Context, runnerID, sessi
 		if !exists {
 			return ErrConditionFailed
 		}
-		if v, ok := data[fieldCurrentSessionID]; !ok || v != nil {
+		if v, ok := data[FieldCurrentSessionID]; !ok || v != nil {
 			return ErrConditionFailed
 		}
-		return tx.Update(runnerID, fieldCurrentSessionID, sessionID)
+		return tx.Update(runnerID, FieldCurrentSessionID, sessionID)
 	})
 }
 
@@ -220,12 +224,12 @@ func (r *FirestoreRepository) Delete(ctx context.Context, runnerID string) error
 // privateUrl 不在 / 非 string、currentSessionId 不在、currentSessionId が nil でも string でもない
 // 場合はエラーで返し、silent に空値を上位に流さない。
 func snapshotToDoc(runnerID string, data map[string]any) (*runnerDoc, error) {
-	priv, ok := data[fieldPrivateURL].(string)
+	priv, ok := data[FieldPrivateURL].(string)
 	if !ok {
 		return nil, fmt.Errorf("firestore doc %q: privateUrl missing or not string", runnerID)
 	}
 	doc := &runnerDoc{RunnerID: runnerID, PrivateURL: priv}
-	v, exists := data[fieldCurrentSessionID]
+	v, exists := data[FieldCurrentSessionID]
 	if !exists {
 		return nil, fmt.Errorf("firestore doc %q: currentSessionId field missing", runnerID)
 	}
