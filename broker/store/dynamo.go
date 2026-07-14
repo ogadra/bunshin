@@ -21,6 +21,14 @@ import (
 // 32 桁小文字 hex 以外を書き込むと GSI 上の順序が崩れ取りこぼす。Register で形式を強制する。
 var runnerIDRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
+// segFirstCond / segSecondCond は AcquireIdle が (start, max] → [min, start] の順に走査する
+// state-index の KeyConditionExpression 右辺。segment 1 が strict >、segment 2 が <= なので
+// runnerId が start と完全一致する item は segment 2 で拾われる。
+const (
+	segFirstCond  = "runnerId > :v"
+	segSecondCond = "runnerId <= :v"
+)
+
 // DynamoConfig は NewDynamoRepositoryFromEnv に渡す SDK 設定。
 // AccessKey / SecretKey が空文字なら IAM Role / instance profile などの
 // default credential chain を SDK に任せる。Endpoint が空文字なら AWS の
@@ -94,7 +102,7 @@ func (r *DynamoRepository) Register(ctx context.Context, runnerID, privateURL st
 func (r *DynamoRepository) AcquireIdle(ctx context.Context, sessionID string) (*model.Runner, error) {
 	tried := map[string]struct{}{}
 	start := r.randHexFn()
-	for _, cond := range []string{"runnerId > :v", "runnerId <= :v"} {
+	for _, cond := range []string{segFirstCond, segSecondCond} {
 		var exclusiveStart map[string]types.AttributeValue
 		for {
 			runners, next, err := r.queryIdlePage(ctx, cond, start, exclusiveStart)

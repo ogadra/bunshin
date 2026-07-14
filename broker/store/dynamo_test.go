@@ -227,12 +227,6 @@ func TestRegister_PutItemError(t *testing.T) {
 	}
 }
 
-// segFirstCond / segSecondCond は AcquireIdle が 2 segment 走査で使う KeyConditionExpression の右辺。
-const (
-	segFirstCond  = "runnerId > :v"
-	segSecondCond = "runnerId <= :v"
-)
-
 // assertStateIdxRange は state-index query の KeyConditionExpression・:v の値・Limit を検証する。
 func assertStateIdxRange(t *testing.T, params *dynamodb.QueryInput, wantCond, wantValue string) {
 	t.Helper()
