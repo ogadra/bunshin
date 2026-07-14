@@ -170,7 +170,20 @@ func TestContract_RegisterAndFindByID(t *testing.T) {
 	})
 }
 
-func TestContract_RegisterConflict(t *testing.T) {
+func TestContract_RegisterConflict_SamePrivateURL(t *testing.T) {
+	runContract(t, func(t *testing.T, repo store.Repository) {
+		ctx := context.Background()
+		if err := repo.Register(ctx, "11111111111111111111111111111111", "http://10.0.0.1:8080"); err != nil {
+			t.Fatalf("first Register: %v", err)
+		}
+		err := repo.Register(ctx, "11111111111111111111111111111111", "http://10.0.0.1:8080")
+		if !errors.Is(err, store.ErrConflict) {
+			t.Fatalf("expected ErrConflict, got: %v", err)
+		}
+	})
+}
+
+func TestContract_RegisterConflict_DifferentPrivateURL(t *testing.T) {
 	runContract(t, func(t *testing.T, repo store.Repository) {
 		ctx := context.Background()
 		if err := repo.Register(ctx, "11111111111111111111111111111111", "http://10.0.0.1:8080"); err != nil {

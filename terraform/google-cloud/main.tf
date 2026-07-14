@@ -1,10 +1,16 @@
 resource "google_project_service" "apis" {
-  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   for_each = toset([
     "artifactregistry.googleapis.com",
     "cloudresourcemanager.googleapis.com",
+    "compute.googleapis.com",
+    "container.googleapis.com",
+    "dns.googleapis.com",
+    "firestore.googleapis.com",
+    "gkehub.googleapis.com",
     "iam.googleapis.com",
     "logging.googleapis.com",
+    "storage.googleapis.com",
   ])
 
   project = data.google_project.current.project_id

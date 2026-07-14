@@ -1,4 +1,4 @@
-"""Custom Checkov policy to enforce Project=Bunshin tag on all taggable resources."""
+"""Custom Checkov policy to enforce Project=Bunshin tag on AWS taggable resources."""
 
 from typing import Any
 
@@ -7,18 +7,20 @@ from checkov.common.models.enums import CheckCategories, CheckResult
 
 
 class BunshinTagPolicy(BaseResourceCheck):
-    """Ensure all taggable resources have the Project=Bunshin tag for cost management."""
+    """Ensure AWS taggable resources have the Project=Bunshin tag for cost management."""
 
     def __init__(self) -> None:
         """Initialize the check with ID, supported resources, and category."""
-        name = "Ensure Project=Bunshin tag is present"
+        name = "Ensure Project=Bunshin tag is present on AWS resources"
         check_id = "CKV_BUNSHIN_1"
         supported_resources = ["*"]
         categories = [CheckCategories.CONVENTION]
         super().__init__(name=name, id=check_id, categories=categories, supported_resources=supported_resources)
 
     def scan_resource_conf(self, conf: dict[str, list[Any]]) -> CheckResult:
-        """Check that the resource has a Project=Bunshin tag."""
+        """Check that the AWS resource has a Project=Bunshin tag."""
+        if not getattr(self, "entity_type", "").startswith("aws_"):
+            return CheckResult.PASSED
         tags = conf.get("tags", [{}])
         if isinstance(tags, list):
             tags = tags[0] if tags else {}

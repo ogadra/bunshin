@@ -71,11 +71,15 @@ services:
       context: runner/
     env_file:
       - runner/.env.example
+    environment:
+      STACK_NAME: "local"
 
   runner-2:
     image: bunshin-runner
     env_file:
       - runner/.env.example
+    environment:
+      STACK_NAME: "local"
     profiles:
       - integration
 
