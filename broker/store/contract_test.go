@@ -241,6 +241,27 @@ func TestContract_AcquireIdle_Empty(t *testing.T) {
 	})
 }
 
+// TestContract_AcquireIdle_WrapFromHead は乱数開始位置より lex 順で前にしか runner がない場合でも
+// (start, max] を空振り → [min, start] へ wrap して取得できることを両 backend で検証する。
+// randHexFn を "ffff…" に固定して "0a0a…" の runner が必ず wrap 経路でのみ取得されるようにする。
+func TestContract_AcquireIdle_WrapFromHead(t *testing.T) {
+	runContract(t, func(t *testing.T, repo store.Repository) {
+		store.SetRandHexFnForTest(repo, func() string { return "ffffffffffffffffffffffffffffffff" })
+
+		ctx := context.Background()
+		if err := repo.Register(ctx, "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a", "http://10.0.0.1:8080"); err != nil {
+			t.Fatalf("Register: %v", err)
+		}
+		runner, err := repo.AcquireIdle(ctx, "sess-wrap")
+		if err != nil {
+			t.Fatalf("AcquireIdle: %v", err)
+		}
+		if runner.RunnerID != "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a" {
+			t.Errorf("runnerID = %q, want %q", runner.RunnerID, "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a")
+		}
+	})
+}
+
 func TestContract_AcquireIdle_FindBySessionID(t *testing.T) {
 	runContract(t, func(t *testing.T, repo store.Repository) {
 		ctx := context.Background()
