@@ -1,5 +1,3 @@
-//go:build integration
-
 package firestoreadapter_test
 
 import (

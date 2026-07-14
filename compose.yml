@@ -37,8 +37,8 @@ services:
       dynamodb-init:
         condition: service_completed_successfully
 
-  # broker-test-{dynamodb,firestore}: -tags=integration で unit test も含めて全走行させる。
-  # 対象外 backend の env は env_file で unset にしておくため、その integration test は t.Skip される。
+  # broker-test-{dynamodb,firestore}: unit test も含めて全走行させ、対象外 backend の
+  # integration test は env_file 側で endpoint が unset のため t.Skip する。
   broker-test-dynamodb:
     platform: ${IMAGE_PLATFORM}
     build:

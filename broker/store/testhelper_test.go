@@ -1,5 +1,3 @@
-//go:build integration
-
 // Package store は統合テスト用ヘルパーを提供する。
 package store
 

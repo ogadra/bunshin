@@ -1,5 +1,3 @@
-//go:build integration
-
 // Package store は DynamoDB Local を使った統合テストを提供する。
 package store
 
