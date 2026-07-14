@@ -292,19 +292,6 @@ func TestGetResolve_FallbackLastStack(t *testing.T) {
 	}
 }
 
-// TestFallbackStacksFromStackList はカンマ区切りの解析・空要素除去・自スタック除外を検証する。
-func TestFallbackStacksFromStackList(t *testing.T) {
-	t.Parallel()
-	if got := FallbackStacksFromStackList("", "ap-northeast-1"); len(got) != 0 {
-		t.Errorf("FallbackStacksFromStackList empty = %v, want empty", got)
-	}
-	got := FallbackStacksFromStackList(" ap-northeast-1 , ,ap-northeast-3,ap-northeast-2", "ap-northeast-1")
-	want := []string{"ap-northeast-3", "ap-northeast-2"}
-	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
-		t.Errorf("FallbackStacksFromStackList = %v, want %v", got, want)
-	}
-}
-
 // TestGetResolve_InternalError は内部エラー時に 500 を返すことを検証する。
 func TestGetResolve_InternalError(t *testing.T) {
 	t.Parallel()

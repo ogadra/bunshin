@@ -13,8 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/ogadra/bunshin/broker/config"
 	"github.com/ogadra/bunshin/broker/handler"
 	"github.com/ogadra/bunshin/broker/healthcheck"
 	"github.com/ogadra/bunshin/broker/model"
@@ -22,7 +21,33 @@ import (
 	"github.com/ogadra/bunshin/broker/store"
 )
 
-// saveAndRestore は全てのパッケージレベル変数を退避し、テスト終了時に復元する。
+type fakeDynamoRepo struct{ store.Repository }
+
+// stubDynamoFactory は AWS SDK の LoadDefaultConfig を unit test から迂回するため
+// config.NewDynamoRepositoryFn を fake factory に差し替える。
+func stubDynamoFactory(t *testing.T) {
+	t.Helper()
+	orig := config.NewDynamoRepositoryFn
+	t.Cleanup(func() { config.NewDynamoRepositoryFn = orig })
+	config.NewDynamoRepositoryFn = func(context.Context, store.DynamoConfig) (store.Repository, error) {
+		return fakeDynamoRepo{}, nil
+	}
+}
+
+// setDynamoEnv は dynamodb 経路で必要な env をまとめて設定し、fake factory に差し替えて Handler を組み立てられるようにする。
+func setDynamoEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("STACK_NAME", "ap-northeast-1")
+	t.Setenv("BUNSHIN_STACKS", "ap-northeast-1,ap-northeast-3")
+	t.Setenv("BUNSHIN_STORE", "dynamodb")
+	t.Setenv("DYNAMODB_ENDPOINT", "http://localhost:18000")
+	t.Setenv("AWS_REGION", "ap-northeast-1")
+	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "localdev")
+	stubDynamoFactory(t)
+}
+
+// saveAndRestore は server lifecycle 用のパッケージレベル変数を退避し、テスト終了時に復元する。
 func saveAndRestore(t *testing.T) {
 	t.Helper()
 	origStdout := stdout
@@ -30,18 +55,83 @@ func saveAndRestore(t *testing.T) {
 	origShutdownTimeout := shutdownTimeout
 	origFatalf := fatalf
 	origSignalNotify := signalNotify
-	origInitHandler := initHandler
-	origLoadAWSConfig := loadAWSConfig
 	t.Cleanup(func() {
 		stdout = origStdout
 		addr = origAddr
 		shutdownTimeout = origShutdownTimeout
 		fatalf = origFatalf
 		signalNotify = origSignalNotify
-		initHandler = origInitHandler
-		loadAWSConfig = origLoadAWSConfig
 	})
-	initHandler = func() (*handler.Handler, error) { return nil, nil }
+}
+
+// noopInit は init 失敗を再現しない no-op initHandler。Closer も noop を返す。
+func noopInit() (*handler.Handler, io.Closer, error) { return nil, noopCloser{}, nil }
+
+type closerRepo struct {
+	store.Repository
+	closeErr error
+	closed   bool
+}
+
+func (c *closerRepo) Close() error {
+	c.closed = true
+	return c.closeErr
+}
+
+// TestRepoCloser_ReturnsCloserWhenImplemented は io.Closer 実装 (Firestore など) が
+// そのまま返され Close が repo 側に流れることを検証する。
+func TestRepoCloser_ReturnsCloserWhenImplemented(t *testing.T) {
+	repo := &closerRepo{}
+	closer := repoCloser(repo)
+	if err := closer.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if !repo.closed {
+		t.Error("expected underlying repo.Close to be called")
+	}
+}
+
+// TestRepoCloser_NoopForNonCloser は Close を持たない Repository (DynamoRepository) は
+// noopCloser にフォールバックし、Close 呼び出しがエラーにならないことを検証する。
+func TestRepoCloser_NoopForNonCloser(t *testing.T) {
+	closer := repoCloser(fakeDynamoRepo{})
+	if err := closer.Close(); err != nil {
+		t.Errorf("noop Close should return nil, got %v", err)
+	}
+}
+
+// TestRunLogsCloseError は shutdown 後の repo.Close エラーが stdout に書き出されることを検証する。
+func TestRunLogsCloseError(t *testing.T) {
+	saveAndRestore(t)
+
+	var buf bytes.Buffer
+	stdout = &buf
+	addr = ":0"
+	shutdownTimeout = 1 * time.Second
+
+	sigCh := make(chan os.Signal, 1)
+	signalNotify = func(c chan<- os.Signal, _ ...os.Signal) {
+		go func() {
+			c <- <-sigCh
+		}()
+	}
+
+	closeErr := errors.New("boom")
+	initWithErrCloser := func() (*handler.Handler, io.Closer, error) {
+		return nil, &closerRepo{closeErr: closeErr}, nil
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- run(initWithErrCloser) }()
+
+	time.Sleep(100 * time.Millisecond)
+	sigCh <- os.Interrupt
+	if err := <-done; err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(buf.String(), "close repository: boom") {
+		t.Errorf("expected close error log, got %q", buf.String())
+	}
 }
 
 // TestHealthEndpoint は GET /health が 200 OK を返すことを検証する。
@@ -77,7 +167,7 @@ func TestRunGracefulShutdown(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- run()
+		done <- run(noopInit)
 	}()
 
 	time.Sleep(100 * time.Millisecond)
@@ -102,14 +192,13 @@ func TestRunListenError(t *testing.T) {
 	stdout = io.Discard
 	shutdownTimeout = 1 * time.Second
 
-	// ポートを占有してリッスンエラーを発生させる
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	defer srv.Close()
 	addr = srv.Listener.Addr().String()
 
 	signalNotify = func(c chan<- os.Signal, _ ...os.Signal) {}
 
-	err := run()
+	err := run(noopInit)
 	if err == nil {
 		t.Error("expected error, got nil")
 	}
@@ -118,6 +207,7 @@ func TestRunListenError(t *testing.T) {
 // TestMainSuccess は main がサーバー起動後シグナルで正常終了することを検証する。
 func TestMainSuccess(t *testing.T) {
 	saveAndRestore(t)
+	setDynamoEnv(t)
 
 	stdout = io.Discard
 	addr = ":0"
@@ -142,16 +232,14 @@ func TestMainSuccess(t *testing.T) {
 	<-done
 }
 
-// TestRunInitHandlerError は initHandler がエラーを返す場合に run がエラーを返すことを検証する。
+// TestRunInitHandlerError は init 関数がエラーを返す場合に run がエラーを返すことを検証する。
 func TestRunInitHandlerError(t *testing.T) {
 	saveAndRestore(t)
 
 	stdout = io.Discard
-	initHandler = func() (*handler.Handler, error) {
-		return nil, errors.New("init failed")
-	}
+	errInit := func() (*handler.Handler, io.Closer, error) { return nil, nil, errors.New("init failed") }
 
-	err := run()
+	err := run(errInit)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -160,21 +248,22 @@ func TestRunInitHandlerError(t *testing.T) {
 	}
 }
 
-// TestDefaultInitHandler は defaultInitHandler が全環境変数指定時に Handler を返すことを検証する。
+// TestDefaultInitHandler は defaultInitHandler が全環境変数指定時に Handler と Closer を返すことを検証する。
 func TestDefaultInitHandler(t *testing.T) {
-	saveAndRestore(t)
+	setDynamoEnv(t)
 
-	t.Setenv("DYNAMODB_ENDPOINT", "http://localhost:18000")
-	t.Setenv("AWS_REGION", "ap-northeast-1")
-	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "localdev")
-
-	h, err := defaultInitHandler()
+	h, closer, err := defaultInitHandler()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if h == nil {
 		t.Fatal("expected non-nil handler")
+	}
+	if closer == nil {
+		t.Fatal("expected non-nil closer")
+	}
+	if err := closer.Close(); err != nil {
+		t.Errorf("closer.Close: %v", err)
 	}
 }
 
@@ -194,9 +283,9 @@ func (fakeNoIdleService) ListBusyRunners(context.Context) ([]model.Runner, error
 func TestDefaultInitHandler_FallbackSignal(t *testing.T) {
 	origNewBrokerService := newBrokerService
 	t.Cleanup(func() { newBrokerService = origNewBrokerService })
-	newBrokerService = func(_ store.Repository, region string, checker healthcheck.Checker) service.Service {
-		if region != "ap-northeast-1" {
-			t.Errorf("region = %q, want %q", region, "ap-northeast-1")
+	newBrokerService = func(_ store.Repository, stack string, checker healthcheck.Checker) service.Service {
+		if stack != "ap-northeast-1" {
+			t.Errorf("stack = %q, want %q", stack, "ap-northeast-1")
 		}
 		if checker == nil {
 			t.Error("checker is nil")
@@ -204,16 +293,13 @@ func TestDefaultInitHandler_FallbackSignal(t *testing.T) {
 		return fakeNoIdleService{}
 	}
 
-	t.Setenv("DYNAMODB_ENDPOINT", "http://localhost:18000")
-	t.Setenv("AWS_REGION", "ap-northeast-1")
-	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "localdev")
-	t.Setenv("BUNSHIN_STACKS", "ap-northeast-1,ap-northeast-3")
+	setDynamoEnv(t)
 
-	h, err := defaultInitHandler()
+	h, closer, err := defaultInitHandler()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	t.Cleanup(func() { _ = closer.Close() })
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
 	rec := httptest.NewRecorder()
@@ -230,86 +316,43 @@ func TestDefaultInitHandler_FallbackSignal(t *testing.T) {
 	}
 }
 
-// TestDefaultInitHandler_MissingRegion は AWS_REGION が未設定時にエラーを返すことを検証する。
-func TestDefaultInitHandler_MissingRegion(t *testing.T) {
-	saveAndRestore(t)
+// TestDefaultInitHandler_StackError は config.NewStackFromEnv がエラーを返す場合に defaultInitHandler が伝播することを検証する。
+func TestDefaultInitHandler_StackError(t *testing.T) {
+	t.Setenv("STACK_NAME", "")
 
-	t.Setenv("AWS_REGION", "")
-
-	_, err := defaultInitHandler()
+	_, _, err := defaultInitHandler()
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "AWS_REGION") {
-		t.Errorf("error = %q, want to contain %q", err.Error(), "AWS_REGION")
+	if !strings.Contains(err.Error(), "STACK_NAME") {
+		t.Errorf("error = %q, want to propagate stack error", err.Error())
 	}
 }
 
-// TestDefaultInitHandler_WithoutStaticCredentials は静的クレデンシャルなしでも Handler を返すことを検証する。
-func TestDefaultInitHandler_WithoutStaticCredentials(t *testing.T) {
-	saveAndRestore(t)
+// TestDefaultInitHandler_RepositoryError は config.NewRepositoryFromEnv がエラーを返す場合に defaultInitHandler が伝播することを検証する。
+func TestDefaultInitHandler_RepositoryError(t *testing.T) {
+	t.Setenv("STACK_NAME", "ap-northeast-1")
+	t.Setenv("BUNSHIN_STACKS", "ap-northeast-1")
+	t.Setenv("BUNSHIN_STORE", "")
 
-	t.Setenv("DYNAMODB_ENDPOINT", "http://localhost:18000")
-	t.Setenv("AWS_REGION", "ap-northeast-1")
-	t.Setenv("AWS_ACCESS_KEY_ID", "")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "")
-
-	h, err := defaultInitHandler()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if h == nil {
-		t.Fatal("expected non-nil handler")
-	}
-}
-
-// TestDefaultInitHandler_WithoutEndpoint は DYNAMODB_ENDPOINT なしでも Handler を返すことを検証する。
-func TestDefaultInitHandler_WithoutEndpoint(t *testing.T) {
-	saveAndRestore(t)
-
-	t.Setenv("DYNAMODB_ENDPOINT", "")
-	t.Setenv("AWS_REGION", "ap-northeast-1")
-	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "localdev")
-
-	h, err := defaultInitHandler()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if h == nil {
-		t.Fatal("expected non-nil handler")
-	}
-}
-
-// TestDefaultInitHandler_PartialCredentials は片側のクレデンシャルのみ設定時にエラーを返すことを検証する。
-func TestDefaultInitHandler_PartialCredentials(t *testing.T) {
-	saveAndRestore(t)
-
-	t.Setenv("AWS_REGION", "ap-northeast-1")
-	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "")
-
-	_, err := defaultInitHandler()
+	_, _, err := defaultInitHandler()
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "AWS_ACCESS_KEY_ID") || !strings.Contains(err.Error(), "AWS_SECRET_ACCESS_KEY") {
-		t.Errorf("error = %q, want to mention both credential keys", err.Error())
+	if !strings.Contains(err.Error(), "BUNSHIN_STORE") {
+		t.Errorf("error = %q, want to propagate repository error", err.Error())
 	}
 }
 
 // TestNewRouter_WithHandler は handler が non-nil の場合に全ルートが登録されることを検証する。
 func TestNewRouter_WithHandler(t *testing.T) {
-	saveAndRestore(t)
+	setDynamoEnv(t)
 
-	t.Setenv("DYNAMODB_ENDPOINT", "http://localhost:18000")
-	t.Setenv("AWS_REGION", "ap-northeast-1")
-	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "localdev")
-	h, err := defaultInitHandler()
+	h, closer, err := defaultInitHandler()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	t.Cleanup(func() { _ = closer.Close() })
 
 	r := newRouter(h)
 
@@ -330,35 +373,14 @@ func TestNewRouter_WithHandler(t *testing.T) {
 	}
 }
 
-// TestDefaultInitHandler_LoadConfigError は AWS config ロードが失敗した場合にエラーを返すことを検証する。
-func TestDefaultInitHandler_LoadConfigError(t *testing.T) {
-	saveAndRestore(t)
-
-	t.Setenv("DYNAMODB_ENDPOINT", "http://localhost:18000")
-	t.Setenv("AWS_REGION", "ap-northeast-1")
-	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "localdev")
-	loadAWSConfig = func(_ context.Context, _ ...func(*config.LoadOptions) error) (aws.Config, error) {
-		return aws.Config{}, errors.New("config load failed")
-	}
-
-	_, err := defaultInitHandler()
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !strings.Contains(err.Error(), "load aws config") {
-		t.Errorf("error = %q, want to contain %q", err.Error(), "load aws config")
-	}
-}
-
 // TestMainServerError は main がサーバー起動失敗時に fatalf を呼ぶことを検証する。
 func TestMainServerError(t *testing.T) {
 	saveAndRestore(t)
+	setDynamoEnv(t)
 
 	stdout = io.Discard
 	shutdownTimeout = 1 * time.Second
 
-	// ポートを占有してリッスンエラーを発生させる
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	defer srv.Close()
 	addr = srv.Listener.Addr().String()

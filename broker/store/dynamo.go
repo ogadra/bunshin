@@ -3,12 +3,8 @@ package store
 
 import (
 	"context"
-	"encoding/binary"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"math/rand/v2"
-	"regexp"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -17,25 +13,44 @@ import (
 	"github.com/ogadra/bunshin/broker/model"
 )
 
-// item は 1 KB 未満で 0.5 RCU 固定のため Limit 1 と同コスト。stale item が混ざったときに再クエリを避けたいので複数取る。
-const acquireQueryLimit = 5
-
-// AcquireIdle は [minRunnerID, maxRunnerID] の BETWEEN scan で走査するため、この閉区間から外れた runnerId を書き込むと取りこぼす。Register で形式を強制する。
+// segFirstCond / segSecondCond は AcquireIdle が (start, max] → [min, start] の順に走査する
+// state-index の KeyConditionExpression 右辺。segment 1 が strict >、segment 2 が <= なので
+// runnerId が start と完全一致する item は segment 2 で拾われる。
 const (
-	minRunnerID = "00000000000000000000000000000000"
-	maxRunnerID = "ffffffffffffffffffffffffffffffff"
+	segFirstCond  = "runnerId > :v"
+	segSecondCond = "runnerId <= :v"
 )
 
-var runnerIDRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
+// dynamoDBAPI は DynamoDB SDK から使う operation subset。
+// DynamoRepository が触る API だけを絞ることで mock を書きやすくする。
+// パッケージ外には露出させない (utilizer は同一パッケージの dynamo_test.go のみ)。
+type dynamoDBAPI interface {
+	PutItem(ctx context.Context, params *dynamodb.PutItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.PutItemOutput, error)
+	GetItem(ctx context.Context, params *dynamodb.GetItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.GetItemOutput, error)
+	UpdateItem(ctx context.Context, params *dynamodb.UpdateItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error)
+	DeleteItem(ctx context.Context, params *dynamodb.DeleteItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.DeleteItemOutput, error)
+	Query(ctx context.Context, params *dynamodb.QueryInput, optFns ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error)
+}
+
+// DynamoConfig は NewDynamoRepositoryFromEnv に渡す SDK 設定。
+// AccessKey / SecretKey が空文字なら IAM Role / instance profile などの
+// default credential chain を SDK に任せる。Endpoint が空文字なら AWS の
+// regional endpoint を使う (dynamodb-local 用途で override する経路)。
+type DynamoConfig struct {
+	Region    string
+	AccessKey string
+	SecretKey string
+	Endpoint  string
+}
 
 type DynamoRepository struct {
-	client    DynamoDBAPI
+	client    dynamoDBAPI
 	tableName string
 	randHexFn func() string
 	marshalFn func(in interface{}) (map[string]types.AttributeValue, error)
 }
 
-func NewDynamoRepository(client DynamoDBAPI, tableName string) *DynamoRepository {
+func NewDynamoRepository(client dynamoDBAPI, tableName string) *DynamoRepository {
 	return &DynamoRepository{
 		client:    client,
 		tableName: tableName,
@@ -44,20 +59,12 @@ func NewDynamoRepository(client DynamoDBAPI, tableName string) *DynamoRepository
 	}
 }
 
-// 走査開始位置は暗号強度を要求しないので crypto/rand ではなく math/rand/v2 を使う。
-func defaultRandHexFn() string {
-	var b [16]byte
-	binary.LittleEndian.PutUint64(b[:8], rand.Uint64())
-	binary.LittleEndian.PutUint64(b[8:], rand.Uint64())
-	return hex.EncodeToString(b[:])
-}
-
 func (r *DynamoRepository) Register(ctx context.Context, runnerID, privateURL string) error {
 	if !runnerIDRe.MatchString(runnerID) {
 		return ErrInvalidRunnerID
 	}
 	if privateURL == "" {
-		return fmt.Errorf("privateURL must not be empty")
+		return ErrInvalidPrivateURL
 	}
 
 	item, err := r.marshalFn(model.Runner{
@@ -84,13 +91,16 @@ func (r *DynamoRepository) Register(ctx context.Context, runnerID, privateURL st
 	return nil
 }
 
+// AcquireIdle は (start, ∞) → [∅, start] の 2 segment を acquireQueryLimit 件ずつ paginate し、
+// assignSession で precondition 競合した runner は tried に記録して次候補へ進む。
+// 全 segment を辿り切れば idle 枯渇として ErrNoIdleRunner を返す (Firestore 側と同構造)。
 func (r *DynamoRepository) AcquireIdle(ctx context.Context, sessionID string) (*model.Runner, error) {
 	tried := map[string]struct{}{}
 	start := r.randHexFn()
-	for _, seg := range [][2]string{{start, maxRunnerID}, {minRunnerID, start}} {
+	for _, cond := range []string{segFirstCond, segSecondCond} {
 		var exclusiveStart map[string]types.AttributeValue
 		for {
-			runners, next, err := r.queryIdlePage(ctx, seg[0], seg[1], exclusiveStart)
+			runners, next, err := r.queryIdlePage(ctx, cond, start, exclusiveStart)
 			if err != nil {
 				return nil, err
 			}
@@ -127,16 +137,15 @@ func (r *DynamoRepository) assignFirst(ctx context.Context, sessionID string, ca
 	return nil, nil
 }
 
-func (r *DynamoRepository) queryIdlePage(ctx context.Context, lo, hi string, exclusiveStart map[string]types.AttributeValue) ([]model.Runner, map[string]types.AttributeValue, error) {
+func (r *DynamoRepository) queryIdlePage(ctx context.Context, cond, value string, exclusiveStart map[string]types.AttributeValue) ([]model.Runner, map[string]types.AttributeValue, error) {
 	out, err := r.client.Query(ctx, &dynamodb.QueryInput{
 		TableName:                aws.String(r.tableName),
 		IndexName:                aws.String("state-index"),
-		KeyConditionExpression:   aws.String("#s = :s AND runnerId BETWEEN :lo AND :hi"),
+		KeyConditionExpression:   aws.String("#s = :s AND " + cond),
 		ExpressionAttributeNames: map[string]string{"#s": "state"},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":s":  &types.AttributeValueMemberS{Value: string(model.StateIdle)},
-			":lo": &types.AttributeValueMemberS{Value: lo},
-			":hi": &types.AttributeValueMemberS{Value: hi},
+			":s": &types.AttributeValueMemberS{Value: string(model.StateIdle)},
+			":v": &types.AttributeValueMemberS{Value: value},
 		},
 		Limit:             aws.Int32(acquireQueryLimit),
 		ExclusiveStartKey: exclusiveStart,
