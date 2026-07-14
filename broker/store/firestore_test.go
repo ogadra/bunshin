@@ -24,6 +24,7 @@ type mockFirestoreClientAPI struct {
 	iterBusyFn       func(ctx context.Context) FirestoreDocIter
 	queryBySessionFn func(ctx context.Context, sessionID string) (string, map[string]any, bool, error)
 	runTxFn          func(ctx context.Context, fn func(tx FirestoreTx) error) error
+	closeFn          func() error
 }
 
 func (m *mockFirestoreClientAPI) Create(ctx context.Context, runnerID string, data map[string]any) error {
@@ -52,6 +53,13 @@ func (m *mockFirestoreClientAPI) QueryBySession(ctx context.Context, sessionID s
 
 func (m *mockFirestoreClientAPI) RunTx(ctx context.Context, fn func(tx FirestoreTx) error) error {
 	return m.runTxFn(ctx, fn)
+}
+
+func (m *mockFirestoreClientAPI) Close() error {
+	if m.closeFn == nil {
+		return nil
+	}
+	return m.closeFn()
 }
 
 type nextResult struct {
@@ -957,4 +965,22 @@ func idleData(privateURL string) map[string]any {
 
 func busyData(privateURL, sessionID string) map[string]any {
 	return map[string]any{FieldPrivateURL: privateURL, FieldCurrentSessionID: sessionID}
+}
+
+func TestFirestoreRepository_Close(t *testing.T) {
+	t.Parallel()
+	want := errors.New("close boom")
+	called := false
+	repo := NewFirestoreRepositoryWithAPI(&mockFirestoreClientAPI{
+		closeFn: func() error {
+			called = true
+			return want
+		},
+	})
+	if err := repo.Close(); !errors.Is(err, want) {
+		t.Errorf("expected %v, got %v", want, err)
+	}
+	if !called {
+		t.Error("Close was not called")
+	}
 }

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ogadra/bunshin/broker/config"
 	"github.com/ogadra/bunshin/broker/handler"
 	"github.com/ogadra/bunshin/broker/healthcheck"
 	"github.com/ogadra/bunshin/broker/model"
@@ -20,7 +21,20 @@ import (
 	"github.com/ogadra/bunshin/broker/store"
 )
 
-// setDynamoEnv は dynamodb 経路で必要な env をまとめて設定する。
+type fakeDynamoRepo struct{ store.Repository }
+
+// stubDynamoFactory は AWS SDK の LoadDefaultConfig を unit test から迂回するため
+// config.NewDynamoRepositoryFn を fake factory に差し替える。
+func stubDynamoFactory(t *testing.T) {
+	t.Helper()
+	orig := config.NewDynamoRepositoryFn
+	t.Cleanup(func() { config.NewDynamoRepositoryFn = orig })
+	config.NewDynamoRepositoryFn = func(context.Context, store.DynamoConfig) (store.Repository, error) {
+		return fakeDynamoRepo{}, nil
+	}
+}
+
+// setDynamoEnv は dynamodb 経路で必要な env をまとめて設定し、fake factory に差し替えて Handler を組み立てられるようにする。
 func setDynamoEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("STACK_NAME", "ap-northeast-1")
@@ -30,6 +44,7 @@ func setDynamoEnv(t *testing.T) {
 	t.Setenv("AWS_REGION", "ap-northeast-1")
 	t.Setenv("AWS_ACCESS_KEY_ID", "localdev")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "localdev")
+	stubDynamoFactory(t)
 }
 
 // saveAndRestore は server lifecycle 用のパッケージレベル変数を退避し、テスト終了時に復元する。

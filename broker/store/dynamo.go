@@ -21,6 +21,17 @@ import (
 // 32 桁小文字 hex 以外を書き込むと GSI 上の順序が崩れ取りこぼす。Register で形式を強制する。
 var runnerIDRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
+// DynamoConfig は NewDynamoRepositoryFromEnv に渡す SDK 設定。
+// AccessKey / SecretKey が空文字なら IAM Role / instance profile などの
+// default credential chain を SDK に任せる。Endpoint が空文字なら AWS の
+// regional endpoint を使う (dynamodb-local 用途で override する経路)。
+type DynamoConfig struct {
+	Region    string
+	AccessKey string
+	SecretKey string
+	Endpoint  string
+}
+
 type DynamoRepository struct {
 	client    DynamoDBAPI
 	tableName string

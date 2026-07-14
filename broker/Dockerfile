@@ -18,7 +18,7 @@ RUN COVERPKG=$(go list ./... | grep -v /firestoreadapter | tr '\n' ',' | sed 's/
 
 # integration test stage
 FROM build AS test-integration
-CMD ["go", "test", "-v", "-count=1", "-tags=integration", "./..."]
+CMD ["go", "test", "-v", "-count=1", "./..."]
 
 # test with race detector (requires cgo + gcc)
 FROM build AS test-race

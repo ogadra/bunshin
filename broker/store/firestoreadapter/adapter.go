@@ -129,6 +129,10 @@ func (a *Adapter) RunTx(ctx context.Context, fn func(tx store.FirestoreTx) error
 	return nil
 }
 
+func (a *Adapter) Close() error {
+	return a.client.Close()
+}
+
 type docIter struct {
 	iter *firestore.DocumentIterator
 }
