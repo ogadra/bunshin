@@ -25,7 +25,7 @@ services:
     ports:
       - "${BROKER_PORT}:8080"
     env_file:
-      - broker/.env.example
+      - broker/.env.dynamodb.example
     environment:
       BUNSHIN_STACKS: "${BUNSHIN_STACKS}"
     healthcheck:
@@ -45,7 +45,7 @@ services:
       context: broker/
       target: test-integration
     env_file:
-      - broker/.env.example
+      - broker/.env.dynamodb.example
     depends_on:
       dynamodb-init:
         condition: service_completed_successfully
@@ -133,7 +133,7 @@ services:
     volumes:
       - ./init/create-table.sh:/init/create-table.sh:ro
     env_file:
-      - broker/.env.example
+      - broker/.env.dynamodb.example
     depends_on:
       dynamodb-local:
         condition: service_healthy
