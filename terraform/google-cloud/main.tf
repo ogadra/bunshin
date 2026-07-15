@@ -23,8 +23,11 @@ resource "google_project_service" "apis" {
 module "asne1" {
   source = "./asne1"
 
+  deployer_iam_member = var.deployer_iam_member
+
   providers = {
-    google = google.asne1
+    google     = google.asne1
+    kubernetes = kubernetes.asne1
   }
 
   depends_on = [google_project_service.apis]
@@ -33,8 +36,11 @@ module "asne1" {
 module "asne2" {
   source = "./asne2"
 
+  deployer_iam_member = var.deployer_iam_member
+
   providers = {
-    google = google.asne2
+    google     = google.asne2
+    kubernetes = kubernetes.asne2
   }
 
   depends_on = [google_project_service.apis]
