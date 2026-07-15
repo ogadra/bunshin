@@ -12,3 +12,23 @@ variable "broker_service_account_id" {
   description = "Broker GSA fully-qualified name (projects/-/serviceAccounts/...); bound to the region-scoped KSA identifier"
   type        = string
 }
+
+variable "bunshin_stacks" {
+  description = "Stack identifiers advertised to nginx / broker"
+  type        = list(string)
+}
+
+variable "domain_name" {
+  description = "Apex domain used by nginx to compose internal / external hosts"
+  type        = string
+}
+
+variable "image_tag" {
+  description = "Container image tag pulled from Artifact Registry"
+  type        = string
+}
+
+variable "runner_desired_count" {
+  description = "Desired number of runner Pod replicas"
+  type        = number
+}
