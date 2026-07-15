@@ -41,3 +41,8 @@ variable "image_tag" {
   description = "Container image tag pulled from Artifact Registry"
   type        = string
 }
+
+variable "peer_vpc_network" {
+  description = "Peer region VPC self_link for cross-region private DNS visibility (asne2 zone must resolve from asne1 VPC and vice versa)"
+  type        = string
+}
