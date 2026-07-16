@@ -14,13 +14,3 @@ resource "google_project_iam_member" "broker_datastore_user" {
 
   depends_on = [google_project_service.apis["firestore.googleapis.com"]]
 }
-
-# workload identity pool は project-wide (`<PROJECT_ID>.svc.id.goog`)。同名 KSA (default/broker) を持つ
-# asne1 / asne2 の Pod が同一 GSA を impersonate できるため、region ごとに binding を分ける必要はない
-resource "google_service_account_iam_member" "broker_workload_identity" {
-  # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
-  service_account_id = google_service_account.broker.name
-  role               = "roles/iam.workloadIdentityUser"
-  member             = "serviceAccount:${data.google_project.current.project_id}.svc.id.goog[default/broker]"
-}
-

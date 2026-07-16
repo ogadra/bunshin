@@ -29,3 +29,12 @@ resource "google_artifact_registry_repository_iam_member" "gke_node_reader" {
   role       = "roles/artifactregistry.reader"
   member     = google_service_account.gke_node.member
 }
+
+# workload identity pool は project-scope (`<PROJECT_ID>.svc.id.goog`) だが、KSA identifier
+# (`default/broker-asne2`) を region ごとに分けることで binding も region ごとに独立させる
+resource "google_service_account_iam_member" "broker_workload_identity" {
+  # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
+  service_account_id = var.broker_service_account_id
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${data.google_project.current.project_id}.svc.id.goog[default/broker-asne2]"
+}

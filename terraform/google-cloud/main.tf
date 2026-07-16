@@ -24,6 +24,7 @@ module "asne1" {
   source = "./asne1"
 
   broker_service_account_email = google_service_account.broker.email
+  broker_service_account_id    = google_service_account.broker.name
   deployer_email               = data.google_client_openid_userinfo.me.email
 
   providers = {
@@ -38,6 +39,7 @@ module "asne2" {
   source = "./asne2"
 
   broker_service_account_email = google_service_account.broker.email
+  broker_service_account_id    = google_service_account.broker.name
   deployer_email               = data.google_client_openid_userinfo.me.email
 
   providers = {

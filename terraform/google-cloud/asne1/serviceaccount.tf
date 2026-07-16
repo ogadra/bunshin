@@ -1,7 +1,7 @@
-# default namespace は broker Workload Identity binding (`[default/broker]`) と ECS 側 flat な CloudMap
-# namespace (`broker.internal`) の対称性を保つための設計選択のため、CKV_K8S_21 は全 KSA / Service で許容する
+# default namespace は暫定。CKV_K8S_21 の指摘通り本来は専用 namespace に置くべきだが、
+# namespace 分離は後続 PR で対応するため、それまでは全 KSA / Service で skip する
 resource "kubernetes_service_account_v1" "nginx" {
-  # checkov:skip=CKV_K8S_21:default namespace is intentional; see file header
+  # checkov:skip=CKV_K8S_21:default namespace is temporary; namespace split is deferred to a follow-up PR
   metadata {
     name      = "nginx"
     namespace = "default"
@@ -10,7 +10,7 @@ resource "kubernetes_service_account_v1" "nginx" {
 }
 
 resource "kubernetes_service_account_v1" "runner" {
-  # checkov:skip=CKV_K8S_21:default namespace is intentional; see file header
+  # checkov:skip=CKV_K8S_21:default namespace is temporary; namespace split is deferred to a follow-up PR
   metadata {
     name      = "runner"
     namespace = "default"
@@ -18,11 +18,12 @@ resource "kubernetes_service_account_v1" "runner" {
   }
 }
 
-# broker Pod は Workload Identity で Firestore に触るため GSA impersonation を annotation で宣言する
+# broker Pod は Workload Identity で Firestore に触るため GSA impersonation を annotation で宣言する。
+# KSA 名は region ごとに一意化し、workload identity pool の同一プール内で asne1 / asne2 の binding を分離する
 resource "kubernetes_service_account_v1" "broker" {
-  # checkov:skip=CKV_K8S_21:default namespace is intentional; see file header
+  # checkov:skip=CKV_K8S_21:default namespace is temporary; namespace split is deferred to a follow-up PR
   metadata {
-    name      = "broker"
+    name      = "broker-asne1"
     namespace = "default"
     labels    = { app = "broker" }
     annotations = {
