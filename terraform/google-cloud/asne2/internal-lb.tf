@@ -1,17 +1,17 @@
 resource "google_certificate_manager_dns_authorization" "internal" {
-  name     = "bunshin-internal-${local.region}"
+  name     = local.internal_lb_name
   location = local.region
-  domain   = "${local.region}.${var.domain_name}"
+  domain   = local.internal_lb_hostname
   labels   = local.common_labels
 }
 
 resource "google_certificate_manager_certificate" "internal" {
-  name     = "bunshin-internal-${local.region}"
+  name     = local.internal_lb_name
   location = local.region
   labels   = local.common_labels
 
   managed {
-    domains            = ["${local.region}.${var.domain_name}"]
+    domains            = [local.internal_lb_hostname]
     dns_authorizations = [google_certificate_manager_dns_authorization.internal.id]
   }
 }
@@ -20,14 +20,14 @@ resource "google_certificate_manager_certificate" "internal" {
 # cert map を attach する。cert map は API 上 global (regional / global cert の両方を entry に持てる) で、
 # cert 本体だけを regional に閉じる
 resource "google_certificate_manager_certificate_map" "internal" {
-  name   = "bunshin-internal-${local.region}"
+  name   = local.internal_lb_name
   labels = local.common_labels
 }
 
 resource "google_certificate_manager_certificate_map_entry" "internal" {
-  name         = "bunshin-internal-${local.region}"
+  name         = local.internal_lb_name
   map          = google_certificate_manager_certificate_map.internal.name
-  hostname     = "${local.region}.${var.domain_name}"
+  hostname     = local.internal_lb_hostname
   certificates = [google_certificate_manager_certificate.internal.id]
   labels       = local.common_labels
 }
