@@ -30,6 +30,7 @@ module "asne1" {
   desired_counts               = local.desired_counts
   domain_name                  = var.domain_name
   image_tag                    = var.image_tag
+  peer_vpc_network             = module.asne2.network_self_link
 
   providers = {
     google     = google.asne1
@@ -49,6 +50,7 @@ module "asne2" {
   desired_counts               = local.desired_counts
   domain_name                  = var.domain_name
   image_tag                    = var.image_tag
+  peer_vpc_network             = module.asne1.network_self_link
 
   providers = {
     google     = google.asne2

@@ -32,6 +32,15 @@ resource "google_certificate_manager_certificate_map_entry" "internal" {
   labels       = local.common_labels
 }
 
+# Gatewayのdynamic IPは再作成でVIPが変わりDNSを壊す
+resource "google_compute_address" "internal_lb" {
+  # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
+  name         = local.internal_lb_name
+  region       = local.region
+  subnetwork   = google_compute_subnetwork.workload.id
+  address_type = "INTERNAL"
+}
+
 resource "kubernetes_manifest" "internal_gateway" {
   manifest = {
     apiVersion = "gateway.networking.k8s.io/v1"
@@ -45,6 +54,10 @@ resource "kubernetes_manifest" "internal_gateway" {
     }
     spec = {
       gatewayClassName = "gke-l7-rilb"
+      addresses = [{
+        type  = "NamedAddress"
+        value = google_compute_address.internal_lb.name
+      }]
       listeners = [{
         name     = "https"
         port     = 443

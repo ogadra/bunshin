@@ -1,11 +1,6 @@
-# Autopilotがsecurityとresource設定をinjectするため、Deployment側は最小限だけ書く
 resource "kubernetes_deployment_v1" "nginx" {
   # checkov:skip=CKV_K8S_8:Liveness probe wiring is deferred to a follow-up PR
   # checkov:skip=CKV_K8S_9:Readiness probe wiring is deferred to a follow-up PR
-  # checkov:skip=CKV_K8S_10:Autopilot injects CPU requests
-  # checkov:skip=CKV_K8S_11:Autopilot injects CPU limits
-  # checkov:skip=CKV_K8S_12:Autopilot injects memory limits
-  # checkov:skip=CKV_K8S_13:Autopilot injects memory requests
   # checkov:skip=CKV_K8S_15:image_tag is a git SHA (immutable); Always is redundant
   # checkov:skip=CKV_K8S_21:default namespace is temporary; namespace split is deferred to a follow-up PR
   # checkov:skip=CKV_K8S_28:Autopilot blocks NET_RAW and other elevated capabilities
@@ -50,6 +45,17 @@ resource "kubernetes_deployment_v1" "nginx" {
           env {
             name  = "BUNSHIN_STACKS"
             value = join(",", var.bunshin_stacks)
+          }
+
+          resources {
+            requests = {
+              cpu    = "250m"
+              memory = "512Mi"
+            }
+            limits = {
+              cpu    = "250m"
+              memory = "512Mi"
+            }
           }
         }
       }

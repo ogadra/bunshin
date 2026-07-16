@@ -41,3 +41,13 @@ variable "image_tag" {
   description = "Container image tag pulled from Artifact Registry"
   type        = string
 }
+
+variable "peer_vpc_network" {
+  description = "Peer region VPC self_link for cross-region private DNS visibility (asne2 zone must resolve from asne1 VPC and vice versa)"
+  type        = string
+
+  validation {
+    condition     = can(regex("^https://www\\.googleapis\\.com/compute/v1/projects/[^/]+/global/networks/[^/]+$", var.peer_vpc_network))
+    error_message = "peer_vpc_network must be a compute network self_link (https://www.googleapis.com/compute/v1/projects/<project>/global/networks/<name>)."
+  }
+}
