@@ -47,7 +47,7 @@ resource "kubernetes_manifest" "internal_gateway" {
     kind       = "Gateway"
     metadata = {
       name      = "bunshin-internal"
-      namespace = "default"
+      namespace = kubernetes_namespace_v1.bunshin.metadata[0].name
       annotations = {
         "networking.gke.io/certmap" = google_certificate_manager_certificate_map.internal.name
       }
@@ -76,7 +76,7 @@ resource "kubernetes_manifest" "internal_httproute" {
     kind       = "HTTPRoute"
     metadata = {
       name      = "bunshin-internal-nginx"
-      namespace = "default"
+      namespace = kubernetes_namespace_v1.bunshin.metadata[0].name
     }
     spec = {
       parentRefs = [{
@@ -84,8 +84,9 @@ resource "kubernetes_manifest" "internal_httproute" {
       }]
       rules = [{
         backendRefs = [{
-          name = kubernetes_service_v1.nginx.metadata[0].name
-          port = local.service_ports.nginx
+          name      = kubernetes_service_v1.nginx.metadata[0].name
+          namespace = kubernetes_service_v1.nginx.metadata[0].namespace
+          port      = local.service_ports.nginx
         }]
       }]
     }
