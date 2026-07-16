@@ -1,6 +1,4 @@
 resource "kubernetes_deployment_v1" "nginx" {
-  # checkov:skip=CKV_K8S_8:Liveness probe wiring is deferred to a follow-up PR
-  # checkov:skip=CKV_K8S_9:Readiness probe wiring is deferred to a follow-up PR
   # checkov:skip=CKV_K8S_15:image_tag is a git SHA (immutable); Always is redundant
   # checkov:skip=CKV_K8S_28:Autopilot blocks NET_RAW and other elevated capabilities
   # checkov:skip=CKV_K8S_29:Autopilot enforces baseline pod-level securityContext
@@ -31,6 +29,23 @@ resource "kubernetes_deployment_v1" "nginx" {
           port {
             container_port = local.service_ports.nginx
             protocol       = "TCP"
+          }
+
+          liveness_probe {
+            http_get {
+              path = "/health"
+              port = local.service_ports.nginx
+            }
+            initial_delay_seconds = 10
+            period_seconds        = 10
+          }
+
+          readiness_probe {
+            http_get {
+              path = "/health"
+              port = local.service_ports.nginx
+            }
+            period_seconds = 5
           }
 
           env {
