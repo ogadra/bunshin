@@ -36,8 +36,10 @@ resource "kubernetes_deployment_v1" "broker" {
               path = "/health"
               port = local.service_ports.broker
             }
-            initial_delay_seconds = 10
-            period_seconds        = 10
+            initial_delay_seconds = 5
+            period_seconds        = 3
+            timeout_seconds       = 1
+            failure_threshold     = 2
           }
 
           readiness_probe {
@@ -45,7 +47,9 @@ resource "kubernetes_deployment_v1" "broker" {
               path = "/health"
               port = local.service_ports.broker
             }
-            period_seconds = 5
+            period_seconds    = 2
+            timeout_seconds   = 1
+            failure_threshold = 1
           }
 
           env {
