@@ -1,8 +1,7 @@
 resource "kubernetes_service_v1" "broker" {
-  # checkov:skip=CKV_K8S_21:default namespace is temporary; namespace split is deferred to a follow-up PR
   metadata {
     name      = "broker"
-    namespace = "default"
+    namespace = kubernetes_namespace_v1.bunshin.metadata[0].name
     labels    = { app = "broker" }
   }
   spec {
@@ -18,10 +17,9 @@ resource "kubernetes_service_v1" "broker" {
 }
 
 resource "kubernetes_service_v1" "runner" {
-  # checkov:skip=CKV_K8S_21:default namespace is temporary; namespace split is deferred to a follow-up PR
   metadata {
     name      = "runner"
-    namespace = "default"
+    namespace = kubernetes_namespace_v1.bunshin.metadata[0].name
     labels    = { app = "runner" }
   }
   spec {
@@ -39,10 +37,9 @@ resource "kubernetes_service_v1" "runner" {
 # nginx Serviceに付けるcloud.google.com/neg annotationで、GKE NEG controllerがregionごとの
 # standalone zonal NEGを作る。Global LBのbackend serviceがこれをdata経由で参照する
 resource "kubernetes_service_v1" "nginx" {
-  # checkov:skip=CKV_K8S_21:default namespace is temporary; namespace split is deferred to a follow-up PR
   metadata {
     name      = "nginx"
-    namespace = "default"
+    namespace = kubernetes_namespace_v1.bunshin.metadata[0].name
     labels    = { app = "nginx" }
     annotations = {
       "cloud.google.com/neg" = jsonencode({
