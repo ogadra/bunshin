@@ -12,7 +12,7 @@ locals {
   }
 
   # Kubernetes Service DNS 上の broker host。ECS 側の CloudMap `broker.internal` と対応
-  broker_host = "broker.bunshin.svc.cluster.local"
+  broker_host = "broker.${kubernetes_namespace_v1.bunshin.metadata[0].name}.svc.cluster.local"
 
   # nginx / broker が listen する port と runner の container port。ECS locals の ecs_services と対称
   service_ports = {
