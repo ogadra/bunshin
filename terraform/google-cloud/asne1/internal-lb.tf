@@ -32,8 +32,7 @@ resource "google_certificate_manager_certificate_map_entry" "internal" {
   labels       = local.common_labels
 }
 
-# RILBのVIPはDNS recordが指す先。dynamic IPだとGateway再作成でIPが変わりDNSが壊れるため、
-# 事前にregional internal addressを確保してGateway spec.addressesから参照する
+# Gatewayのdynamic IPは再作成でVIPが変わりDNSを壊す
 resource "google_compute_address" "internal_lb" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   name         = local.internal_lb_name
