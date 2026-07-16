@@ -16,9 +16,7 @@ resource "google_certificate_manager_certificate" "internal" {
   }
 }
 
-# GKE Gateway(`gke-l7-rilb`)はannotation `networking.gke.io/certmap`でCertificate Managerの
-# cert mapをattachする。cert mapはAPI上global(regional / global certの両方をentryに持てる)で、
-# cert本体だけをregionalに閉じる
+# certmapはAPI上global固定 (regional指定不可)
 resource "google_certificate_manager_certificate_map" "internal" {
   name   = local.internal_lb_name
   labels = local.common_labels
