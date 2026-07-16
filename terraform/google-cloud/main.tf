@@ -23,7 +23,7 @@ resource "google_project_service" "apis" {
 module "asne1" {
   source = "./asne1"
 
-  deployer_iam_member = var.deployer_iam_member
+  deployer_email = data.google_client_openid_userinfo.me.email
 
   providers = {
     google     = google.asne1
@@ -36,7 +36,7 @@ module "asne1" {
 module "asne2" {
   source = "./asne2"
 
-  deployer_iam_member = var.deployer_iam_member
+  deployer_email = data.google_client_openid_userinfo.me.email
 
   providers = {
     google     = google.asne2
