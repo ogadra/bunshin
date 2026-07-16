@@ -21,7 +21,7 @@ resource "kubernetes_deployment_v1" "broker" {
   }
 
   spec {
-    replicas = var.broker_desired_count
+    replicas = var.desired_counts.broker
     selector {
       match_labels = { app = "broker" }
     }

@@ -1,5 +1,2 @@
-domain_name          = "example.bunshin.dev"
-image_tag            = "0000000000000000000000000000000000000000"
-nginx_desired_count  = 2
-broker_desired_count = 2
-runner_desired_count = 300
+domain_name = "example.bunshin.dev"
+image_tag   = "0000000000000000000000000000000000000000"

@@ -20,7 +20,7 @@ resource "kubernetes_deployment_v1" "runner" {
   }
 
   spec {
-    replicas = var.runner_desired_count
+    replicas = var.desired_counts.runner
     selector {
       match_labels = { app = "runner" }
     }

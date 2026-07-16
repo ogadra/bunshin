@@ -21,7 +21,7 @@ resource "kubernetes_deployment_v1" "nginx" {
   }
 
   spec {
-    replicas = var.nginx_desired_count
+    replicas = var.desired_counts.nginx
     selector {
       match_labels = { app = "nginx" }
     }

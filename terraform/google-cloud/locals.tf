@@ -5,4 +5,11 @@ locals {
     "asia-northeast1",
     "asia-northeast2",
   ]
+
+  # 機密ではない静的な replica 数はtfvarsから注入せず、コード側に固定して意図を残す
+  desired_counts = {
+    nginx  = 3
+    broker = 3
+    runner = 300
+  }
 }
