@@ -19,13 +19,12 @@ variable "bunshin_stacks" {
 }
 
 variable "desired_counts" {
-  description = "Pod replica counts keyed by microservice (nginx / broker / runner)"
-  type        = map(number)
-
-  validation {
-    condition     = length(setsubtract(["nginx", "broker", "runner"], keys(var.desired_counts))) == 0
-    error_message = "desired_counts must contain nginx, broker, and runner keys."
-  }
+  description = "Pod replica counts keyed by microservice"
+  type = object({
+    nginx  = number
+    broker = number
+    runner = number
+  })
 
   validation {
     condition     = alltrue([for v in values(var.desired_counts) : v >= 0 && floor(v) == v])

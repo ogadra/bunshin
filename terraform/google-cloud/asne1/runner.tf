@@ -1,8 +1,8 @@
-# AutopilotのpolicyがsecurityContext / capability drop / CPU requestsをinjectするため、
-# Deployment側では最小限しか書かない。ephemeral-storageだけは他Podより多く消費するため明示する
+# Autopilotがsecurityとresource設定をinjectするため、Deployment側は最小限だけ書く。
+# ephemeral-storageだけは他Podより多く消費するため明示する
 resource "kubernetes_deployment_v1" "runner" {
-  # checkov:skip=CKV_K8S_8:Liveness probe is out of scope for #221
-  # checkov:skip=CKV_K8S_9:Readiness probe is out of scope for #221
+  # checkov:skip=CKV_K8S_8:Liveness probe wiring is deferred to a follow-up PR
+  # checkov:skip=CKV_K8S_9:Readiness probe wiring is deferred to a follow-up PR
   # checkov:skip=CKV_K8S_10:Autopilot injects CPU requests
   # checkov:skip=CKV_K8S_11:Autopilot injects CPU limits
   # checkov:skip=CKV_K8S_12:Autopilot injects memory limits

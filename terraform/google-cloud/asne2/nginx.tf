@@ -1,9 +1,7 @@
-# Autopilotがsecurity context / capability drop / resource injection / probeデフォルトを強制するため、
-# Deployment側で明示していない項目はcluster-level policyで担保される。image tagはgit SHA (immutable)
-# のためImagePullPolicy=Alwaysやdigest指定は不要。probeは#221スコープ外で後続で追加する
+# Autopilotがsecurityとresource設定をinjectするため、Deployment側は最小限だけ書く
 resource "kubernetes_deployment_v1" "nginx" {
-  # checkov:skip=CKV_K8S_8:Liveness probe is out of scope for #221; nginx exposes /health for future wiring
-  # checkov:skip=CKV_K8S_9:Readiness probe is out of scope for #221; nginx exposes /health for future wiring
+  # checkov:skip=CKV_K8S_8:Liveness probe wiring is deferred to a follow-up PR
+  # checkov:skip=CKV_K8S_9:Readiness probe wiring is deferred to a follow-up PR
   # checkov:skip=CKV_K8S_10:Autopilot injects CPU requests
   # checkov:skip=CKV_K8S_11:Autopilot injects CPU limits
   # checkov:skip=CKV_K8S_12:Autopilot injects memory limits
