@@ -1,6 +1,3 @@
-# cert の CNAME 検証レコードは AWS Route53 の公開 zone に置く必要がある (private zone では ACME 検証が通らない)。
-# ここでは authorization を発行するだけで、Route53 側への CNAME 追加は #224 (P4-k) で担当する。
-# それまでこの cert は PROVISIONING のままだが、apply 自体は通る (待機は #224 で確認する)
 resource "google_certificate_manager_dns_authorization" "internal" {
   name     = "bunshin-internal-${local.region}"
   location = local.region
@@ -35,8 +32,6 @@ resource "google_certificate_manager_certificate_map_entry" "internal" {
   labels       = local.common_labels
 }
 
-# Gateway / HTTPRoute は GKE 側の CRD (Gateway API)。組み込み resource が無いため kubernetes_manifest を使う。
-# kubernetes_manifest は plan 時に cluster への到達を要求するため、P4-c 未 apply の環境では plan が通らない
 resource "kubernetes_manifest" "internal_gateway" {
   manifest = {
     apiVersion = "gateway.networking.k8s.io/v1"
