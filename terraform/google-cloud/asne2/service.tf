@@ -1,5 +1,5 @@
 resource "kubernetes_service_v1" "broker" {
-  # checkov:skip=CKV_K8S_21:default namespace is intentional; see serviceaccount.tf header
+  # checkov:skip=CKV_K8S_21:default namespace is temporary; namespace split is deferred to a follow-up PR
   metadata {
     name      = "broker"
     namespace = "default"
@@ -18,7 +18,7 @@ resource "kubernetes_service_v1" "broker" {
 }
 
 resource "kubernetes_service_v1" "runner" {
-  # checkov:skip=CKV_K8S_21:default namespace is intentional; see serviceaccount.tf header
+  # checkov:skip=CKV_K8S_21:default namespace is temporary; namespace split is deferred to a follow-up PR
   metadata {
     name      = "runner"
     namespace = "default"
@@ -36,10 +36,10 @@ resource "kubernetes_service_v1" "runner" {
   }
 }
 
-# nginx Service に付ける cloud.google.com/neg annotation で、GKE NEG controller が region 単位の
-# standalone zonal NEG を作る。Global LB (P4-j #223) の backend service がここを data で参照する
+# nginx Serviceに付けるcloud.google.com/neg annotationで、GKE NEG controllerがregionごとの
+# standalone zonal NEGを作る。Global LBのbackend serviceがこれをdata経由で参照する
 resource "kubernetes_service_v1" "nginx" {
-  # checkov:skip=CKV_K8S_21:default namespace is intentional; see serviceaccount.tf header
+  # checkov:skip=CKV_K8S_21:default namespace is temporary; namespace split is deferred to a follow-up PR
   metadata {
     name      = "nginx"
     namespace = "default"
