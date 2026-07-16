@@ -28,6 +28,16 @@ variable "image_tag" {
   type        = string
 }
 
+variable "nginx_desired_count" {
+  description = "Desired number of nginx Pod replicas"
+  type        = number
+}
+
+variable "broker_desired_count" {
+  description = "Desired number of broker Pod replicas"
+  type        = number
+}
+
 variable "runner_desired_count" {
   description = "Desired number of runner Pod replicas"
   type        = number
