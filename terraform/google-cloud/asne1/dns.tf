@@ -1,4 +1,3 @@
-# Route53 outbound → GCP inbound のwiringは #230 で接続
 resource "google_dns_policy" "bunshin" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   name                      = "bunshin-asne1"
