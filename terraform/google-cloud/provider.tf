@@ -4,7 +4,11 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 7.39"
+      version = "~> 7.40"
+    }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 3.2"
     }
   }
 }
@@ -23,3 +27,22 @@ provider "google" {
 }
 
 data "google_project" "current" {}
+
+data "google_client_config" "default" {}
+
+data "google_client_openid_userinfo" "me" {}
+
+# hostはfleetのConnect Gateway endpoint。clusterのendpoint/CAを直接参照するとprovider設定が
+# 同一applyで作成されるリソースに依存し初回planが壊れるため、fleet membership URLで終端する
+# (Connect GatewayがTLSを終端するのでCA不要)。pathはproject number (project IDではない)。
+provider "kubernetes" {
+  alias = "asne1"
+  host  = "https://connectgateway.googleapis.com/v1/projects/${data.google_project.current.number}/locations/global/gkeMemberships/bunshin-asne1"
+  token = data.google_client_config.default.access_token
+}
+
+provider "kubernetes" {
+  alias = "asne2"
+  host  = "https://connectgateway.googleapis.com/v1/projects/${data.google_project.current.number}/locations/global/gkeMemberships/bunshin-asne2"
+  token = data.google_client_config.default.access_token
+}
