@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 SERVICES=(broker nginx runner front)
 ECR_REGION="ap-northeast-1"
 
@@ -34,7 +34,7 @@ run_service() {
     local env_name="${2:?}"
     local aws_account_id="${3:?}"
 
-    "${ROOT_DIR}/scripts/deploy/${service}.sh" "${env_name}" "${aws_account_id}"
+    "${ROOT_DIR}/scripts/aws/deploy/${service}.sh" "${env_name}" "${aws_account_id}"
 }
 
 login_ecr() {
@@ -47,15 +47,23 @@ login_ecr() {
 }
 
 main() {
-    local env_name="${1:?Usage: scripts/deploy.sh <env> [service]}"
-    local service="${2:-}"
+    local env_name="${1:?Usage: scripts/aws/deploy.sh <env> [service...]}"
+    shift
     local aws_account_id
+    local -a target_services=()
+    local service
     local pid
     local pids=()
     local status=0
+    local need_ecr_login=false
 
-    if [[ -n "${service}" ]] && ! contains_service "${service}"; then
-        die "service must be one of: ${SERVICES[*]}"
+    if [[ $# -eq 0 ]]; then
+        target_services=("${SERVICES[@]}")
+    else
+        for service in "$@"; do
+            contains_service "${service}" || die "service must be one of: ${SERVICES[*]} (got '${service}')"
+            target_services+=("${service}")
+        done
     fi
 
     aws_account_id="$(aws --profile "${env_name}" sts get-caller-identity --query Account --output text)"
@@ -64,17 +72,18 @@ main() {
         die "failed to resolve AWS account id for profile ${env_name}"
     fi
 
-    if [[ -n "${service}" ]]; then
+    for service in "${target_services[@]}"; do
         if uses_ecs "${service}"; then
-            login_ecr "${env_name}" "${aws_account_id}"
+            need_ecr_login=true
+            break
         fi
-        run_service "${service}" "${env_name}" "${aws_account_id}"
-        return
+    done
+
+    if [[ "${need_ecr_login}" == "true" ]]; then
+        login_ecr "${env_name}" "${aws_account_id}"
     fi
 
-    login_ecr "${env_name}" "${aws_account_id}"
-
-    for service in "${SERVICES[@]}"; do
+    for service in "${target_services[@]}"; do
         run_service "${service}" "${env_name}" "${aws_account_id}" &
         pids+=("$!")
     done

@@ -24,8 +24,8 @@ apply vendor env: (_validate-vendor vendor) (_validate-env env)
     terraform -chdir=terraform/{{vendor}} apply -var-file=environments/{{env}}.tfvars
 
 # Deploy services for the specified environment
-deploy env *service: (_validate-env env)
-    scripts/deploy.sh {{env}} {{service}}
+deploy vendor env *service: (_validate-vendor vendor) (_validate-env env)
+    scripts/{{vendor}}/deploy.sh {{env}} {{service}}
 
 # Destroy resources for the specified environment
 destroy vendor env: (_validate-vendor vendor) (_validate-env env)
