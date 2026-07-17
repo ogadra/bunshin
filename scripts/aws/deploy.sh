@@ -47,15 +47,23 @@ login_ecr() {
 }
 
 main() {
-    local env_name="${1:?Usage: scripts/aws/deploy.sh <env> [service]}"
-    local service="${2:-}"
+    local env_name="${1:?Usage: scripts/aws/deploy.sh <env> [service...]}"
+    shift
     local aws_account_id
+    local -a target_services=()
+    local svc
     local pid
     local pids=()
     local status=0
+    local need_ecr_login=false
 
-    if [[ -n "${service}" ]] && ! contains_service "${service}"; then
-        die "service must be one of: ${SERVICES[*]}"
+    if [[ $# -eq 0 ]]; then
+        target_services=("${SERVICES[@]}")
+    else
+        for svc in "$@"; do
+            contains_service "${svc}" || die "service must be one of: ${SERVICES[*]} (got '${svc}')"
+            target_services+=("${svc}")
+        done
     fi
 
     aws_account_id="$(aws --profile "${env_name}" sts get-caller-identity --query Account --output text)"
@@ -64,18 +72,19 @@ main() {
         die "failed to resolve AWS account id for profile ${env_name}"
     fi
 
-    if [[ -n "${service}" ]]; then
-        if uses_ecs "${service}"; then
-            login_ecr "${env_name}" "${aws_account_id}"
+    for svc in "${target_services[@]}"; do
+        if uses_ecs "${svc}"; then
+            need_ecr_login=true
+            break
         fi
-        run_service "${service}" "${env_name}" "${aws_account_id}"
-        return
+    done
+
+    if [[ "${need_ecr_login}" == "true" ]]; then
+        login_ecr "${env_name}" "${aws_account_id}"
     fi
 
-    login_ecr "${env_name}" "${aws_account_id}"
-
-    for service in "${SERVICES[@]}"; do
-        run_service "${service}" "${env_name}" "${aws_account_id}" &
+    for svc in "${target_services[@]}"; do
+        run_service "${svc}" "${env_name}" "${aws_account_id}" &
         pids+=("$!")
     done
 

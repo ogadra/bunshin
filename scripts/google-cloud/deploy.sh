@@ -28,15 +28,17 @@ contains_service() {
 }
 
 resolve_target_services() {
-    local target_service="${1:-}"
+    local svc
 
-    if [[ -z "${target_service}" ]]; then
+    if [[ $# -eq 0 ]]; then
         printf '%s\n' "${SERVICES[@]}"
         return
     fi
 
-    contains_service "${target_service}" || die "service must be one of: ${SERVICES[*]}"
-    echo "${target_service}"
+    for svc in "$@"; do
+        contains_service "${svc}" || die "service must be one of: ${SERVICES[*]} (got '${svc}')"
+        echo "${svc}"
+    done
 }
 
 resolve_project() {
@@ -136,7 +138,8 @@ wait_rollouts_all() {
 }
 
 main() {
-    local env_name="${1:?Usage: scripts/google-cloud/deploy.sh <env> [service]}"
+    local env_name="${1:?Usage: scripts/google-cloud/deploy.sh <env> [service...]}"
+    shift
     local project
     local image_tag
     local -a targets
@@ -144,7 +147,7 @@ main() {
 
     # `mapfile < <(...)` は process substitution 内の `die` を握り潰す。command substitution で
     # exit code を親に伝えないと、不正 service でも targets が空のまま infra 全体を apply してしまう
-    resolved_targets="$(resolve_target_services "${2:-}")"
+    resolved_targets="$(resolve_target_services "$@")"
     mapfile -t targets <<<"${resolved_targets}"
     project="$(resolve_project)"
     image_tag="$(git -C "${ROOT_DIR}" rev-parse HEAD)"
