@@ -35,8 +35,8 @@ resource "google_compute_health_check" "nginx" {
   }
 }
 
-# CDNはbackend_bucket側で有効化する。SSE streamはchunked responseでcache不可のため、
-# `/api/sse/*`をrouteするcdn PRでenable_cdn=falseを明示する
+# `/api/execute` (runner) が SSE stream を返し chunked response で cache 不可なため、
+# nginx を挟む `/api/*` 全体を CDN 対象外にする。CDN は backend bucket 側で有効化する
 resource "google_compute_backend_service" "nginx" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   name                  = "bunshin-nginx"
@@ -67,8 +67,8 @@ resource "google_compute_backend_service" "nginx" {
   }
 }
 
-# cdn PRでdefault_serviceをbackend_bucketに切り替え、path_matcher `/api/*`と`/api/sse/*`を
-# backend_serviceに向ける。この段階では全requestをnginxに流す最小構成に留める
+# cdn PR で default_service を backend_bucket に切り替え、`/api/*` の path_matcher を
+# backend_service に向ける。この段階では全 request を nginx に流す最小構成に留める
 resource "google_compute_url_map" "external" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   name            = "bunshin-external"
