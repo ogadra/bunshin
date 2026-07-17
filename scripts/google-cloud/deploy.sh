@@ -140,8 +140,12 @@ main() {
     local project
     local image_tag
     local -a targets
+    local resolved_targets
 
-    mapfile -t targets < <(resolve_target_services "${2:-}")
+    # `mapfile < <(...)` は process substitution 内の `die` を握り潰す。command substitution で
+    # exit code を親に伝えないと、不正 service でも targets が空のまま infra 全体を apply してしまう
+    resolved_targets="$(resolve_target_services "${2:-}")"
+    mapfile -t targets <<<"${resolved_targets}"
     project="$(resolve_project)"
     image_tag="$(git -C "${ROOT_DIR}" rev-parse HEAD)"
 
