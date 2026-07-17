@@ -1,5 +1,5 @@
 variable "domain_name" {
-  description = "FQDN for the service"
+  description = "Apex domain used by nginx to compose internal / external hosts"
   type        = string
 
   validation {
@@ -9,11 +9,11 @@ variable "domain_name" {
 }
 
 variable "image_tag" {
-  description = "Container image tag pulled from Artifact Registry (typically the git SHA)"
+  description = "Container image tag pulled from Artifact Registry (git commit SHA, 40 hex chars; immutable, matches broker/nginx/runner checkov CKV_K8S_15/43 skips)"
   type        = string
 
   validation {
-    condition     = length(var.image_tag) > 0
-    error_message = "image_tag must be non-empty."
+    condition     = can(regex("^[0-9a-f]{40}$", var.image_tag))
+    error_message = "image_tag must be a 40-character lowercase git commit SHA (^[0-9a-f]{40}$)."
   }
 }
