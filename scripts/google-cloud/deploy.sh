@@ -27,20 +27,6 @@ contains_service() {
     return 1
 }
 
-resolve_target_services() {
-    local svc
-
-    if [[ $# -eq 0 ]]; then
-        printf '%s\n' "${SERVICES[@]}"
-        return
-    fi
-
-    for svc in "$@"; do
-        contains_service "${svc}" || die "service must be one of: ${SERVICES[*]} (got '${svc}')"
-        echo "${svc}"
-    done
-}
-
 resolve_project() {
     local project
     project="$(gcloud config get-value project 2>/dev/null)"
@@ -142,22 +128,27 @@ main() {
     shift
     local project
     local image_tag
-    local -a targets
-    local resolved_targets
+    local -a target_services=()
+    local service
 
-    # `mapfile < <(...)` は process substitution 内の `die` を握り潰す。command substitution で
-    # exit code を親に伝えないと、不正 service でも targets が空のまま infra 全体を apply してしまう
-    resolved_targets="$(resolve_target_services "$@")"
-    mapfile -t targets <<<"${resolved_targets}"
+    if [[ $# -eq 0 ]]; then
+        target_services=("${SERVICES[@]}")
+    else
+        for service in "$@"; do
+            contains_service "${service}" || die "service must be one of: ${SERVICES[*]} (got '${service}')"
+            target_services+=("${service}")
+        done
+    fi
+
     project="$(resolve_project)"
     image_tag="$(git -C "${ROOT_DIR}" rev-parse HEAD)"
 
     echo "Deploying to google-cloud env=${env_name} project=${project} image_tag=${image_tag}"
 
     configure_docker_auth
-    build_and_push_all "${project}" "${image_tag}" "${targets[@]}"
-    apply_image_tag "${env_name}" "${image_tag}" "${targets[@]}"
-    wait_rollouts_all "${project}" "${targets[@]}"
+    build_and_push_all "${project}" "${image_tag}" "${target_services[@]}"
+    apply_image_tag "${env_name}" "${image_tag}" "${target_services[@]}"
+    wait_rollouts_all "${project}" "${target_services[@]}"
 }
 
 main "$@"

@@ -51,7 +51,7 @@ main() {
     shift
     local aws_account_id
     local -a target_services=()
-    local svc
+    local service
     local pid
     local pids=()
     local status=0
@@ -60,9 +60,9 @@ main() {
     if [[ $# -eq 0 ]]; then
         target_services=("${SERVICES[@]}")
     else
-        for svc in "$@"; do
-            contains_service "${svc}" || die "service must be one of: ${SERVICES[*]} (got '${svc}')"
-            target_services+=("${svc}")
+        for service in "$@"; do
+            contains_service "${service}" || die "service must be one of: ${SERVICES[*]} (got '${service}')"
+            target_services+=("${service}")
         done
     fi
 
@@ -72,8 +72,8 @@ main() {
         die "failed to resolve AWS account id for profile ${env_name}"
     fi
 
-    for svc in "${target_services[@]}"; do
-        if uses_ecs "${svc}"; then
+    for service in "${target_services[@]}"; do
+        if uses_ecs "${service}"; then
             need_ecr_login=true
             break
         fi
@@ -83,8 +83,8 @@ main() {
         login_ecr "${env_name}" "${aws_account_id}"
     fi
 
-    for svc in "${target_services[@]}"; do
-        run_service "${svc}" "${env_name}" "${aws_account_id}" &
+    for service in "${target_services[@]}"; do
+        run_service "${service}" "${env_name}" "${aws_account_id}" &
         pids+=("$!")
     done
 
