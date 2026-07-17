@@ -9,6 +9,8 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -767,6 +769,195 @@ func TestParseClientAddressRejectsInvalidPorts(t *testing.T) {
 				t.Fatalf("parseClientAddress(%q) error = %v, want %q", value, err, errInvalidClientAddressHeader)
 			}
 		})
+	}
+}
+
+// setHandlerAppFilePath points handlerAppFilePath at path for the test and
+// restores the original when the test ends.
+func setHandlerAppFilePath(t *testing.T, path string) {
+	t.Helper()
+	orig := handlerAppFilePath
+	handlerAppFilePath = path
+	t.Cleanup(func() { handlerAppFilePath = orig })
+}
+
+// setHandlerAppMaxSize lowers handlerAppMaxSize for the test and restores the
+// original when the test ends.
+func setHandlerAppMaxSize(t *testing.T, size int64) {
+	t.Helper()
+	orig := handlerAppMaxSize
+	handlerAppMaxSize = size
+	t.Cleanup(func() { handlerAppMaxSize = orig })
+}
+
+func TestGetAppHandlerSuccess(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "handler.pl")
+	want := "sub { return (200, 'text/plain', 'hi'); };\n"
+	if err := os.WriteFile(path, []byte(want), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	setHandlerAppFilePath(t, path)
+
+	sm := NewShellManager()
+	defer sm.CloseAll()
+	handler := newHandler(sm)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/app/handler", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if got := w.Body.String(); got != want {
+		t.Errorf("body = %q, want %q", got, want)
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
+		t.Errorf("Content-Type = %q, want text/plain*", ct)
+	}
+}
+
+func TestGetAppHandlerReadError(t *testing.T) {
+	setHandlerAppFilePath(t, filepath.Join(t.TempDir(), "does-not-exist.pl"))
+
+	sm := NewShellManager()
+	defer sm.CloseAll()
+	handler := newHandler(sm)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/app/handler", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+}
+
+func TestPutAppHandlerSuccess(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "handler.pl")
+	if err := os.WriteFile(path, []byte("old\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	setHandlerAppFilePath(t, path)
+
+	sm := NewShellManager()
+	defer sm.CloseAll()
+	handler := newHandler(sm)
+
+	body := "sub { return (200, 'text/plain', 'new'); };\n"
+	req := httptest.NewRequest(http.MethodPut, "/api/app/handler", strings.NewReader(body))
+	setClientAddressHeader(req)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if string(got) != body {
+		t.Errorf("file = %q, want %q", got, body)
+	}
+
+	// GET after PUT returns the new body.
+	getReq := httptest.NewRequest(http.MethodGet, "/api/app/handler", nil)
+	getW := httptest.NewRecorder()
+	handler.ServeHTTP(getW, getReq)
+	if got := getW.Body.String(); got != body {
+		t.Errorf("GET body = %q, want %q", got, body)
+	}
+}
+
+func TestPutAppHandlerMissingClientAddress(t *testing.T) {
+	sm := NewShellManager()
+	defer sm.CloseAll()
+	handler := newHandler(sm)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/app/handler", strings.NewReader("x"))
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+	if !strings.Contains(w.Body.String(), errMissingClientAddressHeader) {
+		t.Errorf("body = %q, want error containing %q", w.Body.String(), errMissingClientAddressHeader)
+	}
+}
+
+func TestPutAppHandlerBodyTooLarge(t *testing.T) {
+	setHandlerAppMaxSize(t, 4)
+	dir := t.TempDir()
+	setHandlerAppFilePath(t, filepath.Join(dir, "handler.pl"))
+
+	sm := NewShellManager()
+	defer sm.CloseAll()
+	handler := newHandler(sm)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/app/handler", strings.NewReader("hello"))
+	setClientAddressHeader(req)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+	if !strings.Contains(w.Body.String(), "read body") {
+		t.Errorf("body = %q, want error containing 'read body'", w.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, "handler.pl")); err == nil {
+		t.Error("handler.pl should not be written on oversized body")
+	}
+}
+
+func TestPutAppHandlerWriteError(t *testing.T) {
+	setHandlerAppFilePath(t, filepath.Join(t.TempDir(), "no-such-parent", "handler.pl"))
+
+	sm := NewShellManager()
+	defer sm.CloseAll()
+	handler := newHandler(sm)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/app/handler", strings.NewReader("body"))
+	setClientAddressHeader(req)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+}
+
+func TestPutAppHandlerRenameError(t *testing.T) {
+	dir := t.TempDir()
+	// Point handlerAppFilePath at a directory; rename over a directory fails.
+	target := filepath.Join(dir, "handler.pl")
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatalf("Mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "child"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	setHandlerAppFilePath(t, target)
+
+	sm := NewShellManager()
+	defer sm.CloseAll()
+	handler := newHandler(sm)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/app/handler", strings.NewReader("body"))
+	setClientAddressHeader(req)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+	// tmp cleanup: the ".handler.pl.tmp" sibling should not linger.
+	if _, err := os.Stat(filepath.Join(dir, ".handler.pl.tmp")); err == nil {
+		t.Error("tmp file should be cleaned up after rename failure")
 	}
 }
 
