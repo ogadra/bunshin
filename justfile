@@ -27,19 +27,7 @@ apply vendor env: (_validate-vendor vendor) (_validate-env env)
 destroy vendor env: (_validate-vendor vendor) (_validate-env env)
     terraform -chdir=terraform/{{vendor}} destroy -var-file=environments/{{env}}.tfvars
 
-# Build container images. Optional service filter picks a single microservice.
-build vendor env *service: (_validate-vendor vendor) (_validate-env env)
-    #!/usr/bin/env bash
-    echo "Error: 'build {{vendor}}' is not implemented yet" >&2
-    exit 1
-
-# Push container images to the vendor registry.
-push vendor env *service: (_validate-vendor vendor) (_validate-env env)
-    #!/usr/bin/env bash
-    echo "Error: 'push {{vendor}}' is not implemented yet" >&2
-    exit 1
-
-# Roll out container images to the vendor runtime.
+# Build, push, and roll out container images for the vendor / env.
 deploy vendor env *service: (_validate-vendor vendor) (_validate-env env)
     #!/usr/bin/env bash
     set -euo pipefail
@@ -47,12 +35,6 @@ deploy vendor env *service: (_validate-vendor vendor) (_validate-env env)
         aws) scripts/deploy.sh {{env}} {{service}} ;;
         google-cloud) echo "Error: 'deploy google-cloud' is not implemented yet" >&2; exit 1 ;;
     esac
-
-# Wait for the vendor runtime to finish rolling out the current image.
-rollout-status vendor env *service: (_validate-vendor vendor) (_validate-env env)
-    #!/usr/bin/env bash
-    echo "Error: 'rollout-status {{vendor}}' is not implemented yet" >&2
-    exit 1
 
 # Run k6 load test against the given base URL.
 loadtest base_url runner_count:
