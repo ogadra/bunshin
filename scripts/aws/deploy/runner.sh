@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)"
 SERVICE="runner"
 ECR_REGION="ap-northeast-1"
 REPLICA_REGION="ap-northeast-3"
@@ -103,8 +103,8 @@ deploy_to_region() {
 }
 
 main() {
-    local env_name="${1:?Usage: scripts/deploy/runner.sh <env> <aws_account_id>}"
-    local aws_account_id="${2:?Usage: scripts/deploy/runner.sh <env> <aws_account_id>}"
+    local env_name="${1:?Usage: scripts/aws/deploy/runner.sh <env> <aws_account_id>}"
+    local aws_account_id="${2:?Usage: scripts/aws/deploy/runner.sh <env> <aws_account_id>}"
     local image_tag
     local short_image_tag
     local image

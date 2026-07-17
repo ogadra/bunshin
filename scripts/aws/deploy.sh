@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 SERVICES=(broker nginx runner front)
 ECR_REGION="ap-northeast-1"
 
@@ -34,7 +34,7 @@ run_service() {
     local env_name="${2:?}"
     local aws_account_id="${3:?}"
 
-    "${ROOT_DIR}/scripts/deploy/${service}.sh" "${env_name}" "${aws_account_id}"
+    "${ROOT_DIR}/scripts/aws/deploy/${service}.sh" "${env_name}" "${aws_account_id}"
 }
 
 login_ecr() {
@@ -47,7 +47,7 @@ login_ecr() {
 }
 
 main() {
-    local env_name="${1:?Usage: scripts/deploy.sh <env> [service]}"
+    local env_name="${1:?Usage: scripts/aws/deploy.sh <env> [service]}"
     local service="${2:-}"
     local aws_account_id
     local pid

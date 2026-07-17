@@ -1,6 +1,5 @@
-# Terraform / container image ops for a specific vendor and env.
-# vendor: aws | google-cloud
-# env:    stg | prd
+# Terraform operations with environment-specific tfvars
+# Available environments: stg, prd
 
 _validate-env env:
     @if [ "{{env}}" != "stg" ] && [ "{{env}}" != "prd" ]; then echo "Error: env must be 'stg' or 'prd', got '{{env}}'"; exit 1; fi
@@ -11,35 +10,31 @@ _validate-vendor vendor:
 _validate-tf-backend-bucket:
     @if [ -z "${TF_BACKEND_BUCKET:-}" ]; then echo "Error: TF_BACKEND_BUCKET must be set (see .env.example)"; exit 1; fi
 
-# Configure the terraform backend for the vendor / env (TF_BACKEND_BUCKET must be set; see .env.example).
+# Initialize terraform with environment-specific S3 backend config
+# Requires TF_BACKEND_BUCKET to be set (e.g. via direnv / .env)
 init vendor env: (_validate-vendor vendor) (_validate-env env) _validate-tf-backend-bucket
     terraform -chdir=terraform/{{vendor}} init -reconfigure -backend-config="bucket=${TF_BACKEND_BUCKET}" -backend-config="key=bunshin/{{vendor}}/{{env}}.tfstate"
 
-# Preview infrastructure changes.
+# Plan changes for the specified environment
 plan vendor env: (_validate-vendor vendor) (_validate-env env)
     terraform -chdir=terraform/{{vendor}} plan -var-file=environments/{{env}}.tfvars
 
-# Apply infrastructure changes.
+# Apply changes for the specified environment
 apply vendor env: (_validate-vendor vendor) (_validate-env env)
     terraform -chdir=terraform/{{vendor}} apply -var-file=environments/{{env}}.tfvars
 
-# Destroy infrastructure for the vendor / env.
+# Deploy services for the specified environment
+deploy vendor env *service: (_validate-vendor vendor) (_validate-env env)
+    scripts/{{vendor}}/deploy.sh {{env}} {{service}}
+
+# Destroy resources for the specified environment
 destroy vendor env: (_validate-vendor vendor) (_validate-env env)
     terraform -chdir=terraform/{{vendor}} destroy -var-file=environments/{{env}}.tfvars
 
-# Build, push, and roll out container images for the vendor / env.
-deploy vendor env *service: (_validate-vendor vendor) (_validate-env env)
-    #!/usr/bin/env bash
-    set -euo pipefail
-    case "{{vendor}}" in
-        aws) scripts/deploy.sh {{env}} {{service}} ;;
-        google-cloud) echo "Error: 'deploy google-cloud' is not implemented yet" >&2; exit 1 ;;
-    esac
-
-# Run k6 load test against the given base URL.
+# Run k6 load test against the specified base URL
 loadtest base_url runner_count:
     k6 run -e BASE_URL={{base_url}} -e RUNNER_COUNT={{runner_count}} loadtest/loadtest.js 2>&1 | tee k6-output.log
 
-# Detect session_id duplicates in the last k6 run (empty output = no duplicates).
+# Check for session_id duplicates in k6 output (empty output means no duplicates)
 loadtest-check-dup:
     grep 'SESSION_ID:' k6-output.log | sed 's/.*SESSION_ID://' | sort | uniq -d
