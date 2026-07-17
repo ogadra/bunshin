@@ -1,26 +1,3 @@
-locals {
-  # Autopilotが常に3-zone spreadで配置するため、NEG lookup zoneをrootで固定する。
-  # regionalなdata.google_compute_zonesを使うと未使用zoneまで含みNEG unresolveでplanが落ちる
-  nginx_neg_zones = {
-    "asia-northeast1" = ["asia-northeast1-a", "asia-northeast1-b", "asia-northeast1-c"]
-    "asia-northeast2" = ["asia-northeast2-a", "asia-northeast2-b", "asia-northeast2-c"]
-  }
-}
-
-data "google_compute_network_endpoint_group" "nginx_asne1" {
-  provider = google.asne1
-  for_each = toset(local.nginx_neg_zones["asia-northeast1"])
-  name     = "bunshin-nginx-asia-northeast1"
-  zone     = each.value
-}
-
-data "google_compute_network_endpoint_group" "nginx_asne2" {
-  provider = google.asne2
-  for_each = toset(local.nginx_neg_zones["asia-northeast2"])
-  name     = "bunshin-nginx-asia-northeast2"
-  zone     = each.value
-}
-
 resource "google_compute_health_check" "nginx" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   name                = "bunshin-nginx"
@@ -35,16 +12,20 @@ resource "google_compute_health_check" "nginx" {
   }
 }
 
-# `/api/execute` (runner) が SSE stream を返し chunked response で cache 不可なため、
-# nginx を挟む `/api/*` 全体を CDN 対象外にする。CDN は backend bucket 側で有効化する
+# /api/execute (runner)がSSE streamを返しchunked responseでcache不可なため、nginxを挟む/api/*
+# 全体をCDN対象外にする。CDNはbackend bucket側で有効化する
 resource "google_compute_backend_service" "nginx" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   name                  = "bunshin-nginx"
   protocol              = "HTTP"
   load_balancing_scheme = "EXTERNAL_MANAGED"
-  session_affinity      = "CLIENT_IP"
   timeout_sec           = 30
   enable_cdn            = false
+
+  # broker sessionIdはstackスコープのDynamoDB/Firestoreに保存され、他stackへの解決はrunner fallback
+  # 経路 (VPC Peering / HA VPN) を通る。CLIENT_IPで同一clientを近regionに固着させ、cross-stack転送を
+  # 減らす。AWS Global Acceleratorのclient_affinity=SOURCE_IPと対称
+  session_affinity = "CLIENT_IP"
 
   health_checks = [google_compute_health_check.nginx.id]
 
@@ -54,10 +35,7 @@ resource "google_compute_backend_service" "nginx" {
   }
 
   dynamic "backend" {
-    for_each = merge(
-      { for z, neg in data.google_compute_network_endpoint_group.nginx_asne1 : z => neg.id },
-      { for z, neg in data.google_compute_network_endpoint_group.nginx_asne2 : z => neg.id },
-    )
+    for_each = toset(concat(module.asne1.nginx_neg_ids, module.asne2.nginx_neg_ids))
     content {
       group                 = backend.value
       balancing_mode        = "RATE"
@@ -67,8 +45,6 @@ resource "google_compute_backend_service" "nginx" {
   }
 }
 
-# cdn PR で default_service を backend_bucket に切り替え、`/api/*` の path_matcher を
-# backend_service に向ける。この段階では全 request を nginx に流す最小構成に留める
 resource "google_compute_url_map" "external" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   name            = "bunshin-external"
