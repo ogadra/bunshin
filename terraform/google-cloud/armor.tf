@@ -21,18 +21,20 @@ resource "google_compute_security_policy" "edge" {
   }
 }
 
-# backend policy (`CLOUD_ARMOR`)はfull WAFでbody inspectionまで行う。CloudFrontに載せた
-# AWSManagedRulesCommonRuleSetと対称のカバレッジを、Google preconfigured OWASP rulesで敷く
+# bunshinは`/api/execute`にshell commandを受け取る設計のため、OWASP preconfigured rules (特に
+# rce/lfi/rfi) は正常requestを高確率で誤検知する。全ruleをpreview=trueで敷いて出力logのみ集める。
+# denyへの切り替えはlogを見て誤検知率が許容できる時点で判断する
 resource "google_compute_security_policy" "backend" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   # checkov:skip=CKV_GCP_73:Log4j protection is not needed, backend does not use Java
   name        = "bunshin-backend"
-  description = "Backend WAF: OWASP Top 10 preconfigured rules for /api/* backend service"
+  description = "Backend WAF: OWASP Top 10 preconfigured rules for /api/* backend service (preview only)"
   type        = "CLOUD_ARMOR"
 
   rule {
     action      = "deny(403)"
     priority    = 1000
+    preview     = true
     description = "SQL injection (OWASP A03)"
 
     match {
@@ -45,6 +47,7 @@ resource "google_compute_security_policy" "backend" {
   rule {
     action      = "deny(403)"
     priority    = 1001
+    preview     = true
     description = "Cross-site scripting (OWASP A03)"
 
     match {
@@ -57,6 +60,7 @@ resource "google_compute_security_policy" "backend" {
   rule {
     action      = "deny(403)"
     priority    = 1002
+    preview     = true
     description = "Local file inclusion (OWASP A05)"
 
     match {
@@ -69,6 +73,7 @@ resource "google_compute_security_policy" "backend" {
   rule {
     action      = "deny(403)"
     priority    = 1003
+    preview     = true
     description = "Remote code execution (OWASP A03)"
 
     match {
@@ -81,6 +86,7 @@ resource "google_compute_security_policy" "backend" {
   rule {
     action      = "deny(403)"
     priority    = 1004
+    preview     = true
     description = "Remote file inclusion (OWASP A03)"
 
     match {
@@ -93,6 +99,7 @@ resource "google_compute_security_policy" "backend" {
   rule {
     action      = "deny(403)"
     priority    = 1005
+    preview     = true
     description = "Protocol attack (OWASP A05)"
 
     match {
