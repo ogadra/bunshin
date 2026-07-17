@@ -19,12 +19,12 @@ variable "broker_service_account_id" {
 }
 
 variable "bunshin_stacks" {
-  description = "Stack identifiers advertised to nginx / broker"
+  description = "Stack identifiers advertised to nginx / broker; each element is a GCP region name (e.g. asia-northeast1)"
   type        = list(string)
 
   validation {
-    condition     = length(var.bunshin_stacks) > 0 && alltrue([for s in var.bunshin_stacks : length(s) > 0])
-    error_message = "bunshin_stacks must be a non-empty list of non-empty strings."
+    condition     = length(var.bunshin_stacks) > 0 && alltrue([for s in var.bunshin_stacks : can(regex("^[a-z]+-[a-z]+[0-9]+$", s))])
+    error_message = "bunshin_stacks must be a non-empty list of GCP region names matching ^[a-z]+-[a-z]+[0-9]+$."
   }
 }
 
@@ -53,12 +53,12 @@ variable "domain_name" {
 }
 
 variable "image_tag" {
-  description = "Container image tag pulled from Artifact Registry"
+  description = "Container image tag pulled from Artifact Registry (git commit SHA, 40 hex chars; immutable, matches broker/nginx/runner checkov CKV_K8S_15/43 skips)"
   type        = string
 
   validation {
-    condition     = length(var.image_tag) > 0
-    error_message = "image_tag must be non-empty."
+    condition     = can(regex("^[0-9a-f]{40}$", var.image_tag))
+    error_message = "image_tag must be a 40-character lowercase git commit SHA (^[0-9a-f]{40}$)."
   }
 }
 
