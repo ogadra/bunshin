@@ -48,7 +48,22 @@ resource "google_compute_backend_service" "nginx" {
 resource "google_compute_url_map" "external" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   name            = "bunshin-external"
-  default_service = google_compute_backend_service.nginx.id
+  default_service = google_compute_backend_bucket.static.id
+
+  host_rule {
+    hosts        = [var.domain_name]
+    path_matcher = "main"
+  }
+
+  path_matcher {
+    name            = "main"
+    default_service = google_compute_backend_bucket.static.id
+
+    path_rule {
+      paths   = ["/api/*"]
+      service = google_compute_backend_service.nginx.id
+    }
+  }
 }
 
 resource "google_compute_target_https_proxy" "external" {
