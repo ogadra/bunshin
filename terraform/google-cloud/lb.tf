@@ -55,8 +55,8 @@ resource "google_compute_backend_service" "nginx" {
 
   dynamic "backend" {
     for_each = merge(
-      { for z, neg in data.google_compute_network_endpoint_group.nginx_asne1 : "asne1-${z}" => neg.id },
-      { for z, neg in data.google_compute_network_endpoint_group.nginx_asne2 : "asne2-${z}" => neg.id },
+      { for z, neg in data.google_compute_network_endpoint_group.nginx_asne1 : z => neg.id },
+      { for z, neg in data.google_compute_network_endpoint_group.nginx_asne2 : z => neg.id },
     )
     content {
       group                 = backend.value
