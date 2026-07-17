@@ -1,36 +1,11 @@
-# edge policy (`CLOUD_ARMOR_EDGE`)はbody inspection不可でOWASP L7検査ができない。
-# 静的配信のbackend bucketは攻撃面が小さくbody処理も無いため、edge policyのみでカバーする
+# 会場内NATから同一送信元IPで大量requestが来る前提のため、per-IP rate limitは張らない。
+# edge policyはsource IP / geo / header filterの器として残し、必要になったらここへruleを追加する
 resource "google_compute_security_policy" "edge" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   # checkov:skip=CKV_GCP_73:Log4j protection is not needed, backend does not use Java
   name        = "bunshin-edge"
-  description = "Edge policy: source IP / geo / header filter and rate limit"
+  description = "Edge policy container for future source IP / geo / header filters"
   type        = "CLOUD_ARMOR_EDGE"
-
-  rule {
-    action      = "rate_based_ban"
-    priority    = 100
-    description = "Per-IP rate limit 1000 req/min"
-
-    match {
-      versioned_expr = "SRC_IPS_V1"
-      config {
-        src_ip_ranges = ["*"]
-      }
-    }
-
-    rate_limit_options {
-      conform_action   = "allow"
-      exceed_action    = "deny(429)"
-      enforce_on_key   = "IP"
-      ban_duration_sec = 600
-
-      rate_limit_threshold {
-        count        = 1000
-        interval_sec = 60
-      }
-    }
-  }
 
   rule {
     action      = "allow"
