@@ -4,6 +4,11 @@ resource "kubernetes_deployment_v1" "broker" {
   # checkov:skip=CKV_K8S_29:Autopilot enforces baseline pod-level securityContext
   # checkov:skip=CKV_K8S_30:Autopilot enforces baseline container-level securityContext
   # checkov:skip=CKV_K8S_43:image_tag is a git SHA (immutable); digest form is redundant
+
+  # KSA参照だけではWorkload Identity bindingの反映を待たず、Pod起動時にFirestore認証が
+  # 失敗しうる。GSA側のIAM binding完了までDeploymentを保留する
+  depends_on = [google_service_account_iam_member.broker_workload_identity]
+
   metadata {
     name      = "broker"
     namespace = kubernetes_namespace_v1.bunshin.metadata[0].name
