@@ -21,9 +21,6 @@ resource "google_compute_security_policy" "edge" {
   }
 }
 
-# bunshinは`/api/execute`にshell commandを受け取る設計のため、OWASP preconfigured rules (特に
-# rce/lfi/rfi) は正常requestを高確率で誤検知する。全ruleをpreview=trueで敷いて出力logのみ集める。
-# denyへの切り替えはlogを見て誤検知率が許容できる時点で判断する
 resource "google_compute_security_policy" "backend" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   # checkov:skip=CKV_GCP_73:Log4j protection is not needed, backend does not use Java
