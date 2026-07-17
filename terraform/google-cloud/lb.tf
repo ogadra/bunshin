@@ -27,6 +27,9 @@ resource "google_compute_backend_service" "nginx" {
   # 減らす。AWS Global Acceleratorのclient_affinity=SOURCE_IPと対称
   session_affinity = "CLIENT_IP"
 
+  security_policy      = google_compute_security_policy.backend.id
+  edge_security_policy = google_compute_security_policy.edge.id
+
   health_checks = [google_compute_health_check.nginx.id]
 
   log_config {

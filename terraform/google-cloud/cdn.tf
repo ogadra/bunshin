@@ -6,6 +6,8 @@ resource "google_compute_backend_bucket" "static" {
   bucket_name = google_storage_bucket.static.name
   enable_cdn  = true
 
+  edge_security_policy = google_compute_security_policy.edge.id
+
   cdn_policy {
     cache_mode = "USE_ORIGIN_HEADERS"
   }
