@@ -3,10 +3,7 @@ resource "google_certificate_manager_dns_authorization" "apex" {
   description = "DNS authorization for Google-managed cert on apex domain"
   domain      = var.domain_name
 
-  labels = {
-    project    = "bunshin"
-    managed_by = "terraform"
-  }
+  labels = local.common_labels
 
   depends_on = [google_project_service.apis["certificatemanager.googleapis.com"]]
 }
@@ -23,10 +20,7 @@ resource "google_certificate_manager_certificate" "apex" {
     ]
   }
 
-  labels = {
-    project    = "bunshin"
-    managed_by = "terraform"
-  }
+  labels = local.common_labels
 }
 
 # ssl_certificates直付けはCertificate Manager certには不可なため、target_https_proxyの
@@ -35,10 +29,7 @@ resource "google_certificate_manager_certificate_map" "apex" {
   name        = "bunshin-apex"
   description = "Certificate map bound to Global External ALB target_https_proxy"
 
-  labels = {
-    project    = "bunshin"
-    managed_by = "terraform"
-  }
+  labels = local.common_labels
 }
 
 resource "google_certificate_manager_certificate_map_entry" "apex" {
@@ -48,8 +39,5 @@ resource "google_certificate_manager_certificate_map_entry" "apex" {
   certificates = [google_certificate_manager_certificate.apex.id]
   hostname     = var.domain_name
 
-  labels = {
-    project    = "bunshin"
-    managed_by = "terraform"
-  }
+  labels = local.common_labels
 }

@@ -12,4 +12,9 @@ locals {
     broker = 3
     runner = 300
   }
+
+  common_labels = {
+    project    = "bunshin"
+    managed_by = "terraform"
+  }
 }
