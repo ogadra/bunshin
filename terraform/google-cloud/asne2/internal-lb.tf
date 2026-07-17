@@ -16,22 +16,6 @@ resource "google_certificate_manager_certificate" "internal" {
   }
 }
 
-# GKE Gateway(`gke-l7-rilb`)はannotation `networking.gke.io/certmap`でCertificate Managerの
-# cert mapをattachする。cert mapはAPI上global(regional / global certの両方をentryに持てる)で、
-# cert本体だけをregionalに閉じる
-resource "google_certificate_manager_certificate_map" "internal" {
-  name   = local.internal_lb_name
-  labels = local.common_labels
-}
-
-resource "google_certificate_manager_certificate_map_entry" "internal" {
-  name         = local.internal_lb_name
-  map          = google_certificate_manager_certificate_map.internal.name
-  hostname     = local.internal_lb_hostname
-  certificates = [google_certificate_manager_certificate.internal.id]
-  labels       = local.common_labels
-}
-
 # Gatewayのdynamic IPは再作成でVIPが変わりDNSを壊す
 resource "google_compute_address" "internal_lb" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
@@ -41,6 +25,9 @@ resource "google_compute_address" "internal_lb" {
   address_type = "INTERNAL"
 }
 
+# gke-l7-rilb は annotation `networking.gke.io/certmap` を未サポート。regional Gateway では
+# listenerの`tls.options`に`networking.gke.io/cert-manager-certs`を指定してRegional Certificate
+# を直接参照する
 resource "kubernetes_manifest" "internal_gateway" {
   manifest = {
     apiVersion = "gateway.networking.k8s.io/v1"
@@ -48,9 +35,6 @@ resource "kubernetes_manifest" "internal_gateway" {
     metadata = {
       name      = "bunshin-internal"
       namespace = kubernetes_namespace_v1.bunshin.metadata[0].name
-      annotations = {
-        "networking.gke.io/certmap" = google_certificate_manager_certificate_map.internal.name
-      }
     }
     spec = {
       gatewayClassName = "gke-l7-rilb"
@@ -62,6 +46,12 @@ resource "kubernetes_manifest" "internal_gateway" {
         name     = "https"
         port     = 443
         protocol = "HTTPS"
+        tls = {
+          mode = "Terminate"
+          options = {
+            "networking.gke.io/cert-manager-certs" = google_certificate_manager_certificate.internal.name
+          }
+        }
         allowedRoutes = {
           namespaces = { from = "Same" }
         }
