@@ -86,20 +86,14 @@ resource "google_compute_global_address" "external_ipv4" {
   name       = "bunshin-external-ipv4"
   ip_version = "IPV4"
 
-  labels = {
-    project    = "bunshin"
-    managed_by = "terraform"
-  }
+  labels = local.common_labels
 }
 
 resource "google_compute_global_address" "external_ipv6" {
   name       = "bunshin-external-ipv6"
   ip_version = "IPV6"
 
-  labels = {
-    project    = "bunshin"
-    managed_by = "terraform"
-  }
+  labels = local.common_labels
 }
 
 resource "google_compute_global_forwarding_rule" "external_ipv4" {
@@ -110,10 +104,7 @@ resource "google_compute_global_forwarding_rule" "external_ipv4" {
   target                = google_compute_target_https_proxy.external.id
   load_balancing_scheme = "EXTERNAL_MANAGED"
 
-  labels = {
-    project    = "bunshin"
-    managed_by = "terraform"
-  }
+  labels = local.common_labels
 }
 
 resource "google_compute_global_forwarding_rule" "external_ipv6" {
@@ -124,8 +115,5 @@ resource "google_compute_global_forwarding_rule" "external_ipv6" {
   target                = google_compute_target_https_proxy.external.id
   load_balancing_scheme = "EXTERNAL_MANAGED"
 
-  labels = {
-    project    = "bunshin"
-    managed_by = "terraform"
-  }
+  labels = local.common_labels
 }
