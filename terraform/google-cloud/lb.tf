@@ -52,11 +52,11 @@ resource "google_compute_url_map" "external" {
 
   host_rule {
     hosts        = [var.domain_name]
-    path_matcher = "api"
+    path_matcher = "main"
   }
 
   path_matcher {
-    name            = "api"
+    name            = "main"
     default_service = google_compute_backend_bucket.static.id
 
     path_rule {
