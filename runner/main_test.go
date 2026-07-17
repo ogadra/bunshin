@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -20,6 +21,8 @@ import (
 func TestMainSuccess(t *testing.T) {
 	t.Setenv("RUNNER_PORT", "3000")
 	t.Setenv("STACK_NAME", "local")
+	restoreSupervise := stubAppSupervisor(t)
+	defer restoreSupervise()
 
 	registered := make(chan registerRequest, 1)
 	broker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -470,6 +473,8 @@ func TestRunShutdownTimeout(t *testing.T) {
 func TestStartAndShutdown(t *testing.T) {
 	t.Setenv("BROKER_URL", "http://dummy:8080")
 	t.Setenv("STACK_NAME", "local")
+	restoreSupervise := stubAppSupervisor(t)
+	defer restoreSupervise()
 
 	origReg := registerFn
 	defer func() { registerFn = origReg }()
@@ -662,6 +667,8 @@ func TestStartRegisterReceivesBrokerURL(t *testing.T) {
 	defer broker.Close()
 	t.Setenv("BROKER_URL", broker.URL)
 	t.Setenv("STACK_NAME", "local")
+	restoreSupervise := stubAppSupervisor(t)
+	defer restoreSupervise()
 
 	orig := registerFn
 	defer func() { registerFn = orig }()
@@ -699,4 +706,86 @@ func waitForServer(t *testing.T, addr string) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	t.Fatal("server did not start within 5 seconds")
+}
+
+// stubAppSupervisor replaces runAppSupervisorFn with a no-op that blocks on
+// ctx, so tests exercising start()/main() don't spawn a real perl-app child.
+// The returned func restores the original value.
+func stubAppSupervisor(t *testing.T) func() {
+	t.Helper()
+	orig := runAppSupervisorFn
+	runAppSupervisorFn = func(ctx context.Context) { <-ctx.Done() }
+	return func() { runAppSupervisorFn = orig }
+}
+
+// TestRunSuperviseFn verifies that when serverConfig.superviseFn is set,
+// run starts the supervisor goroutine, cancels its context on shutdown, and
+// waits for it to return before completing.
+func TestRunSuperviseFn(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen error: %v", err)
+	}
+	addr := ln.Addr().String()
+
+	var called atomic.Bool
+	var returned atomic.Bool
+	cfg := serverConfig{
+		sm:              NewShellManager(),
+		shutdownTimeout: 5 * time.Second,
+		superviseFn: func(ctx context.Context) {
+			called.Store(true)
+			<-ctx.Done()
+			returned.Store(true)
+		},
+	}
+	sigCh := make(chan os.Signal, 1)
+	errCh := make(chan error, 1)
+	go func() { errCh <- run(ln, sigCh, cfg) }()
+
+	waitForServer(t, addr)
+	sigCh <- os.Interrupt
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("run returned error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("run did not return within 5 seconds")
+	}
+	if !called.Load() {
+		t.Fatal("superviseFn should have been called")
+	}
+	if !returned.Load() {
+		t.Fatal("superviseFn should have returned after ctx cancel")
+	}
+}
+
+// TestRunSuperviseFnCanceledOnServeErr verifies that a serve error also
+// cancels the supervisor and waits for it to return before propagating the
+// error.
+func TestRunSuperviseFnCanceledOnServeErr(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen error: %v", err)
+	}
+	ln.Close()
+
+	var returned atomic.Bool
+	cfg := serverConfig{
+		sm:              NewShellManager(),
+		shutdownTimeout: 5 * time.Second,
+		superviseFn: func(ctx context.Context) {
+			<-ctx.Done()
+			returned.Store(true)
+		},
+	}
+	sigCh := make(chan os.Signal, 1)
+	if err := run(ln, sigCh, cfg); err == nil {
+		t.Fatal("expected error from run")
+	}
+	if !returned.Load() {
+		t.Fatal("superviseFn should have been canceled on serve error")
+	}
 }
