@@ -23,14 +23,13 @@ resource "google_project_service" "apis" {
 module "asne1" {
   source = "./asne1"
 
-  broker_service_account_email = google_service_account.broker.email
-  broker_service_account_id    = google_service_account.broker.name
-  bunshin_stacks               = local.bunshin_stacks
-  deployer_email               = data.google_client_openid_userinfo.me.email
-  desired_counts               = local.desired_counts
-  domain_name                  = var.domain_name
-  image_tag                    = var.image_tag
-  peer_vpc_network             = module.asne2.network_self_link
+  broker_service_account_id = google_service_account.broker.name
+  bunshin_stacks            = local.bunshin_stacks
+  deployer_email            = data.google_client_openid_userinfo.me.email
+  desired_counts            = local.desired_counts
+  domain_name               = var.domain_name
+  image_tag                 = var.image_tag
+  peer_vpc_network          = module.asne2.network_self_link
 
   providers = {
     google     = google.asne1
@@ -43,14 +42,13 @@ module "asne1" {
 module "asne2" {
   source = "./asne2"
 
-  broker_service_account_email = google_service_account.broker.email
-  broker_service_account_id    = google_service_account.broker.name
-  bunshin_stacks               = local.bunshin_stacks
-  deployer_email               = data.google_client_openid_userinfo.me.email
-  desired_counts               = local.desired_counts
-  domain_name                  = var.domain_name
-  image_tag                    = var.image_tag
-  peer_vpc_network             = module.asne1.network_self_link
+  broker_service_account_id = google_service_account.broker.name
+  bunshin_stacks            = local.bunshin_stacks
+  deployer_email            = data.google_client_openid_userinfo.me.email
+  desired_counts            = local.desired_counts
+  domain_name               = var.domain_name
+  image_tag                 = var.image_tag
+  peer_vpc_network          = module.asne1.network_self_link
 
   providers = {
     google     = google.asne2

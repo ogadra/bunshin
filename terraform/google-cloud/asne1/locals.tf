@@ -25,4 +25,6 @@ locals {
 
   internal_lb_name     = "bunshin-internal-${local.region}"
   internal_lb_hostname = "${local.region}.${var.domain_name}"
+
+  broker_service_account_email = basename(var.broker_service_account_id)
 }

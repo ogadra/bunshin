@@ -8,18 +8,8 @@ variable "deployer_email" {
   }
 }
 
-variable "broker_service_account_email" {
-  description = "Broker GSA email; annotated on the broker KSA for Workload Identity"
-  type        = string
-
-  validation {
-    condition     = can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]@[a-z0-9-]+\\.iam\\.gserviceaccount\\.com$", var.broker_service_account_email))
-    error_message = "broker_service_account_email must be a GSA email (<account_id>@<project>.iam.gserviceaccount.com)."
-  }
-}
-
 variable "broker_service_account_id" {
-  description = "Broker GSA fully-qualified name (projects/-/serviceAccounts/...); bound to the region-scoped KSA identifier"
+  description = "Broker GSA fully-qualified name (projects/-/serviceAccounts/<email>); email is derived via basename() and annotated on the KSA for Workload Identity"
   type        = string
 
   validation {

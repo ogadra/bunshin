@@ -18,11 +18,11 @@ resource "kubernetes_service_account_v1" "runner" {
 # KSA名はregionごとに一意化し、workload identity poolの同一プール内でasne1 / asne2のbindingを分離する
 resource "kubernetes_service_account_v1" "broker" {
   metadata {
-    name      = "broker-asne1"
+    name      = "broker-${local.region}"
     namespace = kubernetes_namespace_v1.bunshin.metadata[0].name
     labels    = { app = "broker" }
     annotations = {
-      "iam.gke.io/gcp-service-account" = var.broker_service_account_email
+      "iam.gke.io/gcp-service-account" = local.broker_service_account_email
     }
   }
 }
