@@ -6,14 +6,6 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 7.40"
     }
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "~> 3.2"
-    }
-    kubectl = {
-      source  = "alekc/kubectl"
-      version = "~> 2.4"
-    }
   }
 }
 
@@ -37,32 +29,3 @@ data "google_project" "current" {}
 data "google_client_config" "default" {}
 
 data "google_client_openid_userinfo" "me" {}
-
-# hostはfleetのConnect Gateway endpoint。clusterのendpoint/CAを直接参照するとprovider設定が
-# 同一applyで作成されるリソースに依存し初回planが壊れるため、fleet membership URLで終端する
-# (Connect GatewayがTLSを終端するのでCA不要)。pathはproject number (project IDではない)。
-provider "kubernetes" {
-  alias = "asne1"
-  host  = "https://connectgateway.googleapis.com/v1/projects/${data.google_project.current.number}/locations/global/gkeMemberships/bunshin-asne1"
-  token = data.google_client_config.default.access_token
-}
-
-provider "kubernetes" {
-  alias = "asne2"
-  host  = "https://connectgateway.googleapis.com/v1/projects/${data.google_project.current.number}/locations/global/gkeMemberships/bunshin-asne2"
-  token = data.google_client_config.default.access_token
-}
-
-provider "kubectl" {
-  alias            = "asne1"
-  host             = "https://connectgateway.googleapis.com/v1/projects/${data.google_project.current.number}/locations/global/gkeMemberships/bunshin-asne1"
-  token            = data.google_client_config.default.access_token
-  load_config_file = false
-}
-
-provider "kubectl" {
-  alias            = "asne2"
-  host             = "https://connectgateway.googleapis.com/v1/projects/${data.google_project.current.number}/locations/global/gkeMemberships/bunshin-asne2"
-  token            = data.google_client_config.default.access_token
-  load_config_file = false
-}
