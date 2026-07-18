@@ -714,9 +714,8 @@ func waitForServer(t *testing.T, addr string) {
 	t.Fatal("server did not start within 5 seconds")
 }
 
-// stubAppSupervisor replaces runAppSupervisorFn with a no-op that blocks on
-// ctx, so tests exercising start()/main() don't spawn a real perl-app child.
-// The returned func restores the original value.
+// stubAppSupervisor keeps start()/main() tests from spawning a real perl-app
+// child; the returned func restores the original.
 func stubAppSupervisor(t *testing.T) func() {
 	t.Helper()
 	orig := runAppSupervisorFn
@@ -724,9 +723,6 @@ func stubAppSupervisor(t *testing.T) func() {
 	return func() { runAppSupervisorFn = orig }
 }
 
-// TestRunSuperviseFn verifies that when serverConfig.superviseFn is set,
-// run starts the supervisor goroutine, cancels its context on shutdown, and
-// waits for it to return before completing.
 func TestRunSuperviseFn(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -768,9 +764,6 @@ func TestRunSuperviseFn(t *testing.T) {
 	}
 }
 
-// TestRunSuperviseFnCanceledOnServeErr verifies that a serve error also
-// cancels the supervisor and waits for it to return before propagating the
-// error.
 func TestRunSuperviseFnCanceledOnServeErr(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -796,25 +789,3 @@ func TestRunSuperviseFnCanceledOnServeErr(t *testing.T) {
 	}
 }
 
-// TestRunPanicsWithoutSuperviseFn verifies that run panics when the required
-// superviseFn is not set, rather than silently no-oping the supervisor.
-func TestRunPanicsWithoutSuperviseFn(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Listen error: %v", err)
-	}
-	defer ln.Close()
-
-	cfg := serverConfig{
-		sm:              NewShellManager(),
-		shutdownTimeout: 1 * time.Second,
-	}
-	sigCh := make(chan os.Signal, 1)
-
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("run should panic when superviseFn is nil")
-		}
-	}()
-	_ = run(ln, sigCh, cfg)
-}

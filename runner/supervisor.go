@@ -9,9 +9,8 @@ import (
 	"time"
 )
 
-// supervisorConfig configures the process supervisor. All fields are required:
-// callers assemble the whole struct so a test can never accidentally inherit a
-// production timing.
+// All fields are required: callers assemble the whole struct so a test can
+// never accidentally inherit a production timing.
 type supervisorConfig struct {
 	name          string
 	factory       func() *exec.Cmd
@@ -22,8 +21,6 @@ type supervisorConfig struct {
 	shutdownGrace time.Duration
 }
 
-// supervise launches cfg.factory() and restarts it after cfg.restartDelay on
-// any exit. Returns when ctx is canceled.
 func supervise(ctx context.Context, cfg supervisorConfig) {
 	for ctx.Err() == nil {
 		superviseOnce(ctx, cfg)
@@ -37,8 +34,6 @@ func supervise(ctx context.Context, cfg supervisorConfig) {
 	}
 }
 
-// superviseOnce launches one process and waits for it to exit. On ctx cancel
-// it sends SIGTERM, waits cfg.shutdownGrace, then SIGKILLs and reaps.
 func superviseOnce(ctx context.Context, cfg supervisorConfig) {
 	cmd := cfg.factory()
 	if err := cmd.Start(); err != nil {
@@ -54,17 +49,18 @@ func superviseOnce(ctx context.Context, cfg supervisorConfig) {
 	case err := <-done:
 		cfg.logf("supervisor: %s exited: %v", cfg.name, err)
 	case <-ctx.Done():
+		cfg.logf("supervisor: %s sending SIGTERM", cfg.name)
 		_ = cmd.Process.Signal(syscall.SIGTERM)
 		select {
 		case <-done:
 		case <-cfg.after(cfg.shutdownGrace):
+			cfg.logf("supervisor: %s SIGTERM timed out after %s, sending SIGKILL", cfg.name, cfg.shutdownGrace)
 			_ = cmd.Process.Kill()
 			<-done
 		}
 	}
 }
 
-// supervisorSleep blocks up to d. Returns false when ctx is canceled first.
 func supervisorSleep(ctx context.Context, d time.Duration) bool {
 	t := time.NewTimer(d)
 	defer t.Stop()
@@ -76,8 +72,6 @@ func supervisorSleep(ctx context.Context, d time.Duration) bool {
 	}
 }
 
-// productionAppSupervisorConfig builds the supervisor config that runs
-// perl /app/server.pl inside the runner container.
 func productionAppSupervisorConfig() supervisorConfig {
 	return supervisorConfig{
 		name: "perl-app",
@@ -95,10 +89,12 @@ func productionAppSupervisorConfig() supervisorConfig {
 	}
 }
 
-// runAppSupervisor is main's entry point into the perl-app supervisor. Tests
-// override runAppSupervisorFn to substitute a no-op that just blocks on ctx.
+// superviseImpl is an indirection so tests can spy on the config that
+// runAppSupervisor passes to supervise without spawning a real child.
+var superviseImpl = supervise
+
 func runAppSupervisor(ctx context.Context) {
-	supervise(ctx, productionAppSupervisorConfig())
+	superviseImpl(ctx, productionAppSupervisorConfig())
 }
 
 var runAppSupervisorFn = runAppSupervisor

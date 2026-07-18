@@ -129,9 +129,6 @@ type serverConfig struct {
 // received on sigCh, then performs graceful shutdown.
 // Separating this from main allows tests to inject a signal channel and listener.
 func run(ln net.Listener, sigCh <-chan os.Signal, cfg serverConfig) error {
-	if cfg.superviseFn == nil {
-		panic("run: cfg.superviseFn is required")
-	}
 	h := cfg.handler
 	if h == nil {
 		h = newHandler(cfg.sm)

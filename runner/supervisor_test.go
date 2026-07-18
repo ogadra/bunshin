@@ -182,45 +182,77 @@ func TestSuperviseOnceCancelSigkillFallback(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cfg := testSupervisorConfig()
 	cfg.factory = func() *exec.Cmd {
-		return exec.Command("sh", "-c", "trap '' TERM; while true; do sleep 1; done")
+		return exec.Command("bash", "-c", `trap "" TERM; echo READY; sleep 30`)
 	}
 	cfg.shutdownGrace = 100 * time.Millisecond
 
-	started := make(chan struct{})
+	ready := make(chan struct{})
 	var mu sync.Mutex
-	var startedOnce bool
+	var readyOnce, sawSigkill bool
+	logMsgs := []string{}
 	cfg.logf = func(format string, args ...any) {
-		if strings.Contains(format, "started") {
-			mu.Lock()
-			if !startedOnce {
-				startedOnce = true
-				close(started)
-			}
-			mu.Unlock()
+		mu.Lock()
+		defer mu.Unlock()
+		logMsgs = append(logMsgs, format)
+		if strings.Contains(format, "SIGKILL") {
+			sawSigkill = true
 		}
+	}
+	origFactory := cfg.factory
+	cfg.factory = func() *exec.Cmd {
+		c := origFactory()
+		stdout, err := c.StdoutPipe()
+		if err != nil {
+			t.Fatalf("StdoutPipe: %v", err)
+		}
+		go func() {
+			buf := make([]byte, 16)
+			for {
+				n, err := stdout.Read(buf)
+				if n > 0 && strings.Contains(string(buf[:n]), "READY") {
+					mu.Lock()
+					if !readyOnce {
+						readyOnce = true
+						close(ready)
+					}
+					mu.Unlock()
+				}
+				if err != nil {
+					return
+				}
+			}
+		}()
+		return c
 	}
 
 	done := make(chan struct{})
-	start := time.Now()
 	go func() {
 		superviseOnce(ctx, cfg)
 		close(done)
 	}()
 
 	select {
-	case <-started:
+	case <-ready:
 	case <-time.After(2 * time.Second):
-		t.Fatal("child did not start within 2s")
+		t.Fatal("child did not print READY within 2s")
 	}
-	time.Sleep(200 * time.Millisecond)
+	cancelAt := time.Now()
 	cancel()
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("superviseOnce did not return within 5s after cancel")
 	}
-	if elapsed := time.Since(start); elapsed < cfg.shutdownGrace {
-		t.Fatalf("superviseOnce returned in %v before shutdownGrace %v, SIGKILL fallback was not exercised", elapsed, cfg.shutdownGrace)
+	elapsed := time.Since(cancelAt)
+	mu.Lock()
+	msgs := append([]string(nil), logMsgs...)
+	killed := sawSigkill
+	mu.Unlock()
+	if elapsed < cfg.shutdownGrace {
+		t.Fatalf("superviseOnce returned %v after cancel, before shutdownGrace %v — SIGKILL fallback was not exercised (logs: %v)", elapsed, cfg.shutdownGrace, msgs)
+	}
+	if !killed {
+		t.Fatalf("SIGKILL log was not emitted — SIGKILL fallback branch not taken (logs: %v)", msgs)
 	}
 }
 
@@ -270,9 +302,36 @@ func TestProductionAppSupervisorConfig(t *testing.T) {
 }
 
 func TestRunAppSupervisor(t *testing.T) {
+	var gotCtx context.Context
+	var gotCfg supervisorConfig
+	orig := superviseImpl
+	superviseImpl = func(ctx context.Context, cfg supervisorConfig) {
+		gotCtx = ctx
+		gotCfg = cfg
+	}
+	defer func() { superviseImpl = orig }()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	runAppSupervisor(ctx)
+
+	if gotCtx != ctx {
+		t.Errorf("supervise called with ctx = %v, want %v", gotCtx, ctx)
+	}
+	want := productionAppSupervisorConfig()
+	if gotCfg.name != want.name {
+		t.Errorf("name = %q, want %q", gotCfg.name, want.name)
+	}
+	if gotCfg.restartDelay != want.restartDelay {
+		t.Errorf("restartDelay = %v, want %v", gotCfg.restartDelay, want.restartDelay)
+	}
+	if gotCfg.shutdownGrace != want.shutdownGrace {
+		t.Errorf("shutdownGrace = %v, want %v", gotCfg.shutdownGrace, want.shutdownGrace)
+	}
+	cmd := gotCfg.factory()
+	if len(cmd.Args) != 2 || cmd.Args[1] != "/app/server.pl" {
+		t.Errorf("factory args = %v, want [perl /app/server.pl]", cmd.Args)
+	}
 }
 
 func containsSubstring(msgs []string, want string) bool {
