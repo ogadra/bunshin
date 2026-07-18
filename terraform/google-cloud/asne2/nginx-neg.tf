@@ -15,7 +15,7 @@ resource "terraform_data" "nginx_neg_ready" {
       for i in $(seq 1 60); do
         if gcloud compute network-endpoint-groups describe ${local.nginx_neg_name} \
           --zone=${each.value} \
-          --project=${data.google_project.current.project_id} \
+          --project=${var.project_id} \
           >/dev/null 2>&1; then
           exit 0
         fi

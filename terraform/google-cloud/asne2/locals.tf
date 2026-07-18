@@ -21,7 +21,7 @@ locals {
     runner = 3000
   }
 
-  image_registry = "${local.region}-docker.pkg.dev/${data.google_project.current.project_id}/${google_artifact_registry_repository.bunshin.repository_id}"
+  image_registry = "${local.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.bunshin.repository_id}"
 
   internal_lb_name     = "bunshin-internal-${local.region}"
   internal_lb_hostname = "${local.region}.${var.domain_name}"

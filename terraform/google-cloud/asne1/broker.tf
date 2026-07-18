@@ -72,7 +72,7 @@ resource "kubernetes_deployment_v1" "broker" {
           }
           env {
             name  = "GOOGLE_CLOUD_PROJECT"
-            value = data.google_project.current.project_id
+            value = var.project_id
           }
           env {
             name  = "FIRESTORE_DATABASE"
