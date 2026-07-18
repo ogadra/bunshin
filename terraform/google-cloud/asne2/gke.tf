@@ -109,7 +109,7 @@ resource "terraform_data" "cluster_ready" {
   provisioner "local-exec" {
     interpreter = ["bash", "-c"]
     command     = <<-EOT
-      for i in $(seq 1 60); do
+      for i in $(seq 1 120); do
         state="$(gcloud container fleet memberships describe ${google_gke_hub_membership.bunshin.membership_id} \
           --location=global --format='value(state.code)' 2>/dev/null || true)"
         if [ "$state" = "READY" ]; then
@@ -117,7 +117,7 @@ resource "terraform_data" "cluster_ready" {
         fi
         sleep 10
       done
-      echo "fleet membership ${google_gke_hub_membership.bunshin.membership_id} did not become READY within 600s" >&2
+      echo "fleet membership ${google_gke_hub_membership.bunshin.membership_id} did not become READY within 1200s" >&2
       exit 1
     EOT
   }
