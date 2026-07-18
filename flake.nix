@@ -24,6 +24,7 @@
           go_1_26
           (google-cloud-sdk.withExtraComponents [ google-cloud-sdk.components.gke-gcloud-auth-plugin ])
           k6
+          kubectl
           lefthook
           nodejs_24
           pnpm
