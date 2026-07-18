@@ -21,9 +21,9 @@ sub roundtrip {
     return $response;
 }
 
-subtest 'happy path: content string is embedded in the HTML shell' => sub {
-    local $Bunshin::App::REFRESH_FN = sub { };
-    local $Bunshin::App::CONTENT_FN = sub { "Hello from test" };
+subtest 'happy path: ok body is embedded in the HTML shell' => sub {
+    local $Bunshin::App::REFRESH_FN     = sub { };
+    local $Bunshin::App::RUN_CONTENT_FN = sub { +{ status => 'ok', body => "Hello from test" } };
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 200 OK\r\n};
     like $r, qr{Content-Type: text/html; charset=utf-8\r\n};
@@ -32,16 +32,16 @@ subtest 'happy path: content string is embedded in the HTML shell' => sub {
 };
 
 subtest 'content HTML metacharacters are escaped' => sub {
-    local $Bunshin::App::REFRESH_FN = sub { };
-    local $Bunshin::App::CONTENT_FN = sub { "<b>bold</b>" };
+    local $Bunshin::App::REFRESH_FN     = sub { };
+    local $Bunshin::App::RUN_CONTENT_FN = sub { +{ status => 'ok', body => "<b>bold</b>" } };
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{&lt;b&gt;bold&lt;/b&gt;}, 'metacharacters escaped';
     unlike $r, qr{<b>bold</b>}, 'raw tag not present';
 };
 
 subtest 'refresh failure yields 500 with load-failed page' => sub {
-    local $Bunshin::App::REFRESH_FN = sub { die "parse: line 3 syntax error\n" };
-    local $Bunshin::App::CONTENT_FN = sub { "never called" };
+    local $Bunshin::App::REFRESH_FN     = sub { die "parse: line 3 syntax error\n" };
+    local $Bunshin::App::RUN_CONTENT_FN = sub { +{ status => 'ok', body => "never called" } };
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
     like $r, qr{Content-Type: text/html; charset=utf-8\r\n};
@@ -49,26 +49,57 @@ subtest 'refresh failure yields 500 with load-failed page' => sub {
     unlike $r, qr{never called};
 };
 
-subtest 'DaiKichijoji::content dying yields 500 with a stack trace' => sub {
-    local $Bunshin::App::REFRESH_FN = sub { };
-    local $Bunshin::App::CONTENT_FN = sub { die "boom\n" };
+subtest 'died status yields 500 with the error message' => sub {
+    local $Bunshin::App::REFRESH_FN     = sub { };
+    local $Bunshin::App::RUN_CONTENT_FN = sub { +{ status => 'died', error => "boom at DaiKichijoji.pm line 5" } };
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
-    like $r, qr{DaiKichijoji::content died: boom}, 'die message present';
-    like $r, qr{Bunshin::App::handle_conn}, 'stack trace names handle_conn frame';
+    like $r, qr{DaiKichijoji::content died: boom at DaiKichijoji.pm line 5};
 };
 
-subtest 'DaiKichijoji::content returning undef yields 500' => sub {
-    local $Bunshin::App::REFRESH_FN = sub { };
-    local $Bunshin::App::CONTENT_FN = sub { undef };
+subtest 'exited status yields 500 with exit code' => sub {
+    local $Bunshin::App::REFRESH_FN     = sub { };
+    local $Bunshin::App::RUN_CONTENT_FN = sub { +{ status => 'exited', code => 42 } };
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
-    like $r, qr{DaiKichijoji::content returned undef};
+    like $r, qr{DaiKichijoji::content exited with code 42};
+};
+
+subtest 'exited status with code 0 also yields 500' => sub {
+    local $Bunshin::App::REFRESH_FN     = sub { };
+    local $Bunshin::App::RUN_CONTENT_FN = sub { +{ status => 'exited', code => 0 } };
+    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
+    like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
+    like $r, qr{DaiKichijoji::content exited with code 0};
+};
+
+subtest 'runner throwing an exception yields 500' => sub {
+    local $Bunshin::App::REFRESH_FN     = sub { };
+    local $Bunshin::App::RUN_CONTENT_FN = sub { die "runner internal error\n" };
+    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
+    like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
+    like $r, qr{content runner failed: runner internal error};
+};
+
+subtest 'runner returning undef yields 500' => sub {
+    local $Bunshin::App::REFRESH_FN     = sub { };
+    local $Bunshin::App::RUN_CONTENT_FN = sub { undef };
+    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
+    like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
+    like $r, qr{content runner failed:};
+};
+
+subtest 'runner returning a non-hash scalar yields 500' => sub {
+    local $Bunshin::App::REFRESH_FN     = sub { };
+    local $Bunshin::App::RUN_CONTENT_FN = sub { 0 };
+    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
+    like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
+    like $r, qr{content runner failed:};
 };
 
 subtest 'malformed request yields 400 bad request' => sub {
-    local $Bunshin::App::REFRESH_FN = sub { };
-    local $Bunshin::App::CONTENT_FN = sub { "unused" };
+    local $Bunshin::App::REFRESH_FN     = sub { };
+    local $Bunshin::App::RUN_CONTENT_FN = sub { +{ status => 'ok', body => "unused" } };
     my $r = roundtrip("GET /");
     like $r, qr{^HTTP/1\.1 400 Bad Request\r\n};
     like $r, qr{Content-Type: text/plain; charset=utf-8\r\n};
@@ -76,17 +107,17 @@ subtest 'malformed request yields 400 bad request' => sub {
 };
 
 subtest 'error page escapes HTML metacharacters' => sub {
-    local $Bunshin::App::REFRESH_FN = sub { die "<script>alert(&x)</script>\n" };
-    local $Bunshin::App::CONTENT_FN = sub { "unused" };
+    local $Bunshin::App::REFRESH_FN     = sub { die "<script>alert(&x)</script>\n" };
+    local $Bunshin::App::RUN_CONTENT_FN = sub { +{ status => 'ok', body => "unused" } };
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{&lt;script&gt;alert\(&amp;x\)&lt;/script&gt;}, 'metacharacters escaped';
     unlike $r, qr{<script>alert}, 'raw tag not present';
 };
 
-subtest 'real defaults: DaiKichijoji::content dispatches through the real $CONTENT_FN and $REFRESH_FN' => sub {
+subtest 'real defaults: dispatches through the real ContentRunner and DaiKichijoji' => sub {
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 200 OK\r\n};
-    like $r, qr{Hello from DaiKichijoji}, 'default $CONTENT_FN returned DaiKichijoji::content output';
+    like $r, qr{Hello from DaiKichijoji};
 };
 
 subtest 'real defaults: 500 when DaiKichijoji::content is missing' => sub {
@@ -95,7 +126,7 @@ subtest 'real defaults: 500 when DaiKichijoji::content is missing' => sub {
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     { no strict 'refs'; *{'DaiKichijoji::content'} = $orig; }
     like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
-    like $r, qr{DaiKichijoji::content is not defined};
+    like $r, qr{DaiKichijoji::content died: DaiKichijoji::content is not defined};
 };
 
 done_testing;

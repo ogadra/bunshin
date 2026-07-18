@@ -3,8 +3,8 @@ use strict;
 use warnings;
 use FindBin;
 use lib "$FindBin::Bin/..";
+use Bunshin::ContentRunner;
 use Bunshin::HTTP;
-use Carp ();
 use HTML::Entities ();
 use Module::Refresh;
 
@@ -25,11 +25,15 @@ my $HTML_SHELL = <<~'HTML';
     </html>
     HTML
 
-our $REFRESH_FN = sub { Module::Refresh->refresh };
-our $CONTENT_FN = sub {
+my $CONTENT_FN = sub {
     my $sub = DaiKichijoji->can('content')
         or die "DaiKichijoji::content is not defined\n";
     $sub->();
+};
+
+our $REFRESH_FN     = sub { Module::Refresh->refresh };
+our $RUN_CONTENT_FN = sub {
+    Bunshin::ContentRunner::run(content_fn => $CONTENT_FN);
 };
 
 sub init {
@@ -47,26 +51,32 @@ sub handle_conn {
 
     my $refreshed = eval { $REFRESH_FN->(); 1 };
     if (!$refreshed) {
-        Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page("DaiKichijoji.pm load failed: $@"));
+        respond_error($conn, "DaiKichijoji.pm load failed: $@");
         return;
     }
 
-    my $body;
-    my $called = eval {
-        local $SIG{__DIE__} = sub { die Carp::longmess($_[0]) };
-        $body = $CONTENT_FN->();
-        1;
-    };
-    if (!$called) {
-        Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page("DaiKichijoji::content died: $@"));
-        return;
-    }
-    if (!defined $body) {
-        Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page("DaiKichijoji::content returned undef"));
+    my $result = eval { $RUN_CONTENT_FN->() };
+    if (!$result || ref $result ne 'HASH') {
+        respond_error($conn, "content runner failed: $@");
         return;
     }
 
-    Bunshin::HTTP::respond($conn, 200, 'text/html; charset=utf-8', sprintf($HTML_SHELL, HTML::Entities::encode_entities($body)));
+    for ($result->{status}) {
+        if ($_ eq 'ok') {
+            Bunshin::HTTP::respond($conn, 200, 'text/html; charset=utf-8', sprintf($HTML_SHELL, HTML::Entities::encode_entities($result->{body})));
+        } elsif ($_ eq 'died') {
+            respond_error($conn, "DaiKichijoji::content died: $result->{error}");
+        } elsif ($_ eq 'exited') {
+            respond_error($conn, "DaiKichijoji::content exited with code $result->{code}");
+        } else {
+            respond_error($conn, "content runner returned unknown status: $_");
+        }
+    }
+}
+
+sub respond_error {
+    my ($conn, $msg) = @_;
+    Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page($msg));
 }
 
 sub build_error_page {
