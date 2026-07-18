@@ -34,6 +34,9 @@ wait_for_replication() {
 deploy_to_region() {
     local region_dir="${1:?}"
 
+    # shellcheck disable=SC1090,SC1091
+    source "${ROOT_DIR}/deploy/aws/${region_dir}/region.env"
+
     echo "[${region_dir}] deploying ${SERVICE} via ecspresso"
     ecspresso deploy \
         --config "${ROOT_DIR}/deploy/aws/${region_dir}/${SERVICE}/ecspresso.yml" \
