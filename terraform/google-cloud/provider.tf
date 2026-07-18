@@ -17,13 +17,15 @@ terraform {
 provider "google" {}
 
 provider "google" {
-  alias  = "asne1"
-  region = "asia-northeast1"
+  alias   = "asne1"
+  region  = "asia-northeast1"
+  project = data.google_project.current.project_id
 }
 
 provider "google" {
-  alias  = "asne2"
-  region = "asia-northeast2"
+  alias   = "asne2"
+  region  = "asia-northeast2"
+  project = data.google_project.current.project_id
 }
 
 data "google_project" "current" {}
