@@ -86,7 +86,7 @@ subtest 'ok: parent SIG{CHLD} = IGNORE does not break waitpid in the runner' => 
     is $r->{body},   'post-ignore';
 };
 
-subtest 'timed_out: content exceeding budget is cut off before it finishes' => sub {
+subtest 'timed_out: content exceeds timeout budget' => sub {
     my $t0 = Time::HiRes::time();
     my $r  = Bunshin::ContentRunner::run(
         content_fn => sub { sleep 5; "unreachable" },
@@ -95,24 +95,24 @@ subtest 'timed_out: content exceeding budget is cut off before it finishes' => s
     my $elapsed_ms = (Time::HiRes::time() - $t0) * 1000;
     is $r->{status}, 'timed_out';
     is $r->{ms},     200;
-    cmp_ok $elapsed_ms, '<', 2000, 'returned well before content would have finished';
+    cmp_ok $elapsed_ms, '<', 2000, 'timed out before content sleep completed';
 };
 
-subtest 'timed_out: fires even when parent has SIG{ALRM} = IGNORE (select-based watchdog)' => sub {
+subtest 'timed_out: fires when parent has SIG{ALRM} = IGNORE' => sub {
     local $SIG{ALRM} = 'IGNORE';
     my $r = Bunshin::ContentRunner::run(
         content_fn => sub { sleep 5; "unreachable" },
         timeout_ms => 200,
     );
-    is $r->{status}, 'timed_out', 'select timeout does not rely on SIGALRM';
+    is $r->{status}, 'timed_out', 'timeout fires when parent ignores SIGALRM';
 };
 
-subtest 'timed_out: fires even when content sets SIG{ALRM} = IGNORE inside the grandchild' => sub {
+subtest 'timed_out: fires when content sets SIG{ALRM} = IGNORE' => sub {
     my $r = Bunshin::ContentRunner::run(
         content_fn => sub { $SIG{ALRM} = 'IGNORE'; sleep 5; "unreachable" },
         timeout_ms => 200,
     );
-    is $r->{status}, 'timed_out', 'SIGKILL from parent bypasses in-child signal handling';
+    is $r->{status}, 'timed_out', 'timeout fires when content ignores SIGALRM';
 };
 
 subtest 'ok: fast content finishes before the timeout budget' => sub {
@@ -124,7 +124,16 @@ subtest 'ok: fast content finishes before the timeout budget' => sub {
     is $r->{body},   'quick';
 };
 
-subtest 'exited: user exit(42) still classifies as exited even with a timeout set' => sub {
+subtest 'ok: large payload with timeout drives multiple sysread iterations' => sub {
+    my $r = Bunshin::ContentRunner::run(
+        content_fn => sub { 'x' x (128 * 1024) },
+        timeout_ms => 3000,
+    );
+    is $r->{status}, 'ok';
+    is length $r->{body}, 128 * 1024;
+};
+
+subtest 'exited: exit(42) classifies as exited when timeout_ms is set' => sub {
     my $r = Bunshin::ContentRunner::run(
         content_fn => sub { exit 42 },
         timeout_ms => 3000,

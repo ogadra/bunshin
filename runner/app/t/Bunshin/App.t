@@ -116,6 +116,16 @@ subtest 'error page escapes HTML metacharacters' => sub {
     unlike $r, qr{<script>alert}, 'raw tag not present';
 };
 
+subtest 'real defaults: refresh failure gets wrapped with the load-failed prefix' => sub {
+    no warnings 'redefine';
+    my $orig = \&Module::Refresh::refresh;
+    local *Module::Refresh::refresh = sub { die "parse: line 3 syntax error\n" };
+    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
+    local *Module::Refresh::refresh = $orig;
+    like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
+    like $r, qr{DaiKichijoji\.pm load failed: parse: line 3 syntax error};
+};
+
 subtest 'real defaults: dispatches through the real ContentRunner and DaiKichijoji' => sub {
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 200 OK\r\n};

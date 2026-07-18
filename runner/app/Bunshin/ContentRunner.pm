@@ -36,23 +36,30 @@ sub run {
 
     close $writer;
 
-    my ($payload, $timed_out);
+    my ($payload, $timed_out, $read_error);
     if (defined $timeout_ms) {
-        $payload    = _read_until_deadline($reader, $timeout_ms);
-        $timed_out  = !defined $payload;
-        $payload  //= '';
+        my $ok = eval { $payload = _read_until_deadline($reader, $timeout_ms); 1 };
+        if (!$ok) {
+            $read_error = $@;
+            $payload    = '';
+            $timed_out  = 0;
+        } else {
+            $timed_out  = !defined $payload;
+            $payload  //= '';
+        }
     } else {
         $payload   = _read_blocking($reader);
         $timed_out = 0;
     }
     close $reader;
 
-    kill 'KILL', $pid if $timed_out;
+    kill 'KILL', $pid if $timed_out || defined $read_error;
     waitpid $pid, 0;
     my $status    = $?;
     my $signal    = $status & 0x7f;
     my $exit_code = $status >> 8;
 
+    return { status => 'died', error => $read_error } if defined $read_error;
     return { status => 'timed_out', ms => $timeout_ms } if $timed_out;
     return { status => 'died', error => "killed by signal $signal\n" } if $signal;
 
@@ -87,7 +94,7 @@ sub _read_until_deadline {
         my $n = sysread($reader, $chunk, 65536);
         if (!defined $n) {
             next if $! == Errno::EINTR;
-            return $payload;
+            die "read: $!\n";
         }
         return $payload if $n == 0;
         $payload .= $chunk;
