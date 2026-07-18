@@ -99,3 +99,27 @@ resource "google_gke_hub_membership" "bunshin" {
 
   labels = local.common_labels
 }
+
+# fleet membership が READY を返しても Connect Gateway の routing 反映は数分遅れる。gcloud で
+# 状態を待った上で固定 buffer を積み、初回 apply で kubernetes/kubectl 系の POST が 404 で
+# 落ちる window を潰す
+resource "terraform_data" "cluster_ready" {
+  triggers_replace = [google_gke_hub_membership.bunshin.id]
+
+  provisioner "local-exec" {
+    interpreter = ["/bin/bash", "-c"]
+    command     = <<-EOT
+      for i in $(seq 1 60); do
+        state="$(gcloud container fleet memberships describe ${google_gke_hub_membership.bunshin.membership_id} \
+          --location=global --format='value(state.code)' 2>/dev/null || true)"
+        if [ "$state" = "READY" ]; then
+          sleep 60
+          exit 0
+        fi
+        sleep 10
+      done
+      echo "fleet membership ${google_gke_hub_membership.bunshin.membership_id} did not become READY within 600s" >&2
+      exit 1
+    EOT
+  }
+}

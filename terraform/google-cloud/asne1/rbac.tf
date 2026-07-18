@@ -16,4 +16,6 @@ resource "kubernetes_cluster_role_binding_v1" "deployer_admin" {
     kind      = "User"
     name      = var.deployer_email
   }
+
+  depends_on = [terraform_data.cluster_ready]
 }
