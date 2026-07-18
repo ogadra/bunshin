@@ -108,6 +108,7 @@ func start(addr string) error {
 		shutdownTimeout: 10 * time.Second,
 		brokerURL:       brokerURL,
 		runnerID:        identity.RunnerID,
+		superviseFn:     runAppSupervisorFn,
 	}
 
 	return run(ln, sig, cfg)
@@ -121,6 +122,7 @@ type serverConfig struct {
 	handler         http.Handler
 	brokerURL       string
 	runnerID        string
+	superviseFn     func(ctx context.Context)
 }
 
 // run starts the HTTP server on the given listener and blocks until a signal is
@@ -131,6 +133,14 @@ func run(ln net.Listener, sigCh <-chan os.Signal, cfg serverConfig) error {
 	if h == nil {
 		h = newHandler(cfg.sm)
 	}
+
+	supCtx, supCancel := context.WithCancel(context.Background())
+	supDone := make(chan struct{})
+	go func() {
+		defer close(supDone)
+		cfg.superviseFn(supCtx)
+	}()
+
 	srv := &http.Server{
 		Handler: h,
 	}
@@ -145,11 +155,15 @@ func run(ln net.Listener, sigCh <-chan os.Signal, cfg serverConfig) error {
 
 	select {
 	case err := <-serveErr:
+		supCancel()
+		<-supDone
 		return fmt.Errorf("serve: %w", err)
 	case <-sigCh:
 	}
 
 	log.Println("shutting down...")
+
+	supCancel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.shutdownTimeout)
 	defer cancel()
@@ -177,6 +191,8 @@ func run(ln net.Listener, sigCh <-chan os.Signal, cfg serverConfig) error {
 			firstErr = err
 		}
 	}
+
+	<-supDone
 
 	log.Println("shutdown complete")
 	return firstErr
