@@ -30,12 +30,13 @@ my $CONTENT_FN = sub {
         or die "DaiKichijoji::content is not defined\n";
     $sub->();
 };
-our $REFRESH_FN         = sub { Module::Refresh->refresh };
-our $CONTENT_TIMEOUT_MS = 3000;
-our $RUN_CONTENT_FN     = sub {
-    Bunshin::ContentRunner::run(
+our $RUN_CONTENT_FN = sub {
+    unless (eval { Module::Refresh->refresh; 1 }) {
+        die "DaiKichijoji.pm load failed: $@";
+    }
+    return Bunshin::ContentRunner::run(
         content_fn => $CONTENT_FN,
-        timeout_ms => $CONTENT_TIMEOUT_MS,
+        timeout_ms => 3000,
     );
 };
 
@@ -52,15 +53,9 @@ sub handle_conn {
         return;
     }
 
-    my $refreshed = eval { $REFRESH_FN->(); 1 };
-    if (!$refreshed) {
-        respond_error($conn, "DaiKichijoji.pm load failed: $@");
-        return;
-    }
-
     my $result = eval { $RUN_CONTENT_FN->() };
     if (!$result || ref $result ne 'HASH') {
-        respond_error($conn, "content runner failed: $@");
+        respond_error($conn, $@ || "content runner returned no result");
         return;
     }
 
