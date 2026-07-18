@@ -65,6 +65,14 @@ resource "kubernetes_deployment_v1" "nginx" {
             name  = "BUNSHIN_STACKS"
             value = join(",", var.bunshin_stacks)
           }
+          env {
+            name  = "NGINX_RESOLVER"
+            value = cidrhost(local.services_secondary_cidr, 10)
+          }
+          env {
+            name  = "BROKER_HOST"
+            value = local.broker_host
+          }
 
           resources {
             requests = {

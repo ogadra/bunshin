@@ -121,8 +121,6 @@ main() {
     echo "[${SERVICE}] building image"
     docker buildx build \
         --platform linux/arm64 \
-        --build-arg NGINX_RESOLVER=169.254.169.253 \
-        --build-arg BROKER_HOST=broker.internal \
         -t "${registry}/bunshin/${SERVICE}:${image_tag}" \
         -t "${registry}/bunshin/${SERVICE}:${short_image_tag}" \
         -t "${registry}/bunshin/${SERVICE}:latest" \
