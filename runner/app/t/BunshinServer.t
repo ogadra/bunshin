@@ -4,8 +4,6 @@ use Test::More;
 use FindBin;
 use lib "$FindBin::Bin/..";
 use BunshinServer;
-use File::Temp qw(tempdir);
-use File::Spec;
 use Socket qw(AF_UNIX SOCK_STREAM PF_UNSPEC);
 
 # ---------- respond ----------
@@ -140,66 +138,73 @@ subtest 'read_request dies when the body is shorter than Content-Length' => sub 
     like $@, qr{body truncated};
 };
 
-# ---------- handle_conn (round-trip through a socketpair) ----------
-
-sub write_handler {
-    my ($content) = @_;
-    my $dir = tempdir(CLEANUP => 1);
-    my $path = File::Spec->catfile($dir, 'handler.pm');
-    open my $fh, '>', $path or die "open $path: $!";
-    print $fh $content;
-    close $fh;
-    return $path;
-}
+# ---------- handle_conn ----------
 
 sub roundtrip {
-    my ($request_data, $handler_path) = @_;
+    my ($request_data) = @_;
     my ($server, $client);
     socketpair($server, $client, AF_UNIX, SOCK_STREAM, PF_UNSPEC)
         or die "socketpair: $!";
     syswrite($client, $request_data);
     shutdown($client, 1) or die "shutdown: $!";
-    BunshinServer::handle_conn($server, handler_path => $handler_path);
+    BunshinServer::handle_conn($server);
     close $server;
     my $response = do { local $/; <$client> };
     close $client;
     return $response;
 }
 
-subtest 'handler with a syntax error yields 500 handler-load-failed' => sub {
-    my $path = write_handler(qq[sub { print "unclosed\n]);
-    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n", $path);
-    like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
-    like $r, qr{handler load failed: parse:};
+subtest 'happy path: handler string is embedded in the HTML shell' => sub {
+    local $BunshinServer::REFRESH_FN = sub { };
+    local $BunshinServer::HANDLER_FN = sub { "Hello from test" };
+    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
+    like $r, qr{^HTTP/1\.1 200 OK\r\n};
+    like $r, qr{Content-Type: text/html; charset=utf-8\r\n};
+    like $r, qr{<!doctype html>};
+    like $r, qr{Hello from test};
 };
 
-subtest 'handler returning a non-CODE ref yields 500 with a distinct message' => sub {
-    my $path = write_handler("42;\n");
-    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n", $path);
+subtest 'refresh failure yields 500 handler-load-failed' => sub {
+    local $BunshinServer::REFRESH_FN = sub { die "parse: line 3 syntax error\n" };
+    local $BunshinServer::HANDLER_FN = sub { "never called" };
+    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
-    like $r, qr{handler load failed: .*did not return a CODE ref};
+    like $r, qr{Content-Type: text/html; charset=utf-8\r\n};
+    like $r, qr{handler load failed: parse: line 3 syntax error};
+    unlike $r, qr{never called};
 };
 
-subtest 'handler that dies at call time yields 500 handler-died' => sub {
-    my $path = write_handler(qq[return sub { die "boom\\n"; };\n]);
-    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n", $path);
+subtest 'handler dying yields 500 handler-died' => sub {
+    local $BunshinServer::REFRESH_FN = sub { };
+    local $BunshinServer::HANDLER_FN = sub { die "boom\n" };
+    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
     like $r, qr{handler died: boom};
 };
 
-subtest 'happy path: handler response passes through unchanged' => sub {
-    my $path = write_handler(qq[return sub { return (200, "text/plain", "ok"); };\n]);
-    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n", $path);
-    like $r, qr{^HTTP/1\.1 200 OK\r\n};
-    like $r, qr{Content-Length: 2\r\n};
-    like $r, qr{\r\n\r\nok\z};
+subtest 'handler returning undef yields 500' => sub {
+    local $BunshinServer::REFRESH_FN = sub { };
+    local $BunshinServer::HANDLER_FN = sub { undef };
+    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
+    like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
+    like $r, qr{returned undef};
 };
 
-subtest 'malformed request yields 400 bad request instead of silent close' => sub {
-    my $path = write_handler(qq[return sub { return (200, "text/plain", "x"); };\n]);
-    my $r = roundtrip("BADLINE\r\n\r\n", $path);
+subtest 'malformed request yields 400 bad request' => sub {
+    local $BunshinServer::REFRESH_FN = sub { };
+    local $BunshinServer::HANDLER_FN = sub { "unused" };
+    my $r = roundtrip("BADLINE\r\n\r\n");
     like $r, qr{^HTTP/1\.1 400 Bad Request\r\n};
+    like $r, qr{Content-Type: text/plain; charset=utf-8\r\n};
     like $r, qr{bad request:};
+};
+
+subtest 'error page escapes HTML metacharacters' => sub {
+    local $BunshinServer::REFRESH_FN = sub { die "<script>alert(&x)</script>\n" };
+    local $BunshinServer::HANDLER_FN = sub { "unused" };
+    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
+    like $r, qr{&lt;script&gt;alert\(&amp;x\)&lt;/script&gt;}, 'metacharacters escaped';
+    unlike $r, qr{<script>alert}, 'raw tag not present';
 };
 
 done_testing;

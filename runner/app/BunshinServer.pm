@@ -4,6 +4,7 @@ use warnings;
 use IO::Socket::INET;
 use POSIX ();
 use Socket qw(SOMAXCONN);
+use Module::Refresh;
 
 our %REASON_PHRASES = (
     200 => 'OK',
@@ -28,11 +29,34 @@ our %REASON_PHRASES = (
     504 => 'Gateway Timeout',
 );
 
+my $HTML_SHELL = <<'HTML';
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>bunshin perl demo — 大吉祥寺.pm</title>
+<style>
+body { font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.6; }
+pre { background: #fee; padding: 1rem; border-radius: 4px; overflow: auto; }
+</style>
+</head>
+<body>
+%s
+</body>
+</html>
+HTML
+
+our $REFRESH_FN = sub { Module::Refresh->refresh };
+our $HANDLER_FN = sub {
+    my $sub = Handler->can('content')
+        or die "Handler::content is not defined\n";
+    $sub->();
+};
+
 sub run {
     my (%opts) = @_;
-    my $handler_path = $opts{handler_path} // die "handler_path required\n";
-    my $listen_addr  = $opts{listen_addr}  // '0.0.0.0';
-    my $listen_port  = $opts{listen_port}  // 5000;
+    my $listen_addr = $opts{listen_addr} // '0.0.0.0';
+    my $listen_port = $opts{listen_port} // 5000;
 
     $SIG{CHLD} = 'IGNORE';
     $| = 1;
@@ -44,6 +68,8 @@ sub run {
         Listen    => SOMAXCONN,
         ReuseAddr => 1,
     ) or die "listen $listen_addr:$listen_port: $!\n";
+
+    Module::Refresh->refresh;
 
     warn "server.pl listening on $listen_addr:$listen_port\n";
 
@@ -59,15 +85,14 @@ sub run {
             next;
         }
         $server->close;
-        handle_conn($conn, handler_path => $handler_path);
+        handle_conn($conn);
         $conn->close;
         POSIX::_exit(0);
     }
 }
 
 sub handle_conn {
-    my ($conn, %opts) = @_;
-    my $handler_path = $opts{handler_path} // die "handler_path required\n";
+    my ($conn) = @_;
 
     my $req = eval { read_request($conn) };
     if (my $err = $@) {
@@ -75,39 +100,33 @@ sub handle_conn {
         return;
     }
 
-    my $handler = load_handler($handler_path);
-    if (my $err = $handler->{error}) {
-        respond($conn, 500, 'text/plain; charset=utf-8', "handler load failed: $err");
+    my $refresh_ok = eval { $REFRESH_FN->(); 1 };
+    if (!$refresh_ok) {
+        respond($conn, 500, 'text/html; charset=utf-8', build_error_page("handler load failed: $@"));
         return;
     }
 
-    my ($status, $ctype, $body);
-    my $ok = eval {
-        ($status, $ctype, $body) = $handler->{code}->($req->{method}, $req->{path}, $req->{body});
-        1;
-    };
-    if (!$ok) {
-        respond($conn, 500, 'text/plain; charset=utf-8', "handler died: $@");
+    my $body;
+    my $call_ok = eval { $body = $HANDLER_FN->(); 1 };
+    if (!$call_ok) {
+        respond($conn, 500, 'text/html; charset=utf-8', build_error_page("handler died: $@"));
         return;
     }
-    respond($conn, $status, $ctype, $body);
+    if (!defined $body) {
+        respond($conn, 500, 'text/html; charset=utf-8', build_error_page("Handler::content returned undef"));
+        return;
+    }
+
+    respond($conn, 200, 'text/html; charset=utf-8', sprintf($HTML_SHELL, $body));
 }
 
-sub load_handler {
-    my ($path) = @_;
-    local $@;
-    local $!;
-    my $code = do $path;
-    if (defined $@ and length $@) {
-        return { error => "parse: $@" };
-    }
-    if (!defined $code) {
-        return { error => "read $path: " . ($! || 'unknown error') };
-    }
-    if (ref($code) ne 'CODE') {
-        return { error => "$path did not return a CODE ref" };
-    }
-    return { code => $code };
+sub build_error_page {
+    my ($msg) = @_;
+    my $escaped = $msg;
+    $escaped =~ s/&/&amp;/g;
+    $escaped =~ s/</&lt;/g;
+    $escaped =~ s/>/&gt;/g;
+    return sprintf($HTML_SHELL, "<h1>Error</h1>\n<pre>$escaped</pre>");
 }
 
 sub read_request {
