@@ -118,6 +118,9 @@ func TestNewFirestoreRepositoryWithAPI(t *testing.T) {
 	if repo.randHexFn == nil {
 		t.Error("randHexFn is nil")
 	}
+	if repo.logFn == nil {
+		t.Error("logFn is nil")
+	}
 }
 
 func TestRunnerDoc_ToModel_Idle(t *testing.T) {
