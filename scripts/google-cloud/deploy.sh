@@ -4,10 +4,11 @@ set -euo pipefail
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 SERVICES=(broker nginx runner)
 REGIONS=(asia-northeast1 asia-northeast2)
+REGION_DIRS=(asne1 asne2)
 REPOSITORY="bunshin"
 NAMESPACE="bunshin"
 MEMBERSHIPS=(bunshin-asne1 bunshin-asne2)
-MODULES=(asne1 asne2)
+MANIFESTS_DIR="${ROOT_DIR}/deploy/gcp"
 
 die() {
     echo "Error: $*" >&2
@@ -35,6 +36,19 @@ resolve_project() {
     echo "${project}"
 }
 
+resolve_deployer_email() {
+    local email
+    email="$(gcloud config get-value account 2>/dev/null)"
+    [[ -n "${email}" && "${email}" != "(unset)" ]] \
+        || die "gcloud account is not set (run 'gcloud auth login')"
+    echo "${email}"
+}
+
+read_tfstate_output() {
+    local key="${1:?}"
+    terraform -chdir="${ROOT_DIR}/terraform/google-cloud" output -raw "${key}"
+}
+
 configure_docker_auth() {
     gcloud auth configure-docker \
         "asia-northeast1-docker.pkg.dev,asia-northeast2-docker.pkg.dev" \
@@ -60,66 +74,28 @@ build_and_push() {
         "${ROOT_DIR}/${service}"
 }
 
-build_and_push_all() {
-    local project="${1:?}"
-    local image_tag="${2:?}"
-    shift 2
-    local service
+# envsubst で ${VAR} を展開して kubectl apply に流す。REGION 変数の値を
+# 各 pass で切り替え、base/ の region 非依存 yaml と regions/<REGION_DIR>/ の
+# region 依存 yaml を同一の env で処理する
+apply_manifests() {
+    local region_dir="${1:?}"
+    local context="${2:?}"
+    local f
 
-    for service in "$@"; do
-        build_and_push "${service}" "${project}" "${image_tag}"
+    for f in "${MANIFESTS_DIR}/base/"*.yaml "${MANIFESTS_DIR}/regions/${region_dir}/"*.yaml; do
+        envsubst < "${f}" | kubectl --context="${context}" apply -f -
     done
-}
-
-apply_image_tag() {
-    local env_name="${1:?}"
-    local image_tag="${2:?}"
-    shift 2
-    local targets=()
-    local module
-    local service
-
-    # `just deploy` が infra全体の drift を巻き込まないよう、image_tag が刺さる Deployment だけを target
-    for module in "${MODULES[@]}"; do
-        for service in "$@"; do
-            targets+=(-target "module.${module}.kubernetes_deployment_v1.${service}")
-        done
-    done
-
-    echo "Applying image_tag=${image_tag} to ${#targets[@]} Deployment target(s)"
-    terraform -chdir="${ROOT_DIR}/terraform/google-cloud" apply \
-        -var-file="environments/${env_name}.tfvars" \
-        -var "image_tag=${image_tag}" \
-        "${targets[@]}"
 }
 
 wait_rollout() {
-    local project="${1:?}"
-    local membership="${2:?}"
-    local service="${3:?}"
-    local context="connectgateway_${project}_global_${membership}"
+    local context="${1:?}"
+    local service="${2:?}"
 
-    echo "[${membership}] waiting for ${service} rollout"
+    echo "[${context##*_}] waiting for ${service} rollout"
     kubectl --context="${context}" \
         -n "${NAMESPACE}" \
         rollout status "deployment/${service}" \
         --timeout=5m
-}
-
-wait_rollouts_all() {
-    local project="${1:?}"
-    shift
-    local membership
-    local service
-
-    for membership in "${MEMBERSHIPS[@]}"; do
-        echo "[${membership}] fetching Connect Gateway credentials"
-        gcloud container fleet memberships get-credentials "${membership}" \
-            --project="${project}" >/dev/null
-        for service in "$@"; do
-            wait_rollout "${project}" "${membership}" "${service}"
-        done
-    done
 }
 
 main() {
@@ -127,8 +103,16 @@ main() {
     shift
     local project
     local image_tag
+    local deployer_email
+    local domain_name
+    local broker_gsa_email
     local -a target_services=()
     local service
+    local i
+    local region
+    local region_dir
+    local membership
+    local context
 
     if [[ $# -eq 0 ]]; then
         target_services=("${SERVICES[@]}")
@@ -140,14 +124,49 @@ main() {
     fi
 
     project="$(resolve_project)"
+    deployer_email="$(resolve_deployer_email)"
     image_tag="$(git -C "${ROOT_DIR}" rev-parse HEAD)"
+
+    domain_name="$(read_tfstate_output domain_name)"
+    broker_gsa_email="$(read_tfstate_output broker_gsa_email)"
 
     echo "Deploying to google-cloud env=${env_name} project=${project} image_tag=${image_tag}"
 
     configure_docker_auth
-    build_and_push_all "${project}" "${image_tag}" "${target_services[@]}"
-    apply_image_tag "${env_name}" "${image_tag}" "${target_services[@]}"
-    wait_rollouts_all "${project}" "${target_services[@]}"
+    for service in "${target_services[@]}"; do
+        build_and_push "${service}" "${project}" "${image_tag}"
+    done
+
+    export IMAGE_TAG="${image_tag}"
+    export INTERNAL_DOMAIN="${domain_name}"
+    export GOOGLE_CLOUD_PROJECT="${project}"
+    export BROKER_GSA_EMAIL="${broker_gsa_email}"
+    export DEPLOYER_EMAIL="${deployer_email}"
+
+    for i in "${!REGIONS[@]}"; do
+        region="${REGIONS[$i]}"
+        region_dir="${REGION_DIRS[$i]}"
+        membership="${MEMBERSHIPS[$i]}"
+        context="connectgateway_${project}_global_${membership}"
+
+        # regions/<region_dir>/region.env の STACK_NAME 等を env に注入し、
+        # base + regions/<region_dir> の manifest を envsubst で展開して apply する
+        set -a
+        # shellcheck disable=SC1090
+        source "${MANIFESTS_DIR}/regions/${region_dir}/region.env"
+        set +a
+        export IMAGE_REGISTRY="${region}-docker.pkg.dev/${project}/${REPOSITORY}"
+
+        echo "[${membership}] fetching Connect Gateway credentials"
+        gcloud container fleet memberships get-credentials "${membership}" \
+            --project="${project}" >/dev/null
+
+        apply_manifests "${region_dir}" "${context}"
+
+        for service in "${target_services[@]}"; do
+            wait_rollout "${context}" "${service}"
+        done
+    done
 }
 
 main "$@"

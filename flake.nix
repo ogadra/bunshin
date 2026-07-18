@@ -20,6 +20,7 @@
           checkov
           chromium
           ecspresso
+          gettext
           gitleaks
           just
           go_1_26
