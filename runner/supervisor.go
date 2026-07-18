@@ -18,35 +18,21 @@ type supervisorConfig struct {
 	logf          func(format string, args ...any)
 	sleep         func(ctx context.Context, d time.Duration) bool
 	after         func(d time.Duration) <-chan time.Time
-	now           func() time.Time
-	initialDelay  time.Duration
-	maxDelay      time.Duration
-	stableAfter   time.Duration
+	restartDelay  time.Duration
 	shutdownGrace time.Duration
 }
 
-// supervise launches cfg.factory() and restarts it with capped exponential
-// backoff on any exit. A run that stayed up at least cfg.stableAfter is
-// considered stable and resets backoff to cfg.initialDelay. Returns when ctx
-// is canceled.
+// supervise launches cfg.factory() and restarts it after cfg.restartDelay on
+// any exit. Returns when ctx is canceled.
 func supervise(ctx context.Context, cfg supervisorConfig) {
-	delay := cfg.initialDelay
 	for ctx.Err() == nil {
-		start := cfg.now()
 		superviseOnce(ctx, cfg)
 		if ctx.Err() != nil {
 			return
 		}
-		if cfg.now().Sub(start) >= cfg.stableAfter {
-			delay = cfg.initialDelay
-		}
-		cfg.logf("supervisor: %s restarting in %s", cfg.name, delay)
-		if !cfg.sleep(ctx, delay) {
+		cfg.logf("supervisor: %s restarting in %s", cfg.name, cfg.restartDelay)
+		if !cfg.sleep(ctx, cfg.restartDelay) {
 			return
-		}
-		delay *= 2
-		if delay > cfg.maxDelay {
-			delay = cfg.maxDelay
 		}
 	}
 }
@@ -104,10 +90,7 @@ func productionAppSupervisorConfig() supervisorConfig {
 		logf:          log.Printf,
 		sleep:         supervisorSleep,
 		after:         time.After,
-		now:           time.Now,
-		initialDelay:  1 * time.Second,
-		maxDelay:      30 * time.Second,
-		stableAfter:   30 * time.Second,
+		restartDelay:  500 * time.Millisecond,
 		shutdownGrace: 5 * time.Second,
 	}
 }

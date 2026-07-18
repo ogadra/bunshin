@@ -19,10 +19,7 @@ func testSupervisorConfig() supervisorConfig {
 		logf:          func(format string, args ...any) {},
 		sleep:         supervisorSleep,
 		after:         time.After,
-		now:           time.Now,
-		initialDelay:  1 * time.Millisecond,
-		maxDelay:      10 * time.Millisecond,
-		stableAfter:   1 * time.Hour,
+		restartDelay:  1 * time.Millisecond,
 		shutdownGrace: 50 * time.Millisecond,
 	}
 }
@@ -59,7 +56,7 @@ func TestSuperviseStartError(t *testing.T) {
 	}
 }
 
-func TestSuperviseBackoffProgression(t *testing.T) {
+func TestSuperviseRestartUsesRestartDelay(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -67,13 +64,12 @@ func TestSuperviseBackoffProgression(t *testing.T) {
 	var delays []time.Duration
 
 	cfg := testSupervisorConfig()
-	cfg.initialDelay = 1 * time.Millisecond
-	cfg.maxDelay = 5 * time.Millisecond
+	cfg.restartDelay = 3 * time.Millisecond
 	cfg.factory = func() *exec.Cmd { return exec.Command("sh", "-c", "exit 0") }
 	cfg.sleep = func(ctx context.Context, d time.Duration) bool {
 		mu.Lock()
 		delays = append(delays, d)
-		stop := len(delays) >= 5
+		stop := len(delays) >= 4
 		mu.Unlock()
 		if stop {
 			cancel()
@@ -82,82 +78,15 @@ func TestSuperviseBackoffProgression(t *testing.T) {
 	}
 	supervise(ctx, cfg)
 
-	want := []time.Duration{
-		1 * time.Millisecond,
-		2 * time.Millisecond,
-		4 * time.Millisecond,
-		5 * time.Millisecond,
-		5 * time.Millisecond,
-	}
 	mu.Lock()
 	got := append([]time.Duration(nil), delays...)
 	mu.Unlock()
-	if len(got) < len(want) {
-		t.Fatalf("delays = %v, want at least %v", got, want)
+	if len(got) < 4 {
+		t.Fatalf("delays = %v, want at least 4 samples", got)
 	}
-	for i, w := range want {
-		if got[i] != w {
-			t.Errorf("delays[%d] = %v, want %v", i, got[i], w)
-		}
-	}
-}
-
-func TestSuperviseBackoffReset(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	var mu sync.Mutex
-	var delays []time.Duration
-
-	var nowCalls int32
-	base := time.Unix(0, 0)
-
-	cfg := testSupervisorConfig()
-	cfg.initialDelay = 1 * time.Millisecond
-	cfg.maxDelay = 100 * time.Millisecond
-	cfg.stableAfter = 50 * time.Millisecond
-	cfg.factory = func() *exec.Cmd { return exec.Command("true") }
-	cfg.now = func() time.Time {
-		n := atomic.AddInt32(&nowCalls, 1)
-		switch n {
-		case 1:
-			return base
-		case 2:
-			return base.Add(1 * time.Millisecond)
-		case 3:
-			return base.Add(100 * time.Millisecond)
-		case 4:
-			return base.Add(200 * time.Millisecond)
-		default:
-			return base.Add(300 * time.Millisecond)
-		}
-	}
-	cfg.sleep = func(ctx context.Context, d time.Duration) bool {
-		mu.Lock()
-		delays = append(delays, d)
-		stop := len(delays) >= 3
-		mu.Unlock()
-		if stop {
-			cancel()
-		}
-		return true
-	}
-	supervise(ctx, cfg)
-
-	want := []time.Duration{
-		1 * time.Millisecond,
-		1 * time.Millisecond,
-		2 * time.Millisecond,
-	}
-	mu.Lock()
-	got := append([]time.Duration(nil), delays...)
-	mu.Unlock()
-	if len(got) < len(want) {
-		t.Fatalf("delays = %v, want at least %v", got, want)
-	}
-	for i, w := range want {
-		if got[i] != w {
-			t.Errorf("delays[%d] = %v, want %v", i, got[i], w)
+	for i, d := range got {
+		if d != cfg.restartDelay {
+			t.Errorf("delays[%d] = %v, want %v (no backoff)", i, d, cfg.restartDelay)
 		}
 	}
 }
@@ -314,14 +243,8 @@ func TestProductionAppSupervisorConfig(t *testing.T) {
 	if cfg.name != "perl-app" {
 		t.Errorf("name = %q, want %q", cfg.name, "perl-app")
 	}
-	if cfg.initialDelay != time.Second {
-		t.Errorf("initialDelay = %v, want %v", cfg.initialDelay, time.Second)
-	}
-	if cfg.maxDelay != 30*time.Second {
-		t.Errorf("maxDelay = %v, want %v", cfg.maxDelay, 30*time.Second)
-	}
-	if cfg.stableAfter != 30*time.Second {
-		t.Errorf("stableAfter = %v, want %v", cfg.stableAfter, 30*time.Second)
+	if cfg.restartDelay != 500*time.Millisecond {
+		t.Errorf("restartDelay = %v, want %v", cfg.restartDelay, 500*time.Millisecond)
 	}
 	if cfg.shutdownGrace != 5*time.Second {
 		t.Errorf("shutdownGrace = %v, want %v", cfg.shutdownGrace, 5*time.Second)
@@ -330,11 +253,10 @@ func TestProductionAppSupervisorConfig(t *testing.T) {
 	if len(cmd.Args) != 2 || cmd.Args[1] != "/app/server.pl" {
 		t.Errorf("factory args = %v, want [perl /app/server.pl]", cmd.Args)
 	}
-	if cfg.logf == nil || cfg.sleep == nil || cfg.after == nil || cfg.now == nil {
-		t.Fatal("logf/sleep/after/now must be non-nil")
+	if cfg.logf == nil || cfg.sleep == nil || cfg.after == nil {
+		t.Fatal("logf/sleep/after must be non-nil")
 	}
 	cfg.logf("noop %s", "call")
-	_ = cfg.now()
 	select {
 	case <-cfg.after(1 * time.Millisecond):
 	case <-time.After(1 * time.Second):
