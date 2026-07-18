@@ -10,8 +10,6 @@ locals {
     runner = { port = 3000 }
   }
 
-  ecs_subnet_ids = slice(aws_subnet.apne1_private[*].id, 0, 2)
-
   ecr_repository_arns = {
     for service in keys(local.ecs_services) :
     service => "arn:aws:ecr:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:repository/bunshin/${service}"
