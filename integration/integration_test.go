@@ -809,3 +809,131 @@ func TestNoIdleRunner(t *testing.T) {
 	}
 	assertForwardedClientAddress(t, got, "203.0.113.50:45678")
 }
+
+// perlHmrClientAddress は PUT /api/app/handler が要求する X-Bunshin-Client-Address
+// の固定値。通常 nginx が挿入するが、統合テストでは runner を直接叩くので明示的に設定する。
+const perlHmrClientAddress = "203.0.113.50:12345"
+
+// perlHmrRunnerHTTP は runner-1 の Go サーバー (/api/*) の URL。compose ネットワーク内から解決する。
+const perlHmrRunnerHTTP = "http://runner-1:3000"
+
+// perlHmrPerlHTTP は runner-1 の Perl サーバー (:5000) の URL。
+const perlHmrPerlHTTP = "http://runner-1:5000"
+
+// snapshotHandlerPl は現在の /app/handler.pl を GET し、テスト終了時に PUT で書き戻す。
+// テスト間で handler.pl の状態が汚染されないようにするための helper。
+func snapshotHandlerPl(t *testing.T) {
+	t.Helper()
+	resp, err := httpClient.Get(perlHmrRunnerHTTP + "/api/app/handler")
+	if err != nil {
+		t.Fatalf("GET /api/app/handler: %v", err)
+	}
+	original, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("snapshot GET status = %d, body = %s", resp.StatusCode, original)
+	}
+	t.Cleanup(func() {
+		req, err := http.NewRequest(http.MethodPut, perlHmrRunnerHTTP+"/api/app/handler", strings.NewReader(string(original)))
+		if err != nil {
+			t.Logf("restore handler.pl: new request: %v", err)
+			return
+		}
+		req.Header.Set("X-Bunshin-Client-Address", perlHmrClientAddress)
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			t.Logf("restore handler.pl: PUT: %v", err)
+			return
+		}
+		resp.Body.Close()
+	})
+}
+
+// putHandlerPl は PUT /api/app/handler で handler.pl を上書きし、204 でなければ fail する。
+func putHandlerPl(t *testing.T, body string) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPut, perlHmrRunnerHTTP+"/api/app/handler", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("new PUT: %v", err)
+	}
+	req.Header.Set("X-Bunshin-Client-Address", perlHmrClientAddress)
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		t.Fatalf("PUT /api/app/handler: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		respBody, _ := io.ReadAll(resp.Body)
+		t.Fatalf("PUT status = %d, body = %s", resp.StatusCode, respBody)
+	}
+}
+
+// getPerl は Perl サーバー (:5000) にリクエストし、ステータスと本文を返す。
+func getPerl(t *testing.T) (int, string) {
+	t.Helper()
+	resp, err := httpClient.Get(perlHmrPerlHTTP + "/")
+	if err != nil {
+		t.Fatalf("GET :5000/: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(body)
+}
+
+// TestPerlHmrReachable は supervisor が起動時に server.pl を立ち上げていることを、
+// :5000/ が 200 を返すまでポーリングして確認する。backoff 再試行があるため 30 秒待つ。
+func TestPerlHmrReachable(t *testing.T) {
+	deadline := time.Now().Add(30 * time.Second)
+	var status int
+	var body string
+	for time.Now().Before(deadline) {
+		status, body = getPerl(t)
+		if status == http.StatusOK {
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	t.Fatalf("perl server did not become reachable within 30s: last status = %d, body = %q", status, body)
+}
+
+// TestPerlHmrPutSwapsHandler は PUT /api/app/handler の直後の GET :5000 が
+// 新しい応答を返すことを検証する (server.pl の `do` 再読込による HMR 特性)。
+func TestPerlHmrPutSwapsHandler(t *testing.T) {
+	snapshotHandlerPl(t)
+
+	marker := fmt.Sprintf("hmr-marker-%d", time.Now().UnixNano())
+	putHandlerPl(t, fmt.Sprintf("sub { return (200, \"text/plain; charset=utf-8\", %q); };\n", marker))
+
+	status, body := getPerl(t)
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, body = %q", status, body)
+	}
+	if !strings.Contains(body, marker) {
+		t.Fatalf("body = %q, want to contain %q", body, marker)
+	}
+}
+
+// TestPerlHmrSyntaxErrorRecovers は壊れた handler.pl を PUT した直後の GET :5000 が
+// 500 を返し、修正版を PUT すると 200 に戻ることを検証する。
+// server.pl がコンパイルエラーで死なないことも兼ねる (supervisor の再起動を必要としない)。
+func TestPerlHmrSyntaxErrorRecovers(t *testing.T) {
+	snapshotHandlerPl(t)
+
+	putHandlerPl(t, "this is not perl at all !!!\n")
+	status, body := getPerl(t)
+	if status != http.StatusInternalServerError {
+		t.Fatalf("broken status = %d, body = %q", status, body)
+	}
+	if body == "" {
+		t.Errorf("expected error body from 500, got empty")
+	}
+
+	putHandlerPl(t, "sub { return (200, \"text/plain\", \"recovered\"); };\n")
+	status2, body2 := getPerl(t)
+	if status2 != http.StatusOK {
+		t.Fatalf("fixed status = %d, body = %q", status2, body2)
+	}
+	if !strings.Contains(body2, "recovered") {
+		t.Fatalf("body = %q, want to contain \"recovered\"", body2)
+	}
+}
