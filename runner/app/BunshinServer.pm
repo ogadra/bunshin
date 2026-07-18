@@ -47,9 +47,9 @@ pre { background: #fee; padding: 1rem; border-radius: 4px; overflow: auto; }
 HTML
 
 our $REFRESH_FN = sub { Module::Refresh->refresh };
-our $HANDLER_FN = sub {
-    my $sub = Handler->can('content')
-        or die "Handler::content is not defined\n";
+our $CONTENT_FN = sub {
+    my $sub = DaiKichijoji->can('content')
+        or die "DaiKichijoji::content is not defined\n";
     $sub->();
 };
 
@@ -102,18 +102,18 @@ sub handle_conn {
 
     my $refresh_ok = eval { $REFRESH_FN->(); 1 };
     if (!$refresh_ok) {
-        respond($conn, 500, 'text/html; charset=utf-8', build_error_page("handler load failed: $@"));
+        respond($conn, 500, 'text/html; charset=utf-8', build_error_page("DaiKichijoji.pm load failed: $@"));
         return;
     }
 
     my $body;
-    my $call_ok = eval { $body = $HANDLER_FN->(); 1 };
+    my $call_ok = eval { $body = $CONTENT_FN->(); 1 };
     if (!$call_ok) {
-        respond($conn, 500, 'text/html; charset=utf-8', build_error_page("handler died: $@"));
+        respond($conn, 500, 'text/html; charset=utf-8', build_error_page("DaiKichijoji::content died: $@"));
         return;
     }
     if (!defined $body) {
-        respond($conn, 500, 'text/html; charset=utf-8', build_error_page("Handler::content returned undef"));
+        respond($conn, 500, 'text/html; charset=utf-8', build_error_page("DaiKichijoji::content returned undef"));
         return;
     }
 

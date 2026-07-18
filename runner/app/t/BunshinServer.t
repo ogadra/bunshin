@@ -154,9 +154,9 @@ sub roundtrip {
     return $response;
 }
 
-subtest 'happy path: handler string is embedded in the HTML shell' => sub {
+subtest 'happy path: content string is embedded in the HTML shell' => sub {
     local $BunshinServer::REFRESH_FN = sub { };
-    local $BunshinServer::HANDLER_FN = sub { "Hello from test" };
+    local $BunshinServer::CONTENT_FN = sub { "Hello from test" };
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 200 OK\r\n};
     like $r, qr{Content-Type: text/html; charset=utf-8\r\n};
@@ -166,33 +166,33 @@ subtest 'happy path: handler string is embedded in the HTML shell' => sub {
 
 subtest 'refresh failure yields 500 handler-load-failed' => sub {
     local $BunshinServer::REFRESH_FN = sub { die "parse: line 3 syntax error\n" };
-    local $BunshinServer::HANDLER_FN = sub { "never called" };
+    local $BunshinServer::CONTENT_FN = sub { "never called" };
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
     like $r, qr{Content-Type: text/html; charset=utf-8\r\n};
-    like $r, qr{handler load failed: parse: line 3 syntax error};
+    like $r, qr{DaiKichijoji.pm load failed: parse: line 3 syntax error};
     unlike $r, qr{never called};
 };
 
 subtest 'handler dying yields 500 handler-died' => sub {
     local $BunshinServer::REFRESH_FN = sub { };
-    local $BunshinServer::HANDLER_FN = sub { die "boom\n" };
+    local $BunshinServer::CONTENT_FN = sub { die "boom\n" };
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
-    like $r, qr{handler died: boom};
+    like $r, qr{DaiKichijoji::content died: boom};
 };
 
 subtest 'handler returning undef yields 500' => sub {
     local $BunshinServer::REFRESH_FN = sub { };
-    local $BunshinServer::HANDLER_FN = sub { undef };
+    local $BunshinServer::CONTENT_FN = sub { undef };
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
-    like $r, qr{returned undef};
+    like $r, qr{DaiKichijoji::content returned undef};
 };
 
 subtest 'malformed request yields 400 bad request' => sub {
     local $BunshinServer::REFRESH_FN = sub { };
-    local $BunshinServer::HANDLER_FN = sub { "unused" };
+    local $BunshinServer::CONTENT_FN = sub { "unused" };
     my $r = roundtrip("BADLINE\r\n\r\n");
     like $r, qr{^HTTP/1\.1 400 Bad Request\r\n};
     like $r, qr{Content-Type: text/plain; charset=utf-8\r\n};
@@ -201,7 +201,7 @@ subtest 'malformed request yields 400 bad request' => sub {
 
 subtest 'error page escapes HTML metacharacters' => sub {
     local $BunshinServer::REFRESH_FN = sub { die "<script>alert(&x)</script>\n" };
-    local $BunshinServer::HANDLER_FN = sub { "unused" };
+    local $BunshinServer::CONTENT_FN = sub { "unused" };
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{&lt;script&gt;alert\(&amp;x\)&lt;/script&gt;}, 'metacharacters escaped';
     unlike $r, qr{<script>alert}, 'raw tag not present';
