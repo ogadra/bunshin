@@ -22,6 +22,16 @@ resource "kubernetes_deployment_v1" "nginx" {
       spec {
         service_account_name = kubernetes_service_account_v1.nginx.metadata[0].name
 
+        topology_spread_constraint {
+          max_skew           = 1
+          min_domains        = 3
+          topology_key       = "topology.kubernetes.io/zone"
+          when_unsatisfiable = "DoNotSchedule"
+          label_selector {
+            match_labels = { app = "nginx" }
+          }
+        }
+
         container {
           name  = "nginx"
           image = "${local.image_registry}/nginx:${var.image_tag}"
