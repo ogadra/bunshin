@@ -36,6 +36,7 @@ module "asne1" {
   providers = {
     google     = google.asne1
     kubernetes = kubernetes.asne1
+    kubectl    = kubectl.asne1
   }
 
   depends_on = [google_project_service.apis]
@@ -56,6 +57,7 @@ module "asne2" {
   providers = {
     google     = google.asne2
     kubernetes = kubernetes.asne2
+    kubectl    = kubectl.asne2
   }
 
   depends_on = [google_project_service.apis]
