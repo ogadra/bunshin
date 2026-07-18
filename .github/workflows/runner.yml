@@ -44,6 +44,18 @@ jobs:
       - name: Run race detector
         run: docker build --target test-race runner/
 
+  test-runner-perl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Syntax check server.pl / handler.pl / BunshinServer.pm
+        run: |
+          perl -Irunner/app -c runner/app/BunshinServer.pm
+          perl -Irunner/app -c runner/app/server.pl
+          perl -c runner/app/handler.pl
+      - name: Run Perl tests
+        run: prove -Irunner/app -v runner/app/t/
+
   build-runner:
     runs-on: ubuntu-latest
     steps:

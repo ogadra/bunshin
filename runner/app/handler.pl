@@ -1,11 +1,11 @@
 use strict;
 use warnings;
 
-sub {
+return sub {
     my ($method, $path, $body) = @_;
     my $html = <<'HTML';
 <!doctype html>
-<html lang="ja">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>bunshin perl demo</title>
