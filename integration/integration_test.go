@@ -820,8 +820,8 @@ const perlHmrRunnerHTTP = "http://runner-1:3000"
 // perlHmrPerlHTTP は runner-1 の Perl サーバー (:5000) の URL。
 const perlHmrPerlHTTP = "http://runner-1:5000"
 
-// snapshotHandler は現在の Handler.pm を GET し、テスト終了時に PUT で書き戻す。
-// テスト間で Handler.pm の状態が汚染されないようにするための helper。
+// snapshotHandler は現在の DaiKichijoji.pm を GET し、テスト終了時に PUT で書き戻す。
+// テスト間で DaiKichijoji.pm の状態が汚染されないようにするための helper。
 func snapshotHandler(t *testing.T) {
 	t.Helper()
 	resp, err := httpClient.Get(perlHmrRunnerHTTP + "/api/app/handler")
@@ -836,20 +836,20 @@ func snapshotHandler(t *testing.T) {
 	t.Cleanup(func() {
 		req, err := http.NewRequest(http.MethodPut, perlHmrRunnerHTTP+"/api/app/handler", strings.NewReader(string(original)))
 		if err != nil {
-			t.Logf("restore Handler.pm: new request: %v", err)
+			t.Logf("restore DaiKichijoji.pm: new request: %v", err)
 			return
 		}
 		req.Header.Set("X-Bunshin-Client-Address", perlHmrClientAddress)
 		resp, err := httpClient.Do(req)
 		if err != nil {
-			t.Logf("restore Handler.pm: PUT: %v", err)
+			t.Logf("restore DaiKichijoji.pm: PUT: %v", err)
 			return
 		}
 		resp.Body.Close()
 	})
 }
 
-// putHandler は PUT /api/app/handler で Handler.pm を上書きし、204 でなければ fail する。
+// putHandler は PUT /api/app/handler で DaiKichijoji.pm を上書きし、204 でなければ fail する。
 func putHandler(t *testing.T, body string) {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodPut, perlHmrRunnerHTTP+"/api/app/handler", strings.NewReader(body))
@@ -869,7 +869,7 @@ func putHandler(t *testing.T, body string) {
 }
 
 func handlerModuleSource(contentBody string) string {
-	return fmt.Sprintf("package Handler;\nuse strict;\nuse warnings;\nsub content { return %q; }\n1;\n", contentBody)
+	return fmt.Sprintf("package DaiKichijoji;\nuse strict;\nuse warnings;\nsub content { return %q; }\n1;\n", contentBody)
 }
 
 // getPerl は Perl サーバー (:5000) にリクエストし、ステータスと本文を返す。
@@ -918,7 +918,7 @@ func TestPerlHmrPutSwapsHandler(t *testing.T) {
 	}
 }
 
-// TestPerlHmrSyntaxErrorRecovers は壊れた Handler.pm を PUT した直後の GET :5000 が
+// TestPerlHmrSyntaxErrorRecovers は壊れた DaiKichijoji.pm を PUT した直後の GET :5000 が
 // 500 を返し、修正版を PUT すると 200 に戻ることを検証する。
 // server.pl がコンパイルエラーで死なないことも兼ねる (supervisor の再起動を必要としない)。
 func TestPerlHmrSyntaxErrorRecovers(t *testing.T) {
