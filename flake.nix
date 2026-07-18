@@ -22,7 +22,7 @@
           gitleaks
           just
           go_1_26
-          google-cloud-sdk
+          (google-cloud-sdk.withExtraComponents [ google-cloud-sdk.components.gke-gcloud-auth-plugin ])
           k6
           lefthook
           nodejs_24
