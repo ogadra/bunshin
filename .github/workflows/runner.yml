@@ -50,13 +50,15 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Install Module::Refresh
         run: sudo apt-get install -y libmodule-refresh-perl
-      - name: Syntax check server.pl / DaiKichijoji.pm / BunshinServer.pm
+      - name: Syntax check the app files
         run: |
-          perl -Irunner/app -c runner/app/BunshinServer.pm
+          perl -Irunner/app -c runner/app/Bunshin/HTTP.pm
+          perl -Irunner/app -c runner/app/Bunshin/Server.pm
+          perl -Irunner/app -c runner/app/Bunshin/App.pm
           perl -Irunner/app -c runner/app/server.pl
           perl -c runner/app/DaiKichijoji.pm
       - name: Run Perl tests
-        run: prove -Irunner/app -v runner/app/t/
+        run: prove -Irunner/app -v -r runner/app/t/
 
   build-runner:
     runs-on: ubuntu-latest

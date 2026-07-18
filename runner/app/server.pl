@@ -3,10 +3,13 @@ use strict;
 use warnings;
 use FindBin;
 use lib $FindBin::Bin;
-use BunshinServer;
+use Bunshin::Server;
+use Bunshin::App;
 use DaiKichijoji;
 
-BunshinServer::run(
+Bunshin::App::init();
+Bunshin::Server::run(
     listen_addr => '0.0.0.0',
     listen_port => 5000,
+    handler     => \&Bunshin::App::handle_conn,
 );
