@@ -34,8 +34,8 @@ resource "kubernetes_service_v1" "runner" {
   }
 }
 
-# nginx Serviceに付けるcloud.google.com/neg annotationで、GKE NEG controllerがregionごとの
-# standalone zonal NEGを作る。Global LBのbackend serviceがこれをdata経由で参照する
+# cloud.google.com/neg annotationでGKE NEG controllerがregionごとのstandalone zonal NEGを作る。
+# Global LBのbackend serviceはこのNEG群をmodule outputs経由で参照する
 resource "kubernetes_service_v1" "nginx" {
   metadata {
     name      = "nginx"
@@ -45,7 +45,7 @@ resource "kubernetes_service_v1" "nginx" {
       "cloud.google.com/neg" = jsonencode({
         exposed_ports = {
           "${local.service_ports.nginx}" = {
-            name = "bunshin-nginx-${local.region}"
+            name = local.nginx_neg_name
           }
         }
       })

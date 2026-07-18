@@ -22,6 +22,7 @@
           gitleaks
           just
           go_1_26
+          google-cloud-sdk
           k6
           lefthook
           nodejs_24

@@ -10,9 +10,6 @@ import (
 	"github.com/ogadra/bunshin/broker/model"
 )
 
-// firestoreLogPrintf は malformed doc スキップの通知先。テストで capture 可能にする。
-var firestoreLogPrintf = log.Printf
-
 // FirestoreCollection は runner document を格納する Firestore collection 名。
 const FirestoreCollection = "runners"
 
@@ -76,6 +73,7 @@ type FirestoreTx interface {
 type FirestoreRepository struct {
 	api       FirestoreClientAPI
 	randHexFn func() string
+	logFn     func(format string, args ...any)
 }
 
 // NewFirestoreRepositoryWithAPI は FirestoreClientAPI を差し替え可能にする test-friendly コンストラクタ。
@@ -84,6 +82,7 @@ func NewFirestoreRepositoryWithAPI(api FirestoreClientAPI) *FirestoreRepository 
 	return &FirestoreRepository{
 		api:       api,
 		randHexFn: defaultRandHexFn,
+		logFn:     log.Printf,
 	}
 }
 
@@ -143,7 +142,7 @@ func (r *FirestoreRepository) assignFirstIdle(ctx context.Context, sessionID str
 		}
 		doc, err := snapshotToDoc(s.ID, s.Data)
 		if err != nil {
-			firestoreLogPrintf("firestore AcquireIdle: skip malformed runner doc: %v", err)
+			r.logFn("firestore AcquireIdle: skip malformed runner doc: %v", err)
 			tried[s.ID] = struct{}{}
 			continue
 		}
@@ -194,7 +193,7 @@ func (r *FirestoreRepository) ListBusyRunners(ctx context.Context) ([]model.Runn
 		}
 		doc, err := snapshotToDoc(id, data)
 		if err != nil {
-			firestoreLogPrintf("firestore ListBusyRunners: skip malformed runner doc: %v", err)
+			r.logFn("firestore ListBusyRunners: skip malformed runner doc: %v", err)
 			continue
 		}
 		runners = append(runners, *doc.toModel())
