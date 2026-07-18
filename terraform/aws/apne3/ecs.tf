@@ -14,6 +14,12 @@ resource "aws_ecs_cluster" "apne3" {
   })
 }
 
+data "aws_ecr_image" "deployables" {
+  for_each        = toset(["broker", "nginx", "runner"])
+  repository_name = "bunshin/${each.key}"
+  image_tag       = "latest"
+}
+
 resource "aws_ecs_task_definition" "nginx" {
   # checkov:skip=CKV_AWS_336:nginx requires writable tmp directories
   family                   = "bunshin-nginx"
@@ -43,6 +49,8 @@ resource "aws_ecs_task_definition" "nginx" {
       { name = "STACK_NAME", value = data.aws_region.current.region },
       { name = "INTERNAL_DOMAIN", value = var.domain_name },
       { name = "BUNSHIN_STACKS", value = join(",", var.bunshin_stacks) },
+      { name = "NGINX_RESOLVER", value = "169.254.169.253" },
+      { name = "BROKER_HOST", value = "${aws_service_discovery_service.broker.name}.${aws_service_discovery_private_dns_namespace.internal.name}" },
     ]
 
     logConfiguration = {
@@ -58,6 +66,8 @@ resource "aws_ecs_task_definition" "nginx" {
   tags = merge(local.common_tags, {
     Service = "nginx"
   })
+
+  depends_on = [data.aws_ecr_image.deployables["nginx"]]
 }
 
 resource "aws_ecs_service" "nginx" {
@@ -141,6 +151,8 @@ resource "aws_ecs_task_definition" "broker" {
   tags = merge(local.common_tags, {
     Service = "broker"
   })
+
+  depends_on = [data.aws_ecr_image.deployables["broker"]]
 }
 
 resource "aws_ecs_service" "broker" {
@@ -214,6 +226,8 @@ resource "aws_ecs_task_definition" "runner" {
   tags = merge(local.common_tags, {
     Service = "runner"
   })
+
+  depends_on = [data.aws_ecr_image.deployables["runner"]]
 }
 
 resource "aws_ecs_service" "runner" {

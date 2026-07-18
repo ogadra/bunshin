@@ -12,7 +12,7 @@ RUN envsubst '${NGINX_RESOLVER} ${BROKER_HOST}' < /etc/nginx/nginx.conf.template
 # USER is added to satisfy trivy DS-0002; openresty -t requires root so this must come after RUN
 USER nobody
 
-# checkov:skip=CKV_DOCKER_2:health check is managed by ECS task definition
+# checkov:skip=CKV_DOCKER_2:health check is managed by ECS task definition / Kubernetes probes
 FROM openresty/openresty:1.31.1.1-alpine@sha256:af8179283b564ddbc3ca32fc6bbf804d564acb89bbc686ace508527a84c36c42
 RUN apk add --no-cache ca-certificates gettext \
     && adduser -D -H -s /sbin/nologin nginx \
@@ -20,11 +20,6 @@ RUN apk add --no-cache ca-certificates gettext \
 COPY --chown=nginx:nginx errors.conf /etc/nginx/errors.conf
 COPY --chown=nginx:nginx lua/ /usr/local/openresty/nginx/lua/
 COPY --chown=nginx:nginx nginx.conf /etc/nginx/nginx.conf.template
-ARG NGINX_RESOLVER
-ARG BROKER_HOST
-RUN envsubst '${NGINX_RESOLVER} ${BROKER_HOST}' < /etc/nginx/nginx.conf.template > /usr/local/openresty/nginx/conf/nginx.conf \
-    && chown nginx:nginx /usr/local/openresty/nginx/conf/nginx.conf \
-    && rm -f /usr/local/openresty/nginx/lua/*_test.lua \
-    && STACK_NAME=config-test INTERNAL_DOMAIN=config-test.invalid BUNSHIN_STACKS=config-test openresty -t \
-    && rm -f /tmp/nginx.pid
+RUN rm -f /usr/local/openresty/nginx/lua/*_test.lua
 USER nginx
+CMD ["/bin/sh", "-c", "envsubst '${NGINX_RESOLVER} ${BROKER_HOST}' < /etc/nginx/nginx.conf.template > /usr/local/openresty/nginx/conf/nginx.conf && exec openresty -g 'daemon off;'"]

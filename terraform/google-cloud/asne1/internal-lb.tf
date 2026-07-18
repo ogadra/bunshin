@@ -28,8 +28,8 @@ resource "google_compute_address" "internal_lb" {
 # gke-l7-rilb は annotation `networking.gke.io/certmap` を未サポート。regional Gateway では
 # listenerの`tls.options`に`networking.gke.io/cert-manager-certs`を指定してRegional Certificate
 # を直接参照する
-resource "kubernetes_manifest" "internal_gateway" {
-  manifest = {
+resource "kubectl_manifest" "internal_gateway" {
+  yaml_body = yamlencode({
     apiVersion = "gateway.networking.k8s.io/v1"
     kind       = "Gateway"
     metadata = {
@@ -57,11 +57,11 @@ resource "kubernetes_manifest" "internal_gateway" {
         }
       }]
     }
-  }
+  })
 }
 
-resource "kubernetes_manifest" "internal_httproute" {
-  manifest = {
+resource "kubectl_manifest" "internal_httproute" {
+  yaml_body = yamlencode({
     apiVersion = "gateway.networking.k8s.io/v1"
     kind       = "HTTPRoute"
     metadata = {
@@ -80,5 +80,5 @@ resource "kubernetes_manifest" "internal_httproute" {
         }]
       }]
     }
-  }
+  })
 }

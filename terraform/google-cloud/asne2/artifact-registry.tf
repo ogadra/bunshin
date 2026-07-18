@@ -13,3 +13,10 @@ resource "google_artifact_registry_repository" "bunshin" {
     }
   }
 }
+
+data "google_artifact_registry_docker_image" "deployables" {
+  for_each      = toset(["broker", "nginx", "runner"])
+  location      = google_artifact_registry_repository.bunshin.location
+  repository_id = google_artifact_registry_repository.bunshin.repository_id
+  image_name    = "${each.key}:${var.image_tag}"
+}

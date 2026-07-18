@@ -10,6 +10,10 @@ terraform {
       source  = "hashicorp/kubernetes"
       version = "~> 3.2"
     }
+    kubectl = {
+      source  = "alekc/kubectl"
+      version = "~> 2.4"
+    }
   }
 }
 
@@ -17,13 +21,15 @@ terraform {
 provider "google" {}
 
 provider "google" {
-  alias  = "asne1"
-  region = "asia-northeast1"
+  alias   = "asne1"
+  region  = "asia-northeast1"
+  project = data.google_project.current.project_id
 }
 
 provider "google" {
-  alias  = "asne2"
-  region = "asia-northeast2"
+  alias   = "asne2"
+  region  = "asia-northeast2"
+  project = data.google_project.current.project_id
 }
 
 data "google_project" "current" {}
@@ -45,4 +51,18 @@ provider "kubernetes" {
   alias = "asne2"
   host  = "https://connectgateway.googleapis.com/v1/projects/${data.google_project.current.number}/locations/global/gkeMemberships/bunshin-asne2"
   token = data.google_client_config.default.access_token
+}
+
+provider "kubectl" {
+  alias            = "asne1"
+  host             = "https://connectgateway.googleapis.com/v1/projects/${data.google_project.current.number}/locations/global/gkeMemberships/bunshin-asne1"
+  token            = data.google_client_config.default.access_token
+  load_config_file = false
+}
+
+provider "kubectl" {
+  alias            = "asne2"
+  host             = "https://connectgateway.googleapis.com/v1/projects/${data.google_project.current.number}/locations/global/gkeMemberships/bunshin-asne2"
+  token            = data.google_client_config.default.access_token
+  load_config_file = false
 }

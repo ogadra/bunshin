@@ -22,6 +22,15 @@ resource "kubernetes_deployment_v1" "runner" {
       spec {
         service_account_name = kubernetes_service_account_v1.runner.metadata[0].name
 
+        topology_spread_constraint {
+          max_skew           = 1
+          topology_key       = "topology.kubernetes.io/zone"
+          when_unsatisfiable = "ScheduleAnyway"
+          label_selector {
+            match_labels = { app = "runner" }
+          }
+        }
+
         container {
           name  = "runner"
           image = "${local.image_registry}/runner:${var.image_tag}"
@@ -82,4 +91,6 @@ resource "kubernetes_deployment_v1" "runner" {
       }
     }
   }
+
+  depends_on = [data.google_artifact_registry_docker_image.deployables["runner"]]
 }

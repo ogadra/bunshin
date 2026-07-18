@@ -22,6 +22,16 @@ resource "kubernetes_deployment_v1" "nginx" {
       spec {
         service_account_name = kubernetes_service_account_v1.nginx.metadata[0].name
 
+        topology_spread_constraint {
+          max_skew           = 1
+          min_domains        = 3
+          topology_key       = "topology.kubernetes.io/zone"
+          when_unsatisfiable = "DoNotSchedule"
+          label_selector {
+            match_labels = { app = "nginx" }
+          }
+        }
+
         container {
           name  = "nginx"
           image = "${local.image_registry}/nginx:${var.image_tag}"
@@ -65,6 +75,14 @@ resource "kubernetes_deployment_v1" "nginx" {
             name  = "BUNSHIN_STACKS"
             value = join(",", var.bunshin_stacks)
           }
+          env {
+            name  = "NGINX_RESOLVER"
+            value = cidrhost(local.services_secondary_cidr, 10)
+          }
+          env {
+            name  = "BROKER_HOST"
+            value = local.broker_host
+          }
 
           resources {
             requests = {
@@ -80,4 +98,6 @@ resource "kubernetes_deployment_v1" "nginx" {
       }
     }
   }
+
+  depends_on = [data.google_artifact_registry_docker_image.deployables["nginx"]]
 }

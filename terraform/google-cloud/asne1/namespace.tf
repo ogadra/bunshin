@@ -3,4 +3,6 @@ resource "kubernetes_namespace_v1" "bunshin" {
     name   = "bunshin"
     labels = { app = "bunshin" }
   }
+
+  depends_on = [terraform_data.cluster_ready]
 }

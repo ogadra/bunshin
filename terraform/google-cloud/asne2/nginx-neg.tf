@@ -10,12 +10,12 @@ resource "terraform_data" "nginx_neg_ready" {
   triggers_replace = [kubernetes_service_v1.nginx.metadata[0].uid]
 
   provisioner "local-exec" {
-    interpreter = ["/bin/bash", "-c"]
+    interpreter = ["bash", "-c"]
     command     = <<-EOT
       for i in $(seq 1 60); do
         if gcloud compute network-endpoint-groups describe ${local.nginx_neg_name} \
           --zone=${each.value} \
-          --project=${data.google_project.current.project_id} \
+          --project=${data.google_client_config.default.project} \
           >/dev/null 2>&1; then
           exit 0
         fi
