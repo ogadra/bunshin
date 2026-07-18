@@ -129,22 +129,20 @@ type serverConfig struct {
 // received on sigCh, then performs graceful shutdown.
 // Separating this from main allows tests to inject a signal channel and listener.
 func run(ln net.Listener, sigCh <-chan os.Signal, cfg serverConfig) error {
+	if cfg.superviseFn == nil {
+		panic("run: cfg.superviseFn is required")
+	}
 	h := cfg.handler
 	if h == nil {
 		h = newHandler(cfg.sm)
 	}
 
-	var supCancel context.CancelFunc
-	var supDone chan struct{}
-	if cfg.superviseFn != nil {
-		var supCtx context.Context
-		supCtx, supCancel = context.WithCancel(context.Background())
-		supDone = make(chan struct{})
-		go func() {
-			defer close(supDone)
-			cfg.superviseFn(supCtx)
-		}()
-	}
+	supCtx, supCancel := context.WithCancel(context.Background())
+	supDone := make(chan struct{})
+	go func() {
+		defer close(supDone)
+		cfg.superviseFn(supCtx)
+	}()
 
 	srv := &http.Server{
 		Handler: h,
@@ -160,19 +158,15 @@ func run(ln net.Listener, sigCh <-chan os.Signal, cfg serverConfig) error {
 
 	select {
 	case err := <-serveErr:
-		if supCancel != nil {
-			supCancel()
-			<-supDone
-		}
+		supCancel()
+		<-supDone
 		return fmt.Errorf("serve: %w", err)
 	case <-sigCh:
 	}
 
 	log.Println("shutting down...")
 
-	if supCancel != nil {
-		supCancel()
-	}
+	supCancel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.shutdownTimeout)
 	defer cancel()
@@ -201,9 +195,7 @@ func run(ln net.Listener, sigCh <-chan os.Signal, cfg serverConfig) error {
 		}
 	}
 
-	if supDone != nil {
-		<-supDone
-	}
+	<-supDone
 
 	log.Println("shutdown complete")
 	return firstErr

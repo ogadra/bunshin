@@ -158,6 +158,7 @@ func TestRunGracefulShutdown(t *testing.T) {
 	cfg := serverConfig{
 		sm:              NewShellManager(),
 		shutdownTimeout: 10 * time.Second,
+		superviseFn:     func(ctx context.Context) { <-ctx.Done() },
 	}
 
 	errCh := make(chan error, 1)
@@ -193,6 +194,7 @@ func TestRunServeError(t *testing.T) {
 	cfg := serverConfig{
 		sm:              NewShellManager(),
 		shutdownTimeout: 10 * time.Second,
+		superviseFn:     func(ctx context.Context) { <-ctx.Done() },
 	}
 
 	err = run(ln, sigCh, cfg)
@@ -214,6 +216,7 @@ func TestRunCloseAllError(t *testing.T) {
 	cfg := serverConfig{
 		sm:              sm,
 		shutdownTimeout: 10 * time.Second,
+		superviseFn:     func(ctx context.Context) { <-ctx.Done() },
 	}
 
 	sigCh := make(chan os.Signal, 1)
@@ -270,6 +273,7 @@ func TestRunDeregisterOnShutdown(t *testing.T) {
 		shutdownTimeout: 10 * time.Second,
 		brokerURL:       "http://broker:8080",
 		runnerID:        "test-runner",
+		superviseFn:     func(ctx context.Context) { <-ctx.Done() },
 	}
 
 	errCh := make(chan error, 1)
@@ -318,6 +322,7 @@ func TestRunDeregisterFailureNonFatal(t *testing.T) {
 		shutdownTimeout: 10 * time.Second,
 		brokerURL:       "http://broker:8080",
 		runnerID:        "test-runner",
+		superviseFn:     func(ctx context.Context) { <-ctx.Done() },
 	}
 
 	errCh := make(chan error, 1)
@@ -434,6 +439,7 @@ func TestRunShutdownTimeout(t *testing.T) {
 		sm:              sm,
 		shutdownTimeout: 1 * time.Nanosecond,
 		handler:         slow,
+		superviseFn:     func(ctx context.Context) { <-ctx.Done() },
 	}
 
 	sigCh := make(chan os.Signal, 1)
@@ -788,4 +794,27 @@ func TestRunSuperviseFnCanceledOnServeErr(t *testing.T) {
 	if !returned.Load() {
 		t.Fatal("superviseFn should have been canceled on serve error")
 	}
+}
+
+// TestRunPanicsWithoutSuperviseFn verifies that run panics when the required
+// superviseFn is not set, rather than silently no-oping the supervisor.
+func TestRunPanicsWithoutSuperviseFn(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen error: %v", err)
+	}
+	defer ln.Close()
+
+	cfg := serverConfig{
+		sm:              NewShellManager(),
+		shutdownTimeout: 1 * time.Second,
+	}
+	sigCh := make(chan os.Signal, 1)
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("run should panic when superviseFn is nil")
+		}
+	}()
+	_ = run(ln, sigCh, cfg)
 }
