@@ -1,6 +1,6 @@
 {
   "launchType": "FARGATE",
-  "desiredCount": {{ tfstate `output.runner_desired_count` }},
+  "desiredCount": {{ must_env `RUNNER_DESIRED_COUNT` }},
   "networkConfiguration": {
     "awsvpcConfiguration": {
       "subnets": [

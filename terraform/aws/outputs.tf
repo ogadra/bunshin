@@ -9,9 +9,3 @@ output "domain_name" {
   description = "FQDN served by nginx, consumed at deploy render time"
   value       = var.domain_name
 }
-
-# Consumed by ecspresso via tfstate plugin for runner desiredCount
-output "runner_desired_count" {
-  description = "Desired number of runner ECS tasks, consumed at deploy render time"
-  value       = var.runner_desired_count
-}
