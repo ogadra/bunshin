@@ -34,7 +34,11 @@ run_service() {
     local env_name="${2:?}"
     local aws_account_id="${3:?}"
 
-    "${ROOT_DIR}/scripts/aws/deploy/${service}.sh" "${env_name}" "${aws_account_id}"
+    if uses_ecs "${service}"; then
+        "${ROOT_DIR}/scripts/aws/deploy/service.sh" "${service}" "${env_name}" "${aws_account_id}"
+    else
+        "${ROOT_DIR}/scripts/aws/deploy/${service}.sh" "${env_name}" "${aws_account_id}"
+    fi
 }
 
 login_ecr() {
