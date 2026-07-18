@@ -30,10 +30,6 @@ our $CONTENT_FN = sub {
     $sub->();
 };
 
-# Module::Refresh の初回 refresh は %INC を "変更なし" として cache する
-# だけで reload はしない。fork の後で子が初回 refresh を呼ぶと、その cache
-# 化しかしないので、その後 disk が変わっても検知できない。親が accept
-# ループに入る前に seed して、子は cache を継承した状態で refresh する
 sub init {
     Module::Refresh->refresh;
 }
