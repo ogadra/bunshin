@@ -6,7 +6,7 @@ use POSIX ();
 use Socket qw(SOMAXCONN);
 use Module::Refresh;
 
-our %REASON_PHRASES = (
+my %REASON_PHRASES = (
     200 => 'OK',
     201 => 'Created',
     202 => 'Accepted',
@@ -177,7 +177,7 @@ sub respond {
     die "respond: content type required\n" unless defined $ctype;
     die "respond: body required\n"         unless defined $body;
     my $reason = $REASON_PHRASES{$status}
-        // die "respond: unknown status $status (add it to \%REASON_PHRASES)\n";
+        // die "respond: unknown status $status\n";
     utf8::encode($body) if utf8::is_utf8($body);
     my $len = length $body;
     print $conn "HTTP/1.1 $status $reason\r\n";
