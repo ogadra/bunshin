@@ -1,4 +1,4 @@
-export const samplePerl = String.raw`package Handler;
+export const samplePerl = String.raw`package DaiKichijoji;
 use strict;
 use warnings;
 
@@ -13,7 +13,7 @@ my $count = 42;
 my @names = qw(alice bob carol);
 
 sub content {
-    my $greeting = "Hello from Handler.pm";
+    my $greeting = "Hello from DaiKichijoji.pm";
     if ($greeting =~ m/(\w+)\s+from/) {
         print "matched: $1\n";
     }
