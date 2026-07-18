@@ -38,7 +38,7 @@ resource "google_compute_backend_service" "nginx" {
   }
 
   dynamic "backend" {
-    for_each = toset(concat(module.asne1.nginx_neg_ids, module.asne2.nginx_neg_ids))
+    for_each = concat(module.asne1.nginx_neg_ids, module.asne2.nginx_neg_ids)
     content {
       group                 = backend.value
       balancing_mode        = "RATE"
