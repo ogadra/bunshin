@@ -81,6 +81,22 @@ subtest 'runner throwing an exception yields 500' => sub {
     like $r, qr{content runner failed: runner internal error};
 };
 
+subtest 'runner returning undef yields 500' => sub {
+    local $Bunshin::App::REFRESH_FN     = sub { };
+    local $Bunshin::App::RUN_CONTENT_FN = sub { undef };
+    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
+    like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
+    like $r, qr{content runner failed:};
+};
+
+subtest 'runner returning a non-hash scalar yields 500' => sub {
+    local $Bunshin::App::REFRESH_FN     = sub { };
+    local $Bunshin::App::RUN_CONTENT_FN = sub { 0 };
+    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
+    like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
+    like $r, qr{content runner failed:};
+};
+
 subtest 'malformed request yields 400 bad request' => sub {
     local $Bunshin::App::REFRESH_FN     = sub { };
     local $Bunshin::App::RUN_CONTENT_FN = sub { +{ status => 'ok', body => "unused" } };

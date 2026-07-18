@@ -25,12 +25,13 @@ my $HTML_SHELL = <<~'HTML';
     </html>
     HTML
 
-our $REFRESH_FN = sub { Module::Refresh->refresh };
-our $CONTENT_FN = sub {
+my $CONTENT_FN = sub {
     my $sub = DaiKichijoji->can('content')
         or die "DaiKichijoji::content is not defined\n";
     $sub->();
 };
+
+our $REFRESH_FN     = sub { Module::Refresh->refresh };
 our $RUN_CONTENT_FN = sub {
     Bunshin::ContentRunner::run(content_fn => $CONTENT_FN);
 };
@@ -50,13 +51,13 @@ sub handle_conn {
 
     my $refreshed = eval { $REFRESH_FN->(); 1 };
     if (!$refreshed) {
-        Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page("DaiKichijoji.pm load failed: $@"));
+        respond_error($conn, "DaiKichijoji.pm load failed: $@");
         return;
     }
 
     my $result = eval { $RUN_CONTENT_FN->() };
-    if (!$result) {
-        Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page("content runner failed: $@"));
+    if (!$result || ref $result ne 'HASH') {
+        respond_error($conn, "content runner failed: $@");
         return;
     }
 
@@ -64,13 +65,18 @@ sub handle_conn {
         if ($_ eq 'ok') {
             Bunshin::HTTP::respond($conn, 200, 'text/html; charset=utf-8', sprintf($HTML_SHELL, HTML::Entities::encode_entities($result->{body})));
         } elsif ($_ eq 'died') {
-            Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page("DaiKichijoji::content died: $result->{error}"));
+            respond_error($conn, "DaiKichijoji::content died: $result->{error}");
         } elsif ($_ eq 'exited') {
-            Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page("DaiKichijoji::content exited with code $result->{code}"));
+            respond_error($conn, "DaiKichijoji::content exited with code $result->{code}");
         } else {
-            Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page("content runner returned unknown status: $_"));
+            respond_error($conn, "content runner returned unknown status: $_");
         }
     }
+}
+
+sub respond_error {
+    my ($conn, $msg) = @_;
+    Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page($msg));
 }
 
 sub build_error_page {
