@@ -5,6 +5,7 @@ resource "google_project_service" "apis" {
     "certificatemanager.googleapis.com",
     "cloudresourcemanager.googleapis.com",
     "compute.googleapis.com",
+    "connectgateway.googleapis.com",
     "container.googleapis.com",
     "dns.googleapis.com",
     "firestore.googleapis.com",
