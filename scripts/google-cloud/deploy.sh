@@ -90,8 +90,7 @@ apply_image_tag() {
     terraform -chdir="${ROOT_DIR}/terraform/google-cloud" apply \
         -var-file="environments/${env_name}.tfvars" \
         -var "image_tag=${image_tag}" \
-        "${targets[@]}" \
-        -auto-approve
+        "${targets[@]}"
 }
 
 wait_rollout() {
