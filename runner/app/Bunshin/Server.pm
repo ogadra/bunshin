@@ -7,8 +7,8 @@ use Socket qw(SOMAXCONN);
 
 sub run {
     my (%opts) = @_;
-    my $listen_addr = $opts{listen_addr} // '0.0.0.0';
-    my $listen_port = $opts{listen_port} // 5000;
+    my $listen_addr = $opts{listen_addr} // die "listen_addr required\n";
+    my $listen_port = $opts{listen_port} // die "listen_port required\n";
     my $handler     = $opts{handler}     // die "handler required\n";
 
     $SIG{CHLD} = 'IGNORE';
@@ -36,9 +36,10 @@ sub run {
             next;
         }
         $server->close;
-        $handler->($conn);
+        my $ok = eval { $handler->($conn); 1 };
+        warn "handler died: $@" unless $ok;
         $conn->close;
-        POSIX::_exit(0);
+        POSIX::_exit($ok ? 0 : 1);
     }
 }
 

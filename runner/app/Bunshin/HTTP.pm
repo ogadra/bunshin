@@ -28,22 +28,21 @@ my %REASON_PHRASES = (
 sub drain_request {
     my ($conn) = @_;
 
-    my $buf = '';
-    while ($buf !~ /\r?\n\r?\n/) {
-        my $chunk;
-        my $n = sysread $conn, $chunk, 4096;
+    my $header = '';
+    while ($header !~ /\r?\n\r?\n\z/) {
+        my $byte;
+        my $n = sysread $conn, $byte, 1;
         die "read: $!\n" if !defined $n;
         die "unexpected EOF before end of headers\n" if $n == 0;
-        $buf .= $chunk;
+        $header .= $byte;
     }
 
     my $content_length = 0;
-    if ($buf =~ /^Content-Length:\s*(\d+)/im) {
+    if ($header =~ /^Content-Length:\s*(\d+)/im) {
         $content_length = $1 + 0;
     }
 
-    my (undef, $body_start) = split /\r?\n\r?\n/, $buf, 2;
-    my $drained = length($body_start // '');
+    my $drained = 0;
     while ($drained < $content_length) {
         my $chunk;
         my $n = sysread $conn, $chunk, $content_length - $drained;

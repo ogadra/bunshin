@@ -4,6 +4,7 @@ use Test::More;
 use FindBin;
 use lib "$FindBin::Bin/../..";
 use Bunshin::App;
+use DaiKichijoji;
 use Socket qw(AF_UNIX SOCK_STREAM PF_UNSPEC);
 
 sub roundtrip {
@@ -80,6 +81,21 @@ subtest 'error page escapes HTML metacharacters' => sub {
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{&lt;script&gt;alert\(&amp;x\)&lt;/script&gt;}, 'metacharacters escaped';
     unlike $r, qr{<script>alert}, 'raw tag not present';
+};
+
+subtest 'real defaults: DaiKichijoji::content dispatches through the real $CONTENT_FN and $REFRESH_FN' => sub {
+    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
+    like $r, qr{^HTTP/1\.1 200 OK\r\n};
+    like $r, qr{Hello from DaiKichijoji}, 'default $CONTENT_FN returned DaiKichijoji::content output';
+};
+
+subtest 'real defaults: 500 when DaiKichijoji::content is missing' => sub {
+    my $orig = \&DaiKichijoji::content;
+    { no strict 'refs'; delete ${'DaiKichijoji::'}{content}; }
+    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
+    { no strict 'refs'; *{'DaiKichijoji::content'} = $orig; }
+    like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
+    like $r, qr{DaiKichijoji::content is not defined};
 };
 
 done_testing;

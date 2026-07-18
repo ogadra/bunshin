@@ -117,4 +117,44 @@ subtest 'drain_request dies when the body is shorter than Content-Length' => sub
     like $@, qr{body truncated};
 };
 
+subtest 'drain_request consumes exactly Content-Length bytes' => sub {
+    my ($s, $c) = make_reader("PUT / HTTP/1.1\r\nContent-Length: 5\r\n\r\nhelloEXTRA");
+    Bunshin::HTTP::drain_request($s);
+    my $rest = '';
+    sysread $s, $rest, 100;
+    close $s;
+    close $c;
+    is $rest, 'EXTRA', 'trailing bytes past Content-Length remain in the socket';
+};
+
+subtest 'drain_request accepts lowercase content-length header' => sub {
+    my ($s, $c) = make_reader("PUT / HTTP/1.1\r\ncontent-length: 5\r\n\r\nhelloAFTER");
+    Bunshin::HTTP::drain_request($s);
+    my $rest = '';
+    sysread $s, $rest, 100;
+    close $s;
+    close $c;
+    is $rest, 'AFTER', 'body consumed via case-insensitive header';
+};
+
+subtest 'drain_request treats non-numeric Content-Length as 0' => sub {
+    my ($s, $c) = make_reader("PUT / HTTP/1.1\r\nContent-Length: abc\r\n\r\nBODY");
+    Bunshin::HTTP::drain_request($s);
+    my $rest = '';
+    sysread $s, $rest, 100;
+    close $s;
+    close $c;
+    is $rest, 'BODY', 'body left untouched when Content-Length is non-numeric';
+};
+
+subtest 'drain_request handles Content-Length: 0 without reading body' => sub {
+    my ($s, $c) = make_reader("PUT / HTTP/1.1\r\nContent-Length: 0\r\n\r\nAFTER0");
+    Bunshin::HTTP::drain_request($s);
+    my $rest = '';
+    sysread $s, $rest, 100;
+    close $s;
+    close $c;
+    is $rest, 'AFTER0', 'no bytes consumed when Content-Length is 0';
+};
+
 done_testing;
