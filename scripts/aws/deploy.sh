@@ -83,6 +83,9 @@ main() {
         login_ecr "${env_name}" "${aws_account_id}"
     fi
 
+    # shellcheck disable=SC1091
+    source "${ROOT_DIR}/deploy/aws/stacks.env"
+
     for service in "${target_services[@]}"; do
         run_service "${service}" "${env_name}" "${aws_account_id}" &
         pids+=("$!")
