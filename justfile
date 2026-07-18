@@ -5,7 +5,7 @@ _validate-env env:
     @if [ "{{env}}" != "stg" ] && [ "{{env}}" != "prd" ]; then echo "Error: env must be 'stg' or 'prd', got '{{env}}'"; exit 1; fi
 
 _validate-vendor vendor:
-    @if [ "{{vendor}}" != "aws" ] && [ "{{vendor}}" != "google-cloud" ]; then echo "Error: vendor must be 'aws' or 'google-cloud', got '{{vendor}}'"; exit 1; fi
+    @if [ "{{vendor}}" != "aws" ] && [ "{{vendor}}" != "google-cloud" ] && [ "{{vendor}}" != "shared" ]; then echo "Error: vendor must be 'aws', 'google-cloud' or 'shared', got '{{vendor}}'"; exit 1; fi
 
 _validate-tf-backend-bucket:
     @if [ -z "${TF_BACKEND_BUCKET:-}" ]; then echo "Error: TF_BACKEND_BUCKET must be set (see .env.example)"; exit 1; fi
