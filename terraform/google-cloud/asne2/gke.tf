@@ -27,18 +27,35 @@ resource "google_container_cluster" "bunshin" {
     enable_private_nodes = true
   }
 
-  # deploy / kubectl / kubernetes provider はすべて fleet 登録 + Connect Gateway 経由
+  # deploy / kubectl / kubernetes provider は fleet 登録 + Connect Gateway 経由。GKE は IP / DNS の
+  # 少なくとも一方を control plane endpoint として要求するため、attack surface が広い IP endpoint を
+  # 塞ぎ、Google API + IAM で認可される DNS endpoint 側だけを残す
   control_plane_endpoints_config {
     dns_endpoint_config {
-      allow_external_traffic = false
+      allow_external_traffic = true
     }
     ip_endpoints_config {
       enabled = false
     }
   }
 
-  # 既存の VPC Flow Logs / Cloud DNS query log では L7 egress が見えないため有効化
+  # Autopilot は monitoring 必須で enable_components 未指定だと API が reject する。既存の VPC Flow
+  # Logs / Cloud DNS query log では L7 egress が見えないため advanced_datapath_observability も有効化
   monitoring_config {
+    enable_components = [
+      "SYSTEM_COMPONENTS",
+      "APISERVER",
+      "SCHEDULER",
+      "CONTROLLER_MANAGER",
+      "STORAGE",
+      "HPA",
+      "POD",
+      "DAEMONSET",
+      "DEPLOYMENT",
+      "STATEFULSET",
+      "CADVISOR",
+      "KUBELET",
+    ]
     advanced_datapath_observability_config {
       enable_metrics = true
       enable_relay   = true

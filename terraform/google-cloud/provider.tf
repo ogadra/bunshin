@@ -53,9 +53,6 @@ provider "kubernetes" {
   token = data.google_client_config.default.access_token
 }
 
-# kubectl_manifestを使うのは初回applyでcluster未作成の状態でもplanが通るため。kubernetes_manifest
-# はplan時にAPI discoveryでclusterへ接続してGVKを解決するのでinitial applyで詰む。
-# load_config_file=falseでkubeconfig参照を無効化し、hostとtokenだけで駆動する
 provider "kubectl" {
   alias            = "asne1"
   host             = "https://connectgateway.googleapis.com/v1/projects/${data.google_project.current.number}/locations/global/gkeMemberships/bunshin-asne1"
