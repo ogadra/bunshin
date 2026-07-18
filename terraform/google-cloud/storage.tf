@@ -5,10 +5,7 @@ resource "google_storage_bucket" "static" {
   location = "ASIA1"
   rpo      = "ASYNC_TURBO"
 
-  labels = {
-    project    = "bunshin"
-    managed_by = "terraform"
-  }
+  labels = local.common_labels
 
   versioning {
     enabled = true
