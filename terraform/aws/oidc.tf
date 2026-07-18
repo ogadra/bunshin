@@ -14,7 +14,13 @@ locals {
   # ECS services that need deploy roles with ECR push and ECS deploy permissions
   ecs_deploy_services = toset(["nginx", "broker", "runner"])
 
-  ecs_regions = ["ap-northeast-1", "ap-northeast-3"]
+  # Stack region slug (used in Terraform module and IAM role names) → AWS region string
+  # The single source consumed by both ARN forms in deploy_ecs (service/task ARN via
+  # the AWS region, task-role/execution-role ARN via the slug).
+  stack_regions = {
+    apne1 = "ap-northeast-1"
+    apne3 = "ap-northeast-3"
+  }
 }
 
 # IAM roles for GitHub Actions deployment workflows per service
@@ -107,11 +113,11 @@ resource "aws_iam_role_policy" "deploy_ecs" {
         ]
         Resource = concat(
           [
-            for region in local.ecs_regions :
+            for region in values(local.stack_regions) :
             "arn:aws:ecs:${region}:${data.aws_caller_identity.current.account_id}:service/bunshin/bunshin-${each.key}"
           ],
           [
-            for region in local.ecs_regions :
+            for region in values(local.stack_regions) :
             "arn:aws:ecs:${region}:${data.aws_caller_identity.current.account_id}:task/bunshin/*"
           ],
         )
@@ -131,7 +137,7 @@ resource "aws_iam_role_policy" "deploy_ecs" {
         Effect = "Allow"
         Action = "iam:PassRole"
         Resource = flatten([
-          for region_slug in ["apne1", "apne3"] : [
+          for region_slug in keys(local.stack_regions) : [
             "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/bunshin-${region_slug}-${each.key}-task-execution",
             "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/bunshin-${region_slug}-${each.key}-task",
           ]
