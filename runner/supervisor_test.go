@@ -252,7 +252,9 @@ func TestSuperviseOnceCancelSendsSigterm(t *testing.T) {
 func TestSuperviseOnceCancelSigkillFallback(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cfg := testSupervisorConfig()
-	cfg.factory = func() *exec.Cmd { return exec.Command("sh", "-c", "trap '' TERM; sleep 30") }
+	cfg.factory = func() *exec.Cmd {
+		return exec.Command("sh", "-c", "trap '' TERM; while true; do sleep 1; done")
+	}
 	cfg.shutdownGrace = 100 * time.Millisecond
 
 	started := make(chan struct{})
@@ -270,6 +272,7 @@ func TestSuperviseOnceCancelSigkillFallback(t *testing.T) {
 	}
 
 	done := make(chan struct{})
+	start := time.Now()
 	go func() {
 		superviseOnce(ctx, cfg)
 		close(done)
@@ -280,11 +283,15 @@ func TestSuperviseOnceCancelSigkillFallback(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("child did not start within 2s")
 	}
+	time.Sleep(200 * time.Millisecond)
 	cancel()
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("superviseOnce did not return within 5s after cancel")
+	}
+	if elapsed := time.Since(start); elapsed < cfg.shutdownGrace {
+		t.Fatalf("superviseOnce returned in %v before shutdownGrace %v, SIGKILL fallback was not exercised", elapsed, cfg.shutdownGrace)
 	}
 }
 
