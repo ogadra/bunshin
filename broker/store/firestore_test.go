@@ -118,6 +118,9 @@ func TestNewFirestoreRepositoryWithAPI(t *testing.T) {
 	if repo.randHexFn == nil {
 		t.Error("randHexFn is nil")
 	}
+	if repo.logFn == nil {
+		t.Error("logFn is nil")
+	}
 }
 
 func TestRunnerDoc_ToModel_Idle(t *testing.T) {
@@ -550,13 +553,7 @@ func TestFirestoreAcquireIdle_AllStale(t *testing.T) {
 // 全 doc が malformed の場合は idle 枯渇として ErrNoIdleRunner を返し、log にスキップ理由を残す。
 func TestFirestoreAcquireIdle_AllMalformedNoIdleRunner(t *testing.T) {
 	t.Parallel()
-	origLog := firestoreLogPrintf
 	var logged []string
-	firestoreLogPrintf = func(format string, args ...any) {
-		logged = append(logged, format)
-	}
-	t.Cleanup(func() { firestoreLogPrintf = origLog })
-
 	api := &mockFirestoreClientAPI{
 		queryIdleRangeFn: func(context.Context, string, string, int) ([]FirestoreDocSnapshot, error) {
 			return []FirestoreDocSnapshot{{ID: "r1", Data: map[string]any{}}}, nil
@@ -564,6 +561,9 @@ func TestFirestoreAcquireIdle_AllMalformedNoIdleRunner(t *testing.T) {
 	}
 	repo := NewFirestoreRepositoryWithAPI(api)
 	repo.randHexFn = func() string { return firestoreTestStart }
+	repo.logFn = func(format string, args ...any) {
+		logged = append(logged, format)
+	}
 
 	_, err := repo.AcquireIdle(context.Background(), "sess-1")
 	if !errors.Is(err, ErrNoIdleRunner) {
@@ -578,10 +578,6 @@ func TestFirestoreAcquireIdle_AllMalformedNoIdleRunner(t *testing.T) {
 // 有効な doc に assign する。単一の壊れた document で AcquireIdle 全体が失敗しない。
 func TestFirestoreAcquireIdle_SkipMalformedContinueToNext(t *testing.T) {
 	t.Parallel()
-	origLog := firestoreLogPrintf
-	firestoreLogPrintf = func(string, ...any) {}
-	t.Cleanup(func() { firestoreLogPrintf = origLog })
-
 	updateCalled := ""
 	tx := &mockFirestoreTx{
 		getFn: func(runnerID string) (map[string]any, bool, error) {
@@ -607,6 +603,7 @@ func TestFirestoreAcquireIdle_SkipMalformedContinueToNext(t *testing.T) {
 	}
 	repo := NewFirestoreRepositoryWithAPI(api)
 	repo.randHexFn = func() string { return firestoreTestStart }
+	repo.logFn = func(string, ...any) {}
 
 	runner, err := repo.AcquireIdle(context.Background(), "sess-1")
 	if err != nil {
@@ -825,13 +822,7 @@ func TestFirestoreListBusyRunners_IterError(t *testing.T) {
 // 単一の壊れた document で /runners/busy 全体が失敗しないようにする。
 func TestFirestoreListBusyRunners_SkipMalformed(t *testing.T) {
 	t.Parallel()
-	origLog := firestoreLogPrintf
 	var logged []string
-	firestoreLogPrintf = func(format string, args ...any) {
-		logged = append(logged, format)
-	}
-	t.Cleanup(func() { firestoreLogPrintf = origLog })
-
 	iter := &mockFirestoreDocIter{
 		results: []nextResult{
 			{id: "r-bad", data: map[string]any{}},
@@ -842,6 +833,9 @@ func TestFirestoreListBusyRunners_SkipMalformed(t *testing.T) {
 		iterBusyFn: func(context.Context) FirestoreDocIter { return iter },
 	}
 	repo := NewFirestoreRepositoryWithAPI(api)
+	repo.logFn = func(format string, args ...any) {
+		logged = append(logged, format)
+	}
 	runners, err := repo.ListBusyRunners(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
