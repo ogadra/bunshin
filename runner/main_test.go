@@ -788,4 +788,3 @@ func TestRunSuperviseFnCanceledOnServeErr(t *testing.T) {
 		t.Fatal("superviseFn should have been canceled on serve error")
 	}
 }
-
