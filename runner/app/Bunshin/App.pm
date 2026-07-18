@@ -8,22 +8,22 @@ use Carp ();
 use HTML::Entities ();
 use Module::Refresh;
 
-my $HTML_SHELL = <<'HTML';
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>bunshin perl demo — 大吉祥寺.pm</title>
-<style>
-body { font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.6; }
-pre { background: #fee; padding: 1rem; border-radius: 4px; overflow: auto; }
-</style>
-</head>
-<body>
-%s
-</body>
-</html>
-HTML
+my $HTML_SHELL = <<~'HTML';
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <title>bunshin perl demo — 大吉祥寺.pm</title>
+        <style>
+          body { font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.6; }
+          pre { background: #fee; padding: 1rem; border-radius: 4px; overflow: auto; }
+        </style>
+      </head>
+      <body>
+        %s
+      </body>
+    </html>
+    HTML
 
 our $REFRESH_FN = sub { Module::Refresh->refresh };
 our $CONTENT_FN = sub {
