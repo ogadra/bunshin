@@ -4,6 +4,7 @@ use warnings;
 use FindBin;
 use lib "$FindBin::Bin/..";
 use Bunshin::HTTP;
+use Carp ();
 use Module::Refresh;
 
 my $HTML_SHELL = <<'HTML';
@@ -50,7 +51,11 @@ sub handle_conn {
     }
 
     my $body;
-    my $called = eval { $body = $CONTENT_FN->(); 1 };
+    my $called = eval {
+        local $SIG{__DIE__} = sub { die Carp::longmess($_[0]) };
+        $body = $CONTENT_FN->();
+        1;
+    };
     if (!$called) {
         Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page("DaiKichijoji::content died: $@"));
         return;

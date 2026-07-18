@@ -40,12 +40,13 @@ subtest 'refresh failure yields 500 with load-failed page' => sub {
     unlike $r, qr{never called};
 };
 
-subtest 'DaiKichijoji::content dying yields 500' => sub {
+subtest 'DaiKichijoji::content dying yields 500 with a stack trace' => sub {
     local $Bunshin::App::REFRESH_FN = sub { };
     local $Bunshin::App::CONTENT_FN = sub { die "boom\n" };
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
-    like $r, qr{DaiKichijoji::content died: boom};
+    like $r, qr{DaiKichijoji::content died: boom}, 'die message present';
+    like $r, qr{Bunshin::App::handle_conn}, 'stack trace names handle_conn frame';
 };
 
 subtest 'DaiKichijoji::content returning undef yields 500' => sub {
