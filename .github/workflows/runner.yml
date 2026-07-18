@@ -48,11 +48,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - name: Syntax check server.pl / handler.pl / BunshinServer.pm
+      - name: Syntax check server.pl / handler.pm / BunshinServer.pm
         run: |
           perl -Irunner/app -c runner/app/BunshinServer.pm
           perl -Irunner/app -c runner/app/server.pl
-          perl -c runner/app/handler.pl
+          perl -c runner/app/handler.pm
       - name: Run Perl tests
         run: prove -Irunner/app -v runner/app/t/
 

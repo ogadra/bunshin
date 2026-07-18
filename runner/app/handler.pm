@@ -16,7 +16,7 @@ code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 3px; }
 </head>
 <body>
 <h1>Hello from handler.pl</h1>
-<p>Edit <code>runner/app/handler.pl</code> in the editor to change this page.</p>
+<p>Edit <code>runner/app/handler.pm</code> in the editor to change this page.</p>
 </body>
 </html>
 HTML

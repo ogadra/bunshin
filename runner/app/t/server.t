@@ -145,7 +145,7 @@ subtest 'read_request dies when the body is shorter than Content-Length' => sub 
 sub write_handler {
     my ($content) = @_;
     my $dir = tempdir(CLEANUP => 1);
-    my $path = File::Spec->catfile($dir, 'handler.pl');
+    my $path = File::Spec->catfile($dir, 'handler.pm');
     open my $fh, '>', $path or die "open $path: $!";
     print $fh $content;
     close $fh;
