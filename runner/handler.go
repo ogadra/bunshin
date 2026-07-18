@@ -100,8 +100,8 @@ func handleGetAppHandler() gin.HandlerFunc {
 // handlePutAppHandler returns a gin handler for PUT /api/app/handler.
 // It writes the raw request body to /app/DaiKichijoji.pm atomically (tmp + rename)
 // so server.pl never `do`'s a half-written file. Requires
-// X-Bunshin-Client-Address and records an audit-log line so edits are
-// attributable, matching /api/execute's audit contract.
+// X-Bunshin-Client-Address and records an audit-log line, same shape as
+// /api/execute.
 func handlePutAppHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		remote, err := clientAddress(c)
@@ -126,7 +126,7 @@ func handlePutAppHandler() gin.HandlerFunc {
 
 // writeHandlerAtomically writes data to a sibling ".tmp" file and renames it
 // over the target so a concurrent server.pl re-load never observes a partial
-// file — rename is atomic on POSIX.
+// file. Rename is atomic on POSIX.
 func writeHandlerAtomically(path string, data []byte) error {
 	dir, base := filepath.Dir(path), filepath.Base(path)
 	tmp := filepath.Join(dir, "."+base+".tmp")

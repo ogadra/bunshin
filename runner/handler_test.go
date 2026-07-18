@@ -872,9 +872,7 @@ func TestPutAppHandlerSuccess(t *testing.T) {
 	}
 }
 
-// TestPutAppHandlerAuditLog verifies that PUT /api/app/handler records the
-// full written content in the audit log, not just its size, so a reviewer
-// can see exactly what code was deployed.
+// TestPutAppHandlerAuditLog verifies the audit log includes the written content.
 func TestPutAppHandlerAuditLog(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "DaiKichijoji.pm")
@@ -947,6 +945,40 @@ func TestPutAppHandlerBodyTooLarge(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "DaiKichijoji.pm")); err == nil {
 		t.Error("DaiKichijoji.pm should not be written on oversized body")
+	}
+}
+
+// TestPutAppHandlerBodyTooLargePreservesExistingFile verifies that a PUT
+// rejected for exceeding handlerAppMaxSize leaves an existing
+// DaiKichijoji.pm untouched.
+func TestPutAppHandlerBodyTooLargePreservesExistingFile(t *testing.T) {
+	setHandlerAppMaxSize(t, 4)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "DaiKichijoji.pm")
+	old := "package DaiKichijoji;\nsub content { return 'old' }\n1;\n"
+	if err := os.WriteFile(path, []byte(old), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	setHandlerAppFilePath(t, path)
+
+	sm := NewShellManager()
+	defer sm.CloseAll()
+	handler := newHandler(sm)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/app/handler", strings.NewReader("way too much content"))
+	setClientAddressHeader(req)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if string(got) != old {
+		t.Errorf("file = %q, want unchanged %q", got, old)
 	}
 }
 
