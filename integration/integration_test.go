@@ -820,9 +820,9 @@ const perlHmrRunnerHTTP = "http://runner-1:3000"
 // perlHmrPerlHTTP は runner-1 の Perl サーバー (:5000) の URL。
 const perlHmrPerlHTTP = "http://runner-1:5000"
 
-// snapshotHandlerPl は現在の /app/handler.pl を GET し、テスト終了時に PUT で書き戻す。
-// テスト間で handler.pl の状態が汚染されないようにするための helper。
-func snapshotHandlerPl(t *testing.T) {
+// snapshotHandler は現在の Handler.pm を GET し、テスト終了時に PUT で書き戻す。
+// テスト間で Handler.pm の状態が汚染されないようにするための helper。
+func snapshotHandler(t *testing.T) {
 	t.Helper()
 	resp, err := httpClient.Get(perlHmrRunnerHTTP + "/api/app/handler")
 	if err != nil {
@@ -836,21 +836,21 @@ func snapshotHandlerPl(t *testing.T) {
 	t.Cleanup(func() {
 		req, err := http.NewRequest(http.MethodPut, perlHmrRunnerHTTP+"/api/app/handler", strings.NewReader(string(original)))
 		if err != nil {
-			t.Logf("restore handler.pl: new request: %v", err)
+			t.Logf("restore Handler.pm: new request: %v", err)
 			return
 		}
 		req.Header.Set("X-Bunshin-Client-Address", perlHmrClientAddress)
 		resp, err := httpClient.Do(req)
 		if err != nil {
-			t.Logf("restore handler.pl: PUT: %v", err)
+			t.Logf("restore Handler.pm: PUT: %v", err)
 			return
 		}
 		resp.Body.Close()
 	})
 }
 
-// putHandlerPl は PUT /api/app/handler で handler.pl を上書きし、204 でなければ fail する。
-func putHandlerPl(t *testing.T, body string) {
+// putHandler は PUT /api/app/handler で Handler.pm を上書きし、204 でなければ fail する。
+func putHandler(t *testing.T, body string) {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodPut, perlHmrRunnerHTTP+"/api/app/handler", strings.NewReader(body))
 	if err != nil {
@@ -866,6 +866,10 @@ func putHandlerPl(t *testing.T, body string) {
 		respBody, _ := io.ReadAll(resp.Body)
 		t.Fatalf("PUT status = %d, body = %s", resp.StatusCode, respBody)
 	}
+}
+
+func handlerModuleSource(contentBody string) string {
+	return fmt.Sprintf("package Handler;\nuse strict;\nuse warnings;\nsub content { return %q; }\n1;\n", contentBody)
 }
 
 // getPerl は Perl サーバー (:5000) にリクエストし、ステータスと本文を返す。
@@ -897,12 +901,13 @@ func TestPerlHmrReachable(t *testing.T) {
 }
 
 // TestPerlHmrPutSwapsHandler は PUT /api/app/handler の直後の GET :5000 が
-// 新しい応答を返すことを検証する (server.pl の `do` 再読込による HMR 特性)。
+// 新しい content() の戻り値を HTML shell に埋めて返すことを検証する
+// (Module::Refresh による HMR)。
 func TestPerlHmrPutSwapsHandler(t *testing.T) {
-	snapshotHandlerPl(t)
+	snapshotHandler(t)
 
 	marker := fmt.Sprintf("hmr-marker-%d", time.Now().UnixNano())
-	putHandlerPl(t, fmt.Sprintf("sub { return (200, \"text/plain; charset=utf-8\", %q); };\n", marker))
+	putHandler(t, handlerModuleSource(marker))
 
 	status, body := getPerl(t)
 	if status != http.StatusOK {
@@ -913,13 +918,13 @@ func TestPerlHmrPutSwapsHandler(t *testing.T) {
 	}
 }
 
-// TestPerlHmrSyntaxErrorRecovers は壊れた handler.pl を PUT した直後の GET :5000 が
+// TestPerlHmrSyntaxErrorRecovers は壊れた Handler.pm を PUT した直後の GET :5000 が
 // 500 を返し、修正版を PUT すると 200 に戻ることを検証する。
 // server.pl がコンパイルエラーで死なないことも兼ねる (supervisor の再起動を必要としない)。
 func TestPerlHmrSyntaxErrorRecovers(t *testing.T) {
-	snapshotHandlerPl(t)
+	snapshotHandler(t)
 
-	putHandlerPl(t, "this is not perl at all !!!\n")
+	putHandler(t, "this is not perl at all !!!\n")
 	status, body := getPerl(t)
 	if status != http.StatusInternalServerError {
 		t.Fatalf("broken status = %d, body = %q", status, body)
@@ -928,7 +933,7 @@ func TestPerlHmrSyntaxErrorRecovers(t *testing.T) {
 		t.Errorf("expected error body from 500, got empty")
 	}
 
-	putHandlerPl(t, "sub { return (200, \"text/plain\", \"recovered\"); };\n")
+	putHandler(t, handlerModuleSource("recovered"))
 	status2, body2 := getPerl(t)
 	if status2 != http.StatusOK {
 		t.Fatalf("fixed status = %d, body = %q", status2, body2)
