@@ -13,7 +13,7 @@ use constant {
 sub run {
     my (%opts) = @_;
     my $content_fn = $opts{content_fn}
-        // return { status => 'died', error => "content_fn required\n" };
+        // Carp::croak 'content_fn required';
     my $timeout_ms = $opts{timeout_ms};
 
     local $SIG{CHLD} = 'DEFAULT';
@@ -82,9 +82,14 @@ sub _run_child {
     my ($writer, $content_fn) = @_;
 
     local $SIG{PIPE} = 'IGNORE';
+    $SIG{__WARN__} = sub {
+        return if $_[0] =~ /Bad file descriptor during global destruction/;
+        warn $_[0];
+    };
 
     my $body;
     my $ok = eval {
+        _close_inherited_fds(fileno($writer));
         local $SIG{__DIE__} = sub { die Carp::longmess($_[0]) };
         $body = $content_fn->();
         die "content returned undef\n" unless defined $body;
@@ -103,6 +108,22 @@ sub _run_child {
     print $writer TAG_ERR, $err;
     close $writer;
     POSIX::_exit(1);
+}
+
+sub _close_inherited_fds {
+    my ($keep_fd) = @_;
+    opendir(my $dh, '/proc/self/fd')
+        or die "cannot open /proc/self/fd: $!\n";
+    my $dh_fd = fileno($dh);
+    my @to_close;
+    while (my $entry = readdir $dh) {
+        next unless $entry =~ /\A(\d+)\z/;
+        my $fd = 0 + $1;
+        next if $fd < 3 || $fd == $keep_fd || $fd == $dh_fd;
+        push @to_close, $fd;
+    }
+    closedir $dh;
+    POSIX::close($_) for @to_close;
 }
 
 1;
