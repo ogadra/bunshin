@@ -7,7 +7,10 @@ resource "kubernetes_deployment_v1" "broker" {
 
   # KSA参照だけではWorkload Identity bindingの反映を待たず、Pod起動時にFirestore認証が
   # 失敗しうる。GSA側のIAM binding完了までDeploymentを保留する
-  depends_on = [google_service_account_iam_member.broker_workload_identity]
+  depends_on = [
+    google_service_account_iam_member.broker_workload_identity,
+    data.google_artifact_registry_docker_image.deployables["broker"],
+  ]
 
   metadata {
     name      = "broker"

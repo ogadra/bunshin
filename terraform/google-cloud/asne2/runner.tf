@@ -82,4 +82,6 @@ resource "kubernetes_deployment_v1" "runner" {
       }
     }
   }
+
+  depends_on = [data.google_artifact_registry_docker_image.deployables["runner"]]
 }

@@ -88,4 +88,6 @@ resource "kubernetes_deployment_v1" "nginx" {
       }
     }
   }
+
+  depends_on = [data.google_artifact_registry_docker_image.deployables["nginx"]]
 }

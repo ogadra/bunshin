@@ -13,3 +13,12 @@ resource "google_artifact_registry_repository" "bunshin" {
     }
   }
 }
+
+# image が未 push のまま apply が Deployment 作成に進むと Pod が ImagePullBackOff で
+# rollout 待ちに詰まる。plan 段階で image の存在を確認して落とす
+data "google_artifact_registry_docker_image" "deployables" {
+  for_each      = toset(["broker", "nginx", "runner"])
+  location      = google_artifact_registry_repository.bunshin.location
+  repository_id = google_artifact_registry_repository.bunshin.repository_id
+  image_name    = "${each.key}:${var.image_tag}"
+}

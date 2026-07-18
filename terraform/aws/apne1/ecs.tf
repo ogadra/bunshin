@@ -14,6 +14,14 @@ resource "aws_ecs_cluster" "apne1" {
   })
 }
 
+# image が未 push のまま apply が Task Definition 更新に進むと Task が
+# CannotPullContainerError で fail する。plan 段階で image の存在を確認して落とす
+data "aws_ecr_image" "deployables" {
+  for_each        = toset(["broker", "nginx", "runner"])
+  repository_name = "bunshin/${each.key}"
+  image_tag       = "latest"
+}
+
 resource "aws_ecs_task_definition" "nginx" {
   # checkov:skip=CKV_AWS_336:nginx requires writable tmp directories
   family                   = "bunshin-nginx"
@@ -60,6 +68,8 @@ resource "aws_ecs_task_definition" "nginx" {
   tags = merge(local.common_tags, {
     Service = "nginx"
   })
+
+  depends_on = [data.aws_ecr_image.deployables["nginx"]]
 }
 
 resource "aws_ecs_service" "nginx" {
@@ -143,6 +153,8 @@ resource "aws_ecs_task_definition" "broker" {
   tags = merge(local.common_tags, {
     Service = "broker"
   })
+
+  depends_on = [data.aws_ecr_image.deployables["broker"]]
 }
 
 resource "aws_ecs_service" "broker" {
@@ -216,6 +228,8 @@ resource "aws_ecs_task_definition" "runner" {
   tags = merge(local.common_tags, {
     Service = "runner"
   })
+
+  depends_on = [data.aws_ecr_image.deployables["runner"]]
 }
 
 resource "aws_ecs_service" "runner" {
