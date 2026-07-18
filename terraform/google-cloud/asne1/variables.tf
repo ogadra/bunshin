@@ -71,13 +71,3 @@ variable "peer_vpc_network" {
     error_message = "peer_vpc_network must be a compute network self_link (https://www.googleapis.com/compute/v1/projects/<project>/global/networks/<name>)."
   }
 }
-
-variable "project_id" {
-  description = "GCP project ID resolved at root from data.google_project.current (GOOGLE_CLOUD_PROJECT env); passed in because the google_project data source does not honor the alias provider's project attribute"
-  type        = string
-
-  validation {
-    condition     = can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", var.project_id))
-    error_message = "project_id must match GCP project ID format (6-30 chars, lowercase / digits / hyphen, starts with a letter, does not end with a hyphen)."
-  }
-}

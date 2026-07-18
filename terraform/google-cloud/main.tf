@@ -31,7 +31,6 @@ module "asne1" {
   domain_name               = var.domain_name
   image_tag                 = var.image_tag
   peer_vpc_network          = module.asne2.network_self_link
-  project_id                = data.google_project.current.project_id
 
   providers = {
     google     = google.asne1
@@ -52,7 +51,6 @@ module "asne2" {
   domain_name               = var.domain_name
   image_tag                 = var.image_tag
   peer_vpc_network          = module.asne1.network_self_link
-  project_id                = data.google_project.current.project_id
 
   providers = {
     google     = google.asne2

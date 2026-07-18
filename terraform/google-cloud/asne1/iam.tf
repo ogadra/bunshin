@@ -1,3 +1,5 @@
+data "google_client_config" "default" {}
+
 resource "google_service_account" "gke_node" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   account_id   = "bunshin-gke-node-asne1"
@@ -14,7 +16,7 @@ resource "google_project_iam_member" "gke_node" {
     "roles/stackdriver.resourceMetadata.writer",
   ])
 
-  project = var.project_id
+  project = data.google_client_config.default.project
   role    = each.value
   member  = google_service_account.gke_node.member
 }
@@ -35,5 +37,5 @@ resource "google_service_account_iam_member" "broker_workload_identity" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   service_account_id = var.broker_service_account_id
   role               = "roles/iam.workloadIdentityUser"
-  member             = "serviceAccount:${var.project_id}.svc.id.goog[${kubernetes_service_account_v1.broker.metadata[0].namespace}/${kubernetes_service_account_v1.broker.metadata[0].name}]"
+  member             = "serviceAccount:${data.google_client_config.default.project}.svc.id.goog[${kubernetes_service_account_v1.broker.metadata[0].namespace}/${kubernetes_service_account_v1.broker.metadata[0].name}]"
 }
