@@ -3,9 +3,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)"
 SERVICE="runner"
+PLATFORM="linux/amd64"
 ECR_REGION="ap-northeast-1"
 REPLICA_REGION="ap-northeast-3"
-ECS_REGIONS=(ap-northeast-1 ap-northeast-3)
+REGION_DIRS=(apne1 apne3)
 
 wait_for_replication() {
     local env_name="${1:?}"
@@ -30,76 +31,14 @@ wait_for_replication() {
     exit 1
 }
 
-wait_for_service_stable() {
-    local env_name="${1:?}"
-    local region="${2:?}"
-    local attempt
-    local state
-    local primary_rollout
-    local primary_running
-    local primary_desired
-    local active_count
-    local summary
-    local last_summary=""
-
-    for attempt in {1..150}; do
-        state="$(aws --profile "${env_name}" --region "${region}" ecs describe-services \
-            --cluster bunshin --services "bunshin-${SERVICE}" \
-            --query 'services[0].deployments' --output json)"
-        primary_rollout="$(jq -r 'map(select(.status == "PRIMARY"))[0].rolloutState // "UNKNOWN"' <<<"${state}")"
-        primary_running="$(jq -r 'map(select(.status == "PRIMARY"))[0].runningCount // 0' <<<"${state}")"
-        primary_desired="$(jq -r 'map(select(.status == "PRIMARY"))[0].desiredCount // 0' <<<"${state}")"
-        active_count="$(jq -r '[.[] | select(.status == "ACTIVE")] | length' <<<"${state}")"
-
-        summary="${primary_running}/${primary_desired} running, rollout ${primary_rollout}, ${active_count} draining"
-        if [[ "${summary}" != "${last_summary}" ]]; then
-            echo "[${region}] ${SERVICE}: ${summary}"
-            last_summary="${summary}"
-        fi
-
-        if [[ "${primary_rollout}" == "COMPLETED" && "${active_count}" -eq 0 \
-              && "${primary_running}" -eq "${primary_desired}" ]]; then
-            return
-        fi
-        if [[ "${primary_rollout}" == "FAILED" ]]; then
-            echo "Error: [${region}] ${SERVICE} rollout failed" >&2
-            exit 1
-        fi
-        sleep 10
-    done
-    echo "Error: [${region}] ${SERVICE} did not stabilize within timeout" >&2
-    exit 1
-}
-
 deploy_to_region() {
-    local env_name="${1:?}"
-    local region="${2:?}"
-    local aws_account_id="${3:?}"
-    local digest="${4:?}"
-    local image="${aws_account_id}.dkr.ecr.${region}.amazonaws.com/bunshin/${SERVICE}@${digest}"
-    local task_def_input
-    local new_task_def_arn
+    local region_dir="${1:?}"
 
-    echo "[${region}] registering ${SERVICE} task definition"
-    task_def_input="$(aws --profile "${env_name}" --region "${region}" ecs describe-task-definition \
-        --task-definition "bunshin-${SERVICE}" \
-        --query 'taskDefinition' \
-        | jq --arg image "${image}" --arg service "${SERVICE}" '
-            .containerDefinitions |= map(if .name == $service then .image = $image else . end)
-            | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
-        ')"
-    new_task_def_arn="$(aws --profile "${env_name}" --region "${region}" ecs register-task-definition \
-        --cli-input-json "${task_def_input}" \
-        --query 'taskDefinition.taskDefinitionArn' \
-        --output text)"
-    echo "[${region}] updating ${SERVICE} service to ${new_task_def_arn##*/}"
-    aws --profile "${env_name}" --region "${region}" ecs update-service \
-        --cluster bunshin \
-        --service "bunshin-${SERVICE}" \
-        --task-definition "${new_task_def_arn}" \
-        >/dev/null
-    wait_for_service_stable "${env_name}" "${region}"
-    echo "[${region}] ${SERVICE} stable"
+    echo "[${region_dir}] deploying ${SERVICE} via ecspresso"
+    ecspresso deploy \
+        --config "${ROOT_DIR}/deploy/aws/${region_dir}/${SERVICE}/ecspresso.yml" \
+        --rollback-events=DEPLOYMENT_FAILURE
+    echo "[${region_dir}] ${SERVICE} stable"
 }
 
 main() {
@@ -107,34 +46,26 @@ main() {
     local aws_account_id="${2:?Usage: scripts/aws/deploy/runner.sh <env> <aws_account_id>}"
     local image_tag
     local short_image_tag
-    local image
     local registry="${aws_account_id}.dkr.ecr.${ECR_REGION}.amazonaws.com"
     local digest
-    local region
-    local tags=()
+    local region_dir
     local pids=()
     local pid
     local exit_code=0
 
+    : "${TF_BACKEND_BUCKET:?TF_BACKEND_BUCKET must be set (tfstate bucket for ecspresso plugin)}"
+
     image_tag="$(git -C "${ROOT_DIR}" rev-parse HEAD)"
     short_image_tag="$(git -C "${ROOT_DIR}" rev-parse --short=7 HEAD)"
-    tags=(
-        "${registry}/bunshin/${SERVICE}:${image_tag}"
-        "${registry}/bunshin/${SERVICE}:${short_image_tag}"
-        "${registry}/bunshin/${SERVICE}:latest"
-    )
 
     echo "Deploying ${SERVICE} to ${env_name}"
     echo "[${SERVICE}] building image"
-    docker build \
-        -t "${tags[0]}" \
-        -t "${tags[1]}" \
-        -t "${tags[2]}" \
+    docker buildx build \
+        --platform "${PLATFORM}" \
+        -t "${registry}/bunshin/${SERVICE}:${image_tag}" \
+        -t "${registry}/bunshin/${SERVICE}:${short_image_tag}" \
+        --push \
         "${ROOT_DIR}/${SERVICE}"
-
-    for image in "${tags[@]}"; do
-        docker push "${image}"
-    done
     digest="$(aws --profile "${env_name}" --region "${ECR_REGION}" ecr describe-images \
         --repository-name "bunshin/${SERVICE}" \
         --image-ids "imageTag=${image_tag}" \
@@ -143,8 +74,12 @@ main() {
     echo "[${SERVICE}] pushed digest ${digest}"
     wait_for_replication "${env_name}" "${digest}"
 
-    for region in "${ECS_REGIONS[@]}"; do
-        deploy_to_region "${env_name}" "${region}" "${aws_account_id}" "${digest}" &
+    export AWS_PROFILE="${env_name}"
+    export ENV="${env_name}"
+    export IMAGE_TAG="${image_tag}"
+
+    for region_dir in "${REGION_DIRS[@]}"; do
+        deploy_to_region "${region_dir}" &
         pids+=("$!")
     done
     for pid in "${pids[@]}"; do

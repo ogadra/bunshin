@@ -8,21 +8,6 @@ output "vpc_cidr" {
   value       = local.vpc_cidr
 }
 
-output "broker_ecs_service_id" {
-  description = "ID of the broker ECS service"
-  value       = aws_ecs_service.broker.id
-}
-
-output "runner_ecs_service_id" {
-  description = "ID of the runner ECS service"
-  value       = aws_ecs_service.runner.id
-}
-
-output "nginx_ecs_service_id" {
-  description = "ID of the nginx ECS service"
-  value       = aws_ecs_service.nginx.id
-}
-
 output "private_subnet_cidrs" {
   description = "CIDR blocks of private subnets"
   value       = aws_subnet.apne3_private[*].cidr_block
