@@ -3,6 +3,7 @@ use strict;
 use warnings;
 use POSIX ();
 use Carp ();
+use Time::HiRes ();
 
 use constant {
     TAG_OK  => 'C',
@@ -13,6 +14,7 @@ sub run {
     my (%opts) = @_;
     my $content_fn = $opts{content_fn}
         // return { status => 'died', error => "content_fn required\n" };
+    my $timeout_ms = $opts{timeout_ms};
 
     local $SIG{CHLD} = 'DEFAULT';
 
@@ -32,14 +34,16 @@ sub run {
     }
 
     close $writer;
-    my $payload = do { local $/; <$reader> };
+    my ($payload, $timed_out) = _read_payload($reader, $timeout_ms);
     close $reader;
 
+    kill 'KILL', $pid if $timed_out;
     waitpid $pid, 0;
     my $status    = $?;
     my $signal    = $status & 0x7f;
     my $exit_code = $status >> 8;
 
+    return { status => 'timed_out', ms => $timeout_ms } if $timed_out;
     return { status => 'died', error => "killed by signal $signal\n" } if $signal;
 
     my $tag  = defined $payload && length $payload      ? substr($payload, 0, 1) : '';
@@ -48,6 +52,30 @@ sub run {
     return { status => 'ok',     body  => $body } if $exit_code == 0 && $tag eq TAG_OK;
     return { status => 'died',   error => $body } if $exit_code == 1 && $tag eq TAG_ERR;
     return { status => 'exited', code  => $exit_code };
+}
+
+sub _read_payload {
+    my ($reader, $timeout_ms) = @_;
+
+    return (scalar do { local $/; <$reader> }, 0) unless defined $timeout_ms;
+
+    my $mask = '';
+    vec($mask, fileno($reader), 1) = 1;
+    my $deadline = Time::HiRes::time() + $timeout_ms / 1000;
+    my $payload  = '';
+
+    while (1) {
+        my $remaining = $deadline - Time::HiRes::time();
+        return ($payload, 1) if $remaining <= 0;
+
+        my $ready = select(my $rout = $mask, undef, undef, $remaining);
+        return ($payload, 1) if !$ready;
+
+        my $chunk;
+        my $n = sysread($reader, $chunk, 65536);
+        return ($payload, 0) unless $n;
+        $payload .= $chunk;
+    }
 }
 
 sub _run_child {

@@ -73,6 +73,14 @@ subtest 'exited status with code 0 also yields 500' => sub {
     like $r, qr{DaiKichijoji::content exited with code 0};
 };
 
+subtest 'timed_out status yields 500 with elapsed budget' => sub {
+    local $Bunshin::App::REFRESH_FN     = sub { };
+    local $Bunshin::App::RUN_CONTENT_FN = sub { +{ status => 'timed_out', ms => 3000 } };
+    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
+    like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
+    like $r, qr{DaiKichijoji::content timed out: exceeded 3000ms};
+};
+
 subtest 'runner throwing an exception yields 500' => sub {
     local $Bunshin::App::REFRESH_FN     = sub { };
     local $Bunshin::App::RUN_CONTENT_FN = sub { die "runner internal error\n" };

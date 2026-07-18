@@ -31,8 +31,12 @@ our $CONTENT_FN = sub {
         or die "DaiKichijoji::content is not defined\n";
     $sub->();
 };
+our $CONTENT_TIMEOUT_MS = 3000;
 our $RUN_CONTENT_FN = sub {
-    Bunshin::ContentRunner::run(content_fn => $CONTENT_FN);
+    Bunshin::ContentRunner::run(
+        content_fn => $CONTENT_FN,
+        timeout_ms => $CONTENT_TIMEOUT_MS,
+    );
 };
 
 sub init {
@@ -67,6 +71,8 @@ sub handle_conn {
             Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page("DaiKichijoji::content died: $result->{error}"));
         } elsif ($_ eq 'exited') {
             Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page("DaiKichijoji::content exited with code $result->{code}"));
+        } elsif ($_ eq 'timed_out') {
+            Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page("DaiKichijoji::content timed out: exceeded $result->{ms}ms"));
         } else {
             Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page("content runner returned unknown status: $_"));
         }
