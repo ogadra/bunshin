@@ -30,6 +30,15 @@ resource "kubernetes_deployment_v1" "broker" {
       spec {
         service_account_name = kubernetes_service_account_v1.broker.metadata[0].name
 
+        topology_spread_constraint {
+          max_skew           = 1
+          topology_key       = "topology.kubernetes.io/zone"
+          when_unsatisfiable = "ScheduleAnyway"
+          label_selector {
+            match_labels = { app = "broker" }
+          }
+        }
+
         container {
           name  = "broker"
           image = "${local.image_registry}/broker:${var.image_tag}"
