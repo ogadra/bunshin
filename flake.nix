@@ -19,6 +19,7 @@
           awscli2
           checkov
           chromium
+          ecspresso
           gitleaks
           just
           go_1_26
