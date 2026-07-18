@@ -97,6 +97,7 @@ resource "terraform_data" "cluster_ready" {
     command     = <<-EOT
       for i in $(seq 1 120); do
         state="$(gcloud container fleet memberships describe ${google_gke_hub_membership.bunshin.membership_id} \
+          --project=${google_gke_hub_membership.bunshin.project} \
           --location=global --format='value(state.code)' 2>/dev/null || true)"
         if [ "$state" = "READY" ]; then
           exit 0

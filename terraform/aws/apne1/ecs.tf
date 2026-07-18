@@ -50,7 +50,7 @@ resource "aws_ecs_task_definition" "nginx" {
       { name = "INTERNAL_DOMAIN", value = var.domain_name },
       { name = "BUNSHIN_STACKS", value = join(",", var.bunshin_stacks) },
       { name = "NGINX_RESOLVER", value = "169.254.169.253" },
-      { name = "BROKER_HOST", value = "broker.internal" },
+      { name = "BROKER_HOST", value = "${aws_service_discovery_service.broker.name}.${aws_service_discovery_private_dns_namespace.internal.name}" },
     ]
 
     logConfiguration = {
