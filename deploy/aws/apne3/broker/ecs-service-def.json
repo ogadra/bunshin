@@ -1,11 +1,12 @@
 {
   "launchType": "FARGATE",
-  "desiredCount": 6,
+  "desiredCount": {{ must_env `BROKER_DESIRED_COUNT` }},
   "networkConfiguration": {
     "awsvpcConfiguration": {
       "subnets": [
         "{{ tfstate `module.apne3.aws_subnet.apne3_private[0].id` }}",
-        "{{ tfstate `module.apne3.aws_subnet.apne3_private[1].id` }}"
+        "{{ tfstate `module.apne3.aws_subnet.apne3_private[1].id` }}",
+        "{{ tfstate `module.apne3.aws_subnet.apne3_private[2].id` }}"
       ],
       "securityGroups": [
         "{{ tfstate `module.apne3.aws_security_group.broker.id` }}"
