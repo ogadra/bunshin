@@ -872,6 +872,42 @@ func TestPutAppHandlerSuccess(t *testing.T) {
 	}
 }
 
+// TestPutAppHandlerAuditLog verifies that PUT /api/app/handler records the
+// full written content in the audit log, not just its size, so a reviewer
+// can see exactly what code was deployed.
+func TestPutAppHandlerAuditLog(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "DaiKichijoji.pm")
+	setHandlerAppFilePath(t, path)
+
+	var buf bytes.Buffer
+	oldOutput := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(oldOutput) })
+
+	sm := NewShellManager()
+	defer sm.CloseAll()
+	handler := newHandler(sm)
+
+	body := "package DaiKichijoji;\nsub content { return 'hi' }\n1;\n"
+	req := httptest.NewRequest(http.MethodPut, "/api/app/handler", strings.NewReader(body))
+	setClientAddressHeader(req)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
+	}
+
+	logOutput := buf.String()
+	if !strings.Contains(logOutput, "class=handler-update") {
+		t.Fatalf("expected audit log to contain class=handler-update, got:\n%s", logOutput)
+	}
+	if !strings.Contains(logOutput, `command="package DaiKichijoji;\nsub content { return 'hi' }\n1;\n"`) {
+		t.Fatalf("expected audit log to contain the full written content, got:\n%s", logOutput)
+	}
+}
+
 func TestPutAppHandlerMissingClientAddress(t *testing.T) {
 	sm := NewShellManager()
 	defer sm.CloseAll()

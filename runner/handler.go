@@ -119,7 +119,7 @@ func handlePutAppHandler() gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, errorResponse{Error: err.Error()})
 			return
 		}
-		auditLog("", remote, handlerUpdateClass, fmt.Sprintf("PUT %s (%d bytes)", handlerAppFilePath, len(body)), nil, nil)
+		auditLog("", remote, handlerUpdateClass, string(body), nil, nil)
 		c.Status(http.StatusNoContent)
 	}
 }
