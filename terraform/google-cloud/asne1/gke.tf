@@ -107,13 +107,12 @@ resource "terraform_data" "cluster_ready" {
   triggers_replace = [google_gke_hub_membership.bunshin.id]
 
   provisioner "local-exec" {
-    interpreter = ["/bin/bash", "-c"]
+    interpreter = ["bash", "-c"]
     command     = <<-EOT
       for i in $(seq 1 60); do
         state="$(gcloud container fleet memberships describe ${google_gke_hub_membership.bunshin.membership_id} \
           --location=global --format='value(state.code)' 2>/dev/null || true)"
         if [ "$state" = "READY" ]; then
-          sleep 60
           exit 0
         fi
         sleep 10
