@@ -3,8 +3,8 @@ use strict;
 use warnings;
 use FindBin;
 use lib "$FindBin::Bin/..";
+use Bunshin::ContentRunner;
 use Bunshin::HTTP;
-use Carp ();
 use HTML::Entities ();
 use Module::Refresh;
 
@@ -31,6 +31,9 @@ our $CONTENT_FN = sub {
         or die "DaiKichijoji::content is not defined\n";
     $sub->();
 };
+our $RUN_CONTENT_FN = sub {
+    Bunshin::ContentRunner::run(content_fn => $CONTENT_FN);
+};
 
 sub init {
     Module::Refresh->refresh;
@@ -51,22 +54,22 @@ sub handle_conn {
         return;
     }
 
-    my $body;
-    my $called = eval {
-        local $SIG{__DIE__} = sub { die Carp::longmess($_[0]) };
-        $body = $CONTENT_FN->();
-        1;
-    };
-    if (!$called) {
-        Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page("DaiKichijoji::content died: $@"));
-        return;
-    }
-    if (!defined $body) {
-        Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page("DaiKichijoji::content returned undef"));
+    my $result = eval { $RUN_CONTENT_FN->() };
+    if (!$result) {
+        Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page("content runner failed: $@"));
         return;
     }
 
-    Bunshin::HTTP::respond($conn, 200, 'text/html; charset=utf-8', sprintf($HTML_SHELL, HTML::Entities::encode_entities($body)));
+    my $status = $result->{status};
+    if ($status eq 'ok') {
+        Bunshin::HTTP::respond($conn, 200, 'text/html; charset=utf-8', sprintf($HTML_SHELL, HTML::Entities::encode_entities($result->{body})));
+    } elsif ($status eq 'died') {
+        Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page("DaiKichijoji::content died: $result->{error}"));
+    } elsif ($status eq 'exited') {
+        Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page("DaiKichijoji::content exited with code $result->{code}"));
+    } else {
+        Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page("content runner returned unknown status: $status"));
+    }
 }
 
 sub build_error_page {
