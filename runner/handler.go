@@ -36,7 +36,7 @@ const handlerUpdateClass = "handler-update"
 
 // handlerAppFilePath is the perl demo handler that server.pl re-loads per
 // request. Kept as a var so tests can point it at a temp file.
-var handlerAppFilePath = "/app/Handler.pm"
+var handlerAppFilePath = "/app/DaiKichijoji.pm"
 
 // handlerAppMaxSize caps PUT /api/app/handler body length; the demo handler is
 // a page or two of Perl, so 1 MiB is well above any legitimate edit. Kept as
@@ -84,7 +84,7 @@ func newHandler(sm *ShellManager) *gin.Engine {
 }
 
 // handleGetAppHandler returns a gin handler for GET /api/app/handler.
-// It reads /app/Handler.pm and returns the current contents so the front
+// It reads /app/DaiKichijoji.pm and returns the current contents so the front
 // editor can seed itself without shell state.
 func handleGetAppHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -98,7 +98,7 @@ func handleGetAppHandler() gin.HandlerFunc {
 }
 
 // handlePutAppHandler returns a gin handler for PUT /api/app/handler.
-// It writes the raw request body to /app/Handler.pm atomically (tmp + rename)
+// It writes the raw request body to /app/DaiKichijoji.pm atomically (tmp + rename)
 // so server.pl never `do`'s a half-written file. Requires
 // X-Bunshin-Client-Address and records an audit-log line so edits are
 // attributable, matching /api/execute's audit contract.

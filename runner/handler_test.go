@@ -792,7 +792,7 @@ func setHandlerAppMaxSize(t *testing.T, size int64) {
 
 func TestGetAppHandlerSuccess(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "Handler.pm")
+	path := filepath.Join(dir, "DaiKichijoji.pm")
 	want := "sub { return (200, 'text/plain', 'hi'); };\n"
 	if err := os.WriteFile(path, []byte(want), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
@@ -836,7 +836,7 @@ func TestGetAppHandlerReadError(t *testing.T) {
 
 func TestPutAppHandlerSuccess(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "Handler.pm")
+	path := filepath.Join(dir, "DaiKichijoji.pm")
 	if err := os.WriteFile(path, []byte("old\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
@@ -892,7 +892,7 @@ func TestPutAppHandlerMissingClientAddress(t *testing.T) {
 func TestPutAppHandlerBodyTooLarge(t *testing.T) {
 	setHandlerAppMaxSize(t, 4)
 	dir := t.TempDir()
-	setHandlerAppFilePath(t, filepath.Join(dir, "Handler.pm"))
+	setHandlerAppFilePath(t, filepath.Join(dir, "DaiKichijoji.pm"))
 
 	sm := NewShellManager()
 	defer sm.CloseAll()
@@ -909,13 +909,13 @@ func TestPutAppHandlerBodyTooLarge(t *testing.T) {
 	if !strings.Contains(w.Body.String(), "read body") {
 		t.Errorf("body = %q, want error containing 'read body'", w.Body.String())
 	}
-	if _, err := os.Stat(filepath.Join(dir, "Handler.pm")); err == nil {
-		t.Error("Handler.pm should not be written on oversized body")
+	if _, err := os.Stat(filepath.Join(dir, "DaiKichijoji.pm")); err == nil {
+		t.Error("DaiKichijoji.pm should not be written on oversized body")
 	}
 }
 
 func TestPutAppHandlerWriteError(t *testing.T) {
-	setHandlerAppFilePath(t, filepath.Join(t.TempDir(), "no-such-parent", "Handler.pm"))
+	setHandlerAppFilePath(t, filepath.Join(t.TempDir(), "no-such-parent", "DaiKichijoji.pm"))
 
 	sm := NewShellManager()
 	defer sm.CloseAll()
@@ -934,7 +934,7 @@ func TestPutAppHandlerWriteError(t *testing.T) {
 func TestPutAppHandlerRenameError(t *testing.T) {
 	dir := t.TempDir()
 	// Point handlerAppFilePath at a directory; rename over a directory fails.
-	target := filepath.Join(dir, "Handler.pm")
+	target := filepath.Join(dir, "DaiKichijoji.pm")
 	if err := os.Mkdir(target, 0o755); err != nil {
 		t.Fatalf("Mkdir: %v", err)
 	}
@@ -955,8 +955,8 @@ func TestPutAppHandlerRenameError(t *testing.T) {
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
 	}
-	// tmp cleanup: the ".Handler.pm.tmp" sibling should not linger.
-	if _, err := os.Stat(filepath.Join(dir, ".Handler.pm.tmp")); err == nil {
+	// tmp cleanup: the ".DaiKichijoji.pm.tmp" sibling should not linger.
+	if _, err := os.Stat(filepath.Join(dir, ".DaiKichijoji.pm.tmp")); err == nil {
 		t.Error("tmp file should be cleaned up after rename failure")
 	}
 }
