@@ -60,15 +60,16 @@ sub handle_conn {
         return;
     }
 
-    my $status = $result->{status};
-    if ($status eq 'ok') {
-        Bunshin::HTTP::respond($conn, 200, 'text/html; charset=utf-8', sprintf($HTML_SHELL, HTML::Entities::encode_entities($result->{body})));
-    } elsif ($status eq 'died') {
-        Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page("DaiKichijoji::content died: $result->{error}"));
-    } elsif ($status eq 'exited') {
-        Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page("DaiKichijoji::content exited with code $result->{code}"));
-    } else {
-        Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page("content runner returned unknown status: $status"));
+    for ($result->{status}) {
+        if ($_ eq 'ok') {
+            Bunshin::HTTP::respond($conn, 200, 'text/html; charset=utf-8', sprintf($HTML_SHELL, HTML::Entities::encode_entities($result->{body})));
+        } elsif ($_ eq 'died') {
+            Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page("DaiKichijoji::content died: $result->{error}"));
+        } elsif ($_ eq 'exited') {
+            Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page("DaiKichijoji::content exited with code $result->{code}"));
+        } else {
+            Bunshin::HTTP::respond($conn, 500, 'text/html; charset=utf-8', build_error_page("content runner returned unknown status: $_"));
+        }
     }
 }
 
