@@ -80,18 +80,25 @@ subtest 'runner throwing an exception yields 500 with the raw error' => sub {
     like $r, qr{runner internal error};
 };
 
-subtest 'runner returning undef yields 500 with a no-result fallback' => sub {
+subtest 'runner returning undef yields 500 tagged undef' => sub {
     local $Bunshin::App::RUN_CONTENT_FN = sub { undef };
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
-    like $r, qr{content runner returned no result};
+    like $r, qr{content runner returned undef};
 };
 
-subtest 'runner returning a non-hash scalar yields 500 with a no-result fallback' => sub {
+subtest 'runner returning a non-hash scalar yields 500 tagged as invalid' => sub {
     local $Bunshin::App::RUN_CONTENT_FN = sub { 0 };
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
-    like $r, qr{content runner returned no result};
+    like $r, qr{content runner returned invalid result: non-ref scalar};
+};
+
+subtest 'runner returning a non-hash reference yields 500 tagged with the ref type' => sub {
+    local $Bunshin::App::RUN_CONTENT_FN = sub { [] };
+    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
+    like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
+    like $r, qr{content runner returned invalid result: ARRAY};
 };
 
 subtest 'malformed request yields 400 bad request' => sub {

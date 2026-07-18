@@ -3,6 +3,7 @@ use strict;
 use warnings;
 use POSIX ();
 use Carp ();
+use Errno ();
 use Time::HiRes ();
 
 use constant {
@@ -34,7 +35,16 @@ sub run {
     }
 
     close $writer;
-    my ($payload, $timed_out) = _read_payload($reader, $timeout_ms);
+
+    my ($payload, $timed_out);
+    if (defined $timeout_ms) {
+        $payload    = _read_until_deadline($reader, $timeout_ms);
+        $timed_out  = !defined $payload;
+        $payload  //= '';
+    } else {
+        $payload   = _read_blocking($reader);
+        $timed_out = 0;
+    }
     close $reader;
 
     kill 'KILL', $pid if $timed_out;
@@ -54,11 +64,13 @@ sub run {
     return { status => 'exited', code  => $exit_code };
 }
 
-sub _read_payload {
+sub _read_blocking {
+    my ($reader) = @_;
+    return scalar do { local $/; <$reader> };
+}
+
+sub _read_until_deadline {
     my ($reader, $timeout_ms) = @_;
-
-    return (scalar do { local $/; <$reader> }, 0) unless defined $timeout_ms;
-
     my $mask = '';
     vec($mask, fileno($reader), 1) = 1;
     my $deadline = Time::HiRes::time() + $timeout_ms / 1000;
@@ -66,14 +78,18 @@ sub _read_payload {
 
     while (1) {
         my $remaining = $deadline - Time::HiRes::time();
-        return ($payload, 1) if $remaining <= 0;
+        return undef if $remaining <= 0;
 
         my $ready = select(my $rout = $mask, undef, undef, $remaining);
-        return ($payload, 1) if !$ready;
+        return undef if !$ready;
 
         my $chunk;
         my $n = sysread($reader, $chunk, 65536);
-        return ($payload, 0) unless $n;
+        if (!defined $n) {
+            next if $! == Errno::EINTR;
+            return $payload;
+        }
+        return $payload if $n == 0;
         $payload .= $chunk;
     }
 }

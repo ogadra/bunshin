@@ -53,9 +53,19 @@ sub handle_conn {
         return;
     }
 
-    my $result = eval { $RUN_CONTENT_FN->() };
-    if (!$result || ref $result ne 'HASH') {
-        respond_error($conn, $@ || "content runner returned no result");
+    my $result;
+    my $ok = eval { $result = $RUN_CONTENT_FN->(); 1 };
+    if (!$ok) {
+        respond_error($conn, $@);
+        return;
+    }
+    if (!defined $result) {
+        respond_error($conn, "content runner returned undef");
+        return;
+    }
+    if (ref $result ne 'HASH') {
+        my $type = ref($result) || 'non-ref scalar';
+        respond_error($conn, "content runner returned invalid result: $type");
         return;
     }
 
