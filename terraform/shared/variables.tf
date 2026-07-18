@@ -1,9 +1,9 @@
-variable "domain_name" {
-  description = "Apex domain that shared vendor uses to compose cross-cloud DNS references"
+variable "aws_profile" {
+  description = "AWS CLI profile for the aws provider so apply targets the intended account"
   type        = string
 
   validation {
-    condition     = can(regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$", var.domain_name))
-    error_message = "domain_name must be a lowercase DNS-1123 hostname with at least one dot."
+    condition     = length(var.aws_profile) > 0
+    error_message = "aws_profile must not be empty."
   }
 }
