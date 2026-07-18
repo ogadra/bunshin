@@ -5,6 +5,7 @@ use FindBin;
 use lib "$FindBin::Bin/..";
 use Bunshin::HTTP;
 use Carp ();
+use HTML::Entities ();
 use Module::Refresh;
 
 my $HTML_SHELL = <<'HTML';
@@ -65,15 +66,12 @@ sub handle_conn {
         return;
     }
 
-    Bunshin::HTTP::respond($conn, 200, 'text/html; charset=utf-8', sprintf($HTML_SHELL, $body));
+    Bunshin::HTTP::respond($conn, 200, 'text/html; charset=utf-8', sprintf($HTML_SHELL, HTML::Entities::encode_entities($body)));
 }
 
 sub build_error_page {
     my ($msg) = @_;
-    my $escaped = $msg;
-    $escaped =~ s/&/&amp;/g;
-    $escaped =~ s/</&lt;/g;
-    $escaped =~ s/>/&gt;/g;
+    my $escaped = HTML::Entities::encode_entities($msg);
     return sprintf($HTML_SHELL, "<h1>Error</h1>\n<pre>$escaped</pre>");
 }
 

@@ -30,6 +30,14 @@ subtest 'happy path: content string is embedded in the HTML shell' => sub {
     like $r, qr{Hello from test};
 };
 
+subtest 'content HTML metacharacters are escaped' => sub {
+    local $Bunshin::App::REFRESH_FN = sub { };
+    local $Bunshin::App::CONTENT_FN = sub { "<b>bold</b>" };
+    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
+    like $r, qr{&lt;b&gt;bold&lt;/b&gt;}, 'metacharacters escaped';
+    unlike $r, qr{<b>bold</b>}, 'raw tag not present';
+};
+
 subtest 'refresh failure yields 500 with load-failed page' => sub {
     local $Bunshin::App::REFRESH_FN = sub { die "parse: line 3 syntax error\n" };
     local $Bunshin::App::CONTENT_FN = sub { "never called" };

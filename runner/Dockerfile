@@ -32,7 +32,7 @@ ENV SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"
 # Pin the exact versions instead of a floating `apk upgrade` so the image stays
 # reproducible; a version dropped from the repo fails the build loudly and
 # forces a base image bump rather than silently changing what ships.
-RUN apk add --no-cache bash=5.3.9-r1 libcrypto3=3.5.7-r0 libssl3=3.5.7-r0 perl=5.42.2-r0 perl-module-refresh=0.18-r2
+RUN apk add --no-cache bash=5.3.9-r1 libcrypto3=3.5.7-r0 libssl3=3.5.7-r0 perl=5.42.2-r0 perl-html-parser=3.83-r1 perl-module-refresh=0.18-r2
 
 COPY ./app/ /app/
 WORKDIR /app
