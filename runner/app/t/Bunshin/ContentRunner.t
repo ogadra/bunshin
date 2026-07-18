@@ -5,6 +5,7 @@ use FindBin;
 use lib "$FindBin::Bin/../..";
 use Bunshin::ContentRunner;
 use POSIX ();
+use Time::HiRes ();
 
 $SIG{ALRM} = sub { die "test watchdog: hang detected\n" };
 alarm 30;
@@ -83,6 +84,62 @@ subtest 'ok: parent SIG{CHLD} = IGNORE does not break waitpid in the runner' => 
     my $r = Bunshin::ContentRunner::run(content_fn => sub { "post-ignore" });
     is $r->{status}, 'ok';
     is $r->{body},   'post-ignore';
+};
+
+subtest 'timed_out: content exceeds timeout budget' => sub {
+    my $t0 = Time::HiRes::time();
+    my $r  = Bunshin::ContentRunner::run(
+        content_fn => sub { sleep 5; "unreachable" },
+        timeout_ms => 200,
+    );
+    my $elapsed_ms = (Time::HiRes::time() - $t0) * 1000;
+    is $r->{status}, 'timed_out';
+    is $r->{ms},     200;
+    cmp_ok $elapsed_ms, '<', 2000, 'timed out before content sleep completed';
+};
+
+subtest 'timed_out: fires when parent has SIG{ALRM} = IGNORE' => sub {
+    local $SIG{ALRM} = 'IGNORE';
+    my $r = Bunshin::ContentRunner::run(
+        content_fn => sub { sleep 5; "unreachable" },
+        timeout_ms => 200,
+    );
+    is $r->{status}, 'timed_out', 'timeout fires when parent ignores SIGALRM';
+};
+
+subtest 'timed_out: fires when content sets SIG{ALRM} = IGNORE' => sub {
+    my $r = Bunshin::ContentRunner::run(
+        content_fn => sub { $SIG{ALRM} = 'IGNORE'; sleep 5; "unreachable" },
+        timeout_ms => 200,
+    );
+    is $r->{status}, 'timed_out', 'timeout fires when content ignores SIGALRM';
+};
+
+subtest 'ok: fast content finishes before the timeout budget' => sub {
+    my $r = Bunshin::ContentRunner::run(
+        content_fn => sub { "quick" },
+        timeout_ms => 3000,
+    );
+    is $r->{status}, 'ok';
+    is $r->{body},   'quick';
+};
+
+subtest 'ok: large payload with timeout drives multiple sysread iterations' => sub {
+    my $r = Bunshin::ContentRunner::run(
+        content_fn => sub { 'x' x (128 * 1024) },
+        timeout_ms => 3000,
+    );
+    is $r->{status}, 'ok';
+    is length $r->{body}, 128 * 1024;
+};
+
+subtest 'exited: exit(42) classifies as exited when timeout_ms is set' => sub {
+    my $r = Bunshin::ContentRunner::run(
+        content_fn => sub { exit 42 },
+        timeout_ms => 3000,
+    );
+    is $r->{status}, 'exited';
+    is $r->{code},   42;
 };
 
 subtest 'security: grandchild does not inherit unrelated parent fds' => sub {

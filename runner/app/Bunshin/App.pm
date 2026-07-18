@@ -30,10 +30,14 @@ my $CONTENT_FN = sub {
         or die "DaiKichijoji::content is not defined\n";
     $sub->();
 };
-
-our $REFRESH_FN     = sub { Module::Refresh->refresh };
 our $RUN_CONTENT_FN = sub {
-    Bunshin::ContentRunner::run(content_fn => $CONTENT_FN);
+    unless (eval { Module::Refresh->refresh; 1 }) {
+        die "DaiKichijoji.pm load failed: $@";
+    }
+    return Bunshin::ContentRunner::run(
+        content_fn => $CONTENT_FN,
+        timeout_ms => 3000,
+    );
 };
 
 sub init {
@@ -49,15 +53,19 @@ sub handle_conn {
         return;
     }
 
-    my $refreshed = eval { $REFRESH_FN->(); 1 };
-    if (!$refreshed) {
-        respond_error($conn, "DaiKichijoji.pm load failed: $@");
+    my $result;
+    my $ok = eval { $result = $RUN_CONTENT_FN->(); 1 };
+    if (!$ok) {
+        respond_error($conn, $@);
         return;
     }
-
-    my $result = eval { $RUN_CONTENT_FN->() };
-    if (!$result || ref $result ne 'HASH') {
-        respond_error($conn, "content runner failed: $@");
+    if (!defined $result) {
+        respond_error($conn, "content runner returned undef");
+        return;
+    }
+    if (ref $result ne 'HASH') {
+        my $type = ref($result) || 'non-ref scalar';
+        respond_error($conn, "content runner returned invalid result: $type");
         return;
     }
 
@@ -68,6 +76,8 @@ sub handle_conn {
             respond_error($conn, "DaiKichijoji::content died: $result->{error}");
         } elsif ($_ eq 'exited') {
             respond_error($conn, "DaiKichijoji::content exited with code $result->{code}");
+        } elsif ($_ eq 'timed_out') {
+            respond_error($conn, "DaiKichijoji::content timed out: exceeded $result->{ms}ms");
         } else {
             respond_error($conn, "content runner returned unknown status: $_");
         }
