@@ -30,6 +30,8 @@ resource "google_certificate_manager_certificate_map" "apex" {
   description = "Certificate map bound to Global External ALB target_https_proxy"
 
   labels = local.common_labels
+
+  depends_on = [google_project_service.apis["certificatemanager.googleapis.com"]]
 }
 
 resource "google_certificate_manager_certificate_map_entry" "apex" {
