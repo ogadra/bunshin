@@ -1,5 +1,12 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { createShell, deleteShell, execute, SseEventType } from "./client";
+import {
+  createShell,
+  deleteShell,
+  execute,
+  getAppHandler,
+  putAppHandler,
+  SseEventType,
+} from "./client";
 import { SessionReassignedError } from "./errors/SessionReassignedError";
 
 const mockFetch = vi.fn();
@@ -32,6 +39,36 @@ const sseBody = (lines: string[]) => {
     },
   };
 };
+
+describe("getAppHandler", () => {
+  test("GET /api/app/handler returns text body", async () => {
+    mockFetch.mockResolvedValue({ ok: true, text: async () => "sub { };" });
+    await expect(getAppHandler()).resolves.toBe("sub { };");
+    expect(mockFetch).toHaveBeenCalledWith("/api/app/handler", { signal: undefined });
+  });
+
+  test("throws on non-ok response", async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 500 });
+    await expect(getAppHandler()).rejects.toThrow("Failed to get handler: 500");
+  });
+});
+
+describe("putAppHandler", () => {
+  test("PUT /api/app/handler with body", async () => {
+    mockFetch.mockResolvedValue({ ok: true });
+    await putAppHandler("sub { return (200, 'text/plain', 'ok'); };");
+    expect(mockFetch).toHaveBeenCalledWith("/api/app/handler", {
+      method: "PUT",
+      body: "sub { return (200, 'text/plain', 'ok'); };",
+      signal: undefined,
+    });
+  });
+
+  test("throws on non-ok response", async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 400 });
+    await expect(putAppHandler("body")).rejects.toThrow("Failed to put handler: 400");
+  });
+});
 
 describe("createShell", () => {
   test("POST /api/shell", async () => {

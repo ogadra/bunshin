@@ -1,5 +1,55 @@
-import { createPerlEditor } from "./editor";
+import { getAppHandler, putAppHandler } from "./client";
+import { createPerlEditor, type PerlEditorHandle } from "./editor";
 import { samplePerl } from "./samplePerl";
 import "./style.css";
 
-createPerlEditor(document.getElementById("editor")!, samplePerl);
+// Perl 側は `do` で毎リクエスト再読込するので、送信完了直後の iframe fetch は必ず新版を返す。
+// debounce は編集の手が止まった判定に使う時間で、送信間隔ではない
+const DEBOUNCE_MS = 1000;
+
+const PERL_URL = "http://127.0.0.1:5000/";
+
+const editorEl = document.getElementById("editor") as HTMLElement;
+const iframe = document.getElementById("preview") as HTMLIFrameElement;
+
+const initialCode = await getAppHandler().catch((err: unknown) => {
+  console.warn("GET /api/app/handler failed, falling back to sample", err);
+  return samplePerl;
+});
+
+const editor: PerlEditorHandle = createPerlEditor(editorEl, initialCode);
+
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+let inFlight = false;
+let lastSent: string | null = initialCode;
+
+const reloadPreview = (): void => {
+  // 同じ URL を代入しても reload しないブラウザがあるため、cache-buster を付ける
+  iframe.src = `${PERL_URL}?_=${String(performance.now())}`;
+};
+
+const flush = async (): Promise<void> => {
+  if (inFlight) return;
+  inFlight = true;
+  try {
+    // in-flight 中に届いた最新値まで追いつく。同じ内容を無駄に PUT しないよう lastSent と比較する
+    while (editor.value !== lastSent) {
+      const snapshot = editor.value;
+      await putAppHandler(snapshot);
+      lastSent = snapshot;
+      reloadPreview();
+    }
+  } catch (err: unknown) {
+    console.error("PUT /api/app/handler failed", err);
+  } finally {
+    inFlight = false;
+  }
+};
+
+editor.onChange(() => {
+  if (debounceTimer !== null) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    debounceTimer = null;
+    void flush();
+  }, DEBOUNCE_MS);
+});
