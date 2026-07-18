@@ -22,6 +22,4 @@ COPY --chown=nginx:nginx lua/ /usr/local/openresty/nginx/lua/
 COPY --chown=nginx:nginx nginx.conf /etc/nginx/nginx.conf.template
 RUN rm -f /usr/local/openresty/nginx/lua/*_test.lua
 USER nginx
-# resolver / broker host は cloud ごとに違う値になり、単一 image を multi-region に push する
-# 都合上 build 時に bake できない。task/pod で env として渡し container 起動時に envsubst する
 CMD ["/bin/sh", "-c", "envsubst '${NGINX_RESOLVER} ${BROKER_HOST}' < /etc/nginx/nginx.conf.template > /usr/local/openresty/nginx/conf/nginx.conf && exec openresty -g 'daemon off;'"]

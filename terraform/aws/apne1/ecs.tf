@@ -14,8 +14,6 @@ resource "aws_ecs_cluster" "apne1" {
   })
 }
 
-# image が未 push のまま apply が Task Definition 更新に進むと Task が
-# CannotPullContainerError で fail する。plan 段階で image の存在を確認して落とす
 data "aws_ecr_image" "deployables" {
   for_each        = toset(["broker", "nginx", "runner"])
   repository_name = "bunshin/${each.key}"
