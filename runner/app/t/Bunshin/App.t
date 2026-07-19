@@ -126,6 +126,30 @@ subtest 'real defaults: refresh failure gets wrapped with the load-failed prefix
     like $r, qr{DaiKichijoji\.pm load failed: parse: line 3 syntax error};
 };
 
+subtest 'real defaults: compile-error warning from refresh surfaces on the 500 page' => sub {
+    no warnings 'redefine';
+    my $orig = \&Module::Refresh::refresh;
+    local *Module::Refresh::refresh = sub {
+        warn "syntax error at /app/DaiKichijoji.pm line 2, at EOF\nCompilation failed in require at Module/Refresh.pm line 121.\n";
+    };
+    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
+    local *Module::Refresh::refresh = $orig;
+    like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
+    like $r, qr{DaiKichijoji\.pm load failed:};
+    like $r, qr{syntax error at /app/DaiKichijoji\.pm line 2};
+};
+
+subtest 'real defaults: non-compile warnings from refresh do not become a 500' => sub {
+    no warnings 'redefine';
+    my $orig = \&Module::Refresh::refresh;
+    local *Module::Refresh::refresh = sub {
+        warn "Use of uninitialized value in something at foo.pm line 5.\n";
+    };
+    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
+    local *Module::Refresh::refresh = $orig;
+    like $r, qr{^HTTP/1\.1 200 OK\r\n}, 'unrelated warnings pass through';
+};
+
 subtest 'real defaults: dispatches through the real ContentRunner and DaiKichijoji' => sub {
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 200 OK\r\n};
