@@ -885,11 +885,9 @@ func getPerl(t *testing.T, host string) (int, string) {
 	return resp.StatusCode, string(body)
 }
 
-// waitPerlResponse は固定 sleep ではなくポーリングにすることで、
-// supervisor 起動待ち・Module::Refresh の mtime 検知待ち・復旧 PUT の反映待ちを
-// 同じ待ち方に揃える。
-// ただし連続書き込みの mtime 衝突は response 待ちでは解消できないため、
-// PUT 側で境界跨ぎを保証する必要がある (TestPerlHmrSyntaxErrorRecovers 参照)。
+// waitPerlResponse は 500ms 間隔でポーリングし、反映タイミング (supervisor 起動、
+// mtime 検知、PUT 反映) を 1 本の待ち方に揃える。
+// 連続書き込みの mtime 衝突は response 待ちで解消できず、PUT 側で境界跨ぎを保証すること。
 func waitPerlResponse(t *testing.T, host string, wantStatus int, wantBody string) {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
