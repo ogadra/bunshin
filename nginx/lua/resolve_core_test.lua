@@ -82,7 +82,6 @@ check("configure rejects fractional app_port", not pcall(core.configure, "ap-nor
 
 core.configure("ap-northeast-1", "example.com", "ap-northeast-1,ap-northeast-2,ap-northeast-3", 5000)
 check("fallback excludes attempted owner", core.fallback_remaining_excluding("ap-northeast-2") == "ap-northeast-3")
-check("configure stores app_port", core.app_port() == 5000)
 core.configure("ap-northeast-1", "example.com", "ap-northeast-1,ap-northeast-3,ap-northeast-2,ap-northeast-4", 5000)
 check("fallback keeps configured order", core.fallback_remaining_excluding("ap-northeast-2") == "ap-northeast-3,ap-northeast-4")
 core.configure("ap-northeast-1", "example.com", "ap-northeast-1,ap-northeast-3", 5000)
@@ -189,7 +188,7 @@ check("client_address public falls to remote when cloudfront empty",
 check("client_address public falls to remote when cloudfront nil",
     core.client_address(false, nil, nil, "10.0.0.1", "12345") == "10.0.0.1:12345")
 
--- parse_app_host: 32 hex label + 既知 stack + internal_domain 完全一致だけ通す
+-- parse_app_host: 32 hex label + 既知stack + internal_domain完全一致だけ通す
 core.configure("ap-northeast-1", "internal.example.com", "ap-northeast-1,ap-northeast-3", 5000)
 local HEX = string.rep("a", 32)
 r = core.parse_app_host(HEX .. ".ap-northeast-1.internal.example.com")
@@ -205,7 +204,7 @@ check("parse_app_host rejects extra suffix", core.parse_app_host(HEX .. ".ap-nor
 check("parse_app_host rejects nil", core.parse_app_host(nil) == nil)
 check("parse_app_host rejects empty", core.parse_app_host("") == nil)
 
--- decide_app_arrival: 自 stack のみ hex を返し、他 stack / 不正はすべて 404
+-- decide_app_arrival: 自stackのみhexを返し、他stack / 不正はすべて404
 r = core.decide_app_arrival(HEX .. ".ap-northeast-1.internal.example.com")
 check("app_arrival own stack returns hex", r.hex == HEX and r.exit == nil)
 r = core.decide_app_arrival(HEX .. ".ap-northeast-3.internal.example.com")
@@ -215,7 +214,7 @@ check("app_arrival unknown stack 404", r.exit == 404)
 r = core.decide_app_arrival("app.example.com")
 check("app_arrival non-pf host 404", r.exit == 404)
 
--- decide_app_resolve: 200 + 有効な runner URL のときだけ host:app_port の upstream を返す
+-- decide_app_resolve: 200 + 有効なrunner URLのときだけhost:app_portのupstreamを返す
 r = core.decide_app_resolve(200, { ["X-Runner-Url"] = "http://runner-1:3000" })
 check("app_resolve builds upstream with app_port", r.upstream == "http://runner-1:5000")
 r = core.decide_app_resolve(200, { ["X-Runner-Url"] = "http://10.0.0.1" })
@@ -230,6 +229,8 @@ r = core.decide_app_resolve(200, { ["X-Runner-Url"] = "http://evil/path" })
 check("app_resolve invalid URL 404", r.exit == 404)
 r = core.decide_app_resolve(200, { ["X-Runner-Url"] = "https://runner:3000" })
 check("app_resolve https URL 404", r.exit == 404)
+r = core.decide_app_resolve(200, { ["X-Runner-Url"] = { "http://runner-1:3000", "http://runner-2:3000" } })
+check("app_resolve duplicate X-Runner-Url 404", r.exit == 404)
 
 if failed > 0 then
     io.stderr:write(string.format("resolve_core: %d check(s) failed\n", failed))
