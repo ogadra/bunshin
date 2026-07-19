@@ -95,7 +95,7 @@ misconfigurations:
     statement: Autopilot manages seccompProfile
   - id: KSV-0106
     paths: ["deploy/google-cloud/**"]
-    statement: image tag is a git SHA (immutable); Always is redundant
+    statement: Autopilot enforces baseline capability drops
   - id: KSV-0111
     paths: ["deploy/google-cloud/**"]
     statement: Autopilot manages fsGroupChangePolicy
