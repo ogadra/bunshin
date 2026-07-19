@@ -59,7 +59,7 @@ spec:
             - name: INTERNAL_DOMAIN
               value: ${INTERNAL_DOMAIN}
             - name: BUNSHIN_STACKS
-              value: asia-northeast1,asia-northeast2
+              value: ${BUNSHIN_STACKS}
           resources:
             requests:
               cpu: 250m
