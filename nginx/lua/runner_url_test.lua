@@ -1,10 +1,10 @@
--- runner_url.is_valid の境界値テスト。
--- brokerが返す X-Runner-Host は host label 形式のみを許可する。
+-- runner_url.is_validの境界値テスト。
+-- brokerが返すX-Runner-Hostはhost label形式のみを許可する。
 package.path = "/usr/local/openresty/nginx/lua/?.lua;" .. package.path
 local runner_url = require("runner_url")
 
 local cases = {
-    -- 正常: 英数字 / ドット / ハイフンだけの host label
+    -- 正常: 英数字 / ドット / ハイフンだけのhost label
     { host = "h", want = true },
     { host = "runner-1", want = true },
     { host = "runner.local", want = true },

@@ -1,6 +1,6 @@
--- brokerが返す X-Runner-Host の host label を検証する。
--- SSRF / proxy_pass ヘッダー injection を防ぐため、
--- 英数字 / ドット / ハイフンのみの host label に限定する。
+-- brokerが返すX-Runner-Hostのhost labelを検証する。
+-- SSRF / proxy_passヘッダーinjectionを防ぐため、
+-- 英数字 / ドット / ハイフンのみのhost labelに限定する。
 local _M = {}
 
 function _M.is_valid(host)

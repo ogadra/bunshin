@@ -1,5 +1,5 @@
--- /resolve/session サブリクエスト応答 (res) から、クライアントへの振る舞いを決める純関数。
--- broker は host-only 契約 (X-Runner-Host) を返し、nginx が用途別 port を貼る。
+-- /resolve/sessionサブリクエスト応答 (res) から、クライアントへの振る舞いを決める純関数。
+-- brokerはhost-only契約 (X-Runner-Host) を返し、nginxが用途別portを貼る。
 local runner_url = require("runner_url")
 
 local _M = {}
@@ -99,8 +99,8 @@ function _M.host_of(stack, stacks, domain)
     return stack .. "." .. domain
 end
 
--- 内部 ALB 経由 (= Host が <stack>.<internal_domain> の完全一致) の要求か判定する。
--- 完全一致にしないと、公開経路から regex にマッチする Host を作られ X-Fallback-* を詐称できる。
+-- 内部ALB経由 (= Hostが<stack>.<internal_domain>の完全一致) の要求か判定する。
+-- 完全一致にしないと、公開経路からregexにマッチするHostを作られX-Fallback-*を詐称できる。
 function _M.is_internal_host(host)
     if type(host) ~= "string" or internal_domain_name == "" then
         return false
@@ -242,7 +242,7 @@ function _M.decide_app_arrival(host)
     return { hex = parsed.hex }
 end
 
--- broker /resolve/app の応答からport-forward先 (host:app_port) を組み立てる。
+-- broker /resolve/appの応答からport-forward先 (host:app_port) を組み立てる。
 -- 200以外や不正なhostは404に丸める。
 -- 他stackや不在と同じ結果を返し、session存在を推測させない。
 function _M.decide_app_resolve(status, headers)

@@ -2,8 +2,8 @@
 -- brokerの実ステータスをそのままクライアントへ返す。
 local core = require("resolve_core")
 
--- Host が <stack>.<internal_domain> 完全一致のときだけ X-Fallback-* / X-Bunshin-Client-Address
--- を信頼する。公開経路から regex にマッチする Host を作られても詐称できないよう完全一致で閉じる。
+-- Hostが<stack>.<internal_domain>完全一致のときだけX-Fallback-* / X-Bunshin-Client-Address
+-- を信頼する。公開経路からregexにマッチするHostを作られても詐称できないよう完全一致で閉じる。
 local from_internal = core.is_internal_host(ngx.var.host)
 local relay_fallback_stack = core.relay_if_internal(from_internal, ngx.var.http_x_fallback_stack)
 local relay_fallback_remaining = core.relay_if_internal(from_internal, ngx.var.http_x_fallback_remaining)
@@ -16,8 +16,8 @@ ngx.var.bunshin_client_address = core.client_address(
     ngx.var.remote_addr,
     ngx.var.remote_port
 )
--- /_resolve サブリクエストは独立した変数スコープを持ち、 ngx.var 書き戻しが届かない。
--- 親のリクエストヘッダに焼き直して subrequest 側で継承させる。
+-- /_resolveサブリクエストは独立した変数スコープを持ち、ngx.var書き戻しが届かない。
+-- 親のリクエストヘッダに焼き直してsubrequest側で継承させる。
 ngx.req.set_header("X-Fallback-Stack", relay_fallback_stack)
 ngx.req.set_header("X-Fallback-Remaining", relay_fallback_remaining)
 
