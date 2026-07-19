@@ -813,8 +813,6 @@ const perlHmrStack = "ap-northeast-1"
 
 const perlHmrPortForwardDomain = "internal.test"
 
-// portForwardHost builds the "{hex32}.{stack}.<domain>" Host that nginx's
-// port-forward routing resolves to the session's runner on :5000.
 func portForwardHost(t *testing.T, cookies sessionCookies) string {
 	t.Helper()
 	_, hex, ok := strings.Cut(cookies.SessionID, "_")
@@ -824,9 +822,6 @@ func portForwardHost(t *testing.T, cookies sessionCookies) string {
 	return hex + "." + perlHmrStack + "." + perlHmrPortForwardDomain
 }
 
-// snapshotHandler は現在の DaiKichijoji.pm を nginx 経由で GET し、
-// テスト終了時に PUT で書き戻す。
-// テスト間で DaiKichijoji.pm の状態が汚染されないようにする。
 func snapshotHandler(t *testing.T, cookies sessionCookies) {
 	t.Helper()
 	resp := doRequest(t, http.MethodGet, nginxBase+"/api/app/handler", "", cookies.cookieHeader())
@@ -843,10 +838,8 @@ func snapshotHandler(t *testing.T, cookies sessionCookies) {
 	})
 }
 
-// putHandlerRaw の fail 引数は、書き込み側 (t.Fatalf) と cleanup 側 (t.Errorf)
-// で失敗経路を切り替えるためのもの。
-// cleanup で t.Fatalf すると後続 cleanup が走らない一方で、
-// 本体テストでは即時停止させたいため経路を一本化するのに引数化する。
+// cleanup から t.Fatalf を呼ぶと後続 cleanup がスキップされるため、fail 引数で失敗経路を注入する。
+// 本体では t.Fatalf、cleanup では t.Errorf を渡す。
 func putHandlerRaw(t *testing.T, cookies sessionCookies, body io.Reader, fail func(format string, args ...any)) {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodPut, nginxBase+"/api/app/handler", body)
@@ -885,9 +878,7 @@ func getPerl(t *testing.T, host string) (int, string) {
 	return resp.StatusCode, string(body)
 }
 
-// waitPerlResponse は 500ms 間隔でポーリングし、反映タイミング (supervisor 起動、
-// mtime 検知、PUT 反映) を 1 本の待ち方に揃える。
-// 連続書き込みの mtime 衝突は response 待ちで解消できず、PUT 側で境界跨ぎを保証すること。
+// 連続書き込みの mtime 衝突は response 待ちで解消できないため、PUT 側で境界跨ぎを保証すること。
 func waitPerlResponse(t *testing.T, host string, wantStatus int, wantBody string) {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
@@ -906,17 +897,12 @@ func waitPerlResponse(t *testing.T, host string, wantStatus int, wantBody string
 	t.Fatalf("perl did not return status=%d body containing %q within 30s: last status=%d body=%q", wantStatus, wantBody, lastStatus, lastBody)
 }
 
-// TestPerlHmrReachable は supervisor が起動時に server.pl を立ち上げ、
-// port-forward Host 経由の GET :5000/ が 200 を返すことを検証する。
 func TestPerlHmrReachable(t *testing.T) {
 	cookies := setupSession(t)
 	host := portForwardHost(t, cookies)
 	waitPerlResponse(t, host, http.StatusOK, "")
 }
 
-// TestPerlHmrPutSwapsHandler は PUT /api/app/handler の後の GET (port-forward
-// 経由の :5000) が新しい content() の戻り値を HTML shell に埋めて返すことを検証する
-// (Module::Refresh による HMR)。
 func TestPerlHmrPutSwapsHandler(t *testing.T) {
 	cookies := setupSession(t)
 	host := portForwardHost(t, cookies)
@@ -928,9 +914,6 @@ func TestPerlHmrPutSwapsHandler(t *testing.T) {
 	waitPerlResponse(t, host, http.StatusOK, marker)
 }
 
-// TestPerlHmrSyntaxErrorRecovers は壊れた DaiKichijoji.pm を PUT した後の GET
-// (port-forward 経由の :5000) が 500 を返し、修正版を PUT すると 200 に戻ることを検証する。
-// server.pl がコンパイルエラーで死なないことも兼ねる (supervisor の再起動を必要としない)。
 func TestPerlHmrSyntaxErrorRecovers(t *testing.T) {
 	cookies := setupSession(t)
 	host := portForwardHost(t, cookies)
@@ -941,9 +924,8 @@ func TestPerlHmrSyntaxErrorRecovers(t *testing.T) {
 	waitPerlResponse(t, host, http.StatusInternalServerError, "DaiKichijoji.pm load failed")
 
 	// Module::Refresh は mtime 比較で reload の要否を判定する。
-	// 粗い解像度のファイルシステム (nsec mtime を持たないマウント) では、
-	// 同一 wall-clock 秒内の 2 回の書き込みが同じ mtime に丸められ、
-	// 復旧 PUT が silent に reload をスキップされ得る。
+	// nsec 解像度を持たないファイルシステムでは同一秒内の連続書き込みが同じ mtime に丸められる。
+	// この場合、復旧 PUT の reload が silent にスキップされる。
 	// 復旧 PUT が次の秒境界を跨いだ mtime を持つよう待機する。
 	if wait := time.Until(brokenPutAt.Add(1100 * time.Millisecond)); wait > 0 {
 		time.Sleep(wait)
