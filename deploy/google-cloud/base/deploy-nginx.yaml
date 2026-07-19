@@ -60,6 +60,10 @@ spec:
               value: ${INTERNAL_DOMAIN}
             - name: BUNSHIN_STACKS
               value: ${BUNSHIN_STACKS}
+            - name: NGINX_RESOLVER
+              value: ${NGINX_RESOLVER}
+            - name: BROKER_HOST
+              value: broker.bunshin.svc.cluster.local
           resources:
             requests:
               cpu: 250m
