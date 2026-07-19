@@ -48,6 +48,17 @@ read_system_output() {
     terraform -chdir="${ROOT_DIR}/terraform/google-cloud" output -json system
 }
 
+# Reads a jq path from `system_json` in the caller's scope.
+# jq -r prints the literal "null" for missing keys, which would render into
+# manifests undetected, so bail out instead of returning it.
+read_system_field() {
+    local path="${1:?}"
+    local value
+    value="$(jq -r "${path}" <<<"${system_json}")"
+    [[ "${value}" != "null" ]] || die "terraform output 'system${path}' is null"
+    printf '%s' "${value}"
+}
+
 configure_docker_auth() {
     gcloud auth configure-docker \
         "asia-northeast1-docker.pkg.dev,asia-northeast2-docker.pkg.dev" \
@@ -128,8 +139,8 @@ main() {
     image_tag="$(git -C "${ROOT_DIR}" rev-parse HEAD)"
 
     system_json="$(read_system_output)"
-    domain_name="$(jq -r '.domain_name' <<<"${system_json}")"
-    broker_gsa_email="$(jq -r '.broker_gsa_email' <<<"${system_json}")"
+    domain_name="$(read_system_field .domain_name)"
+    broker_gsa_email="$(read_system_field .broker_gsa_email)"
 
     echo "Deploying to google-cloud env=${env_name} project=${project} image_tag=${image_tag}"
 
@@ -156,7 +167,7 @@ main() {
         membership="${MEMBERSHIPS[$i]}"
         context="connectgateway_${project}_global_${membership}"
 
-        nginx_resolver="$(jq -r ".nginx_resolver.${region_dir}" <<<"${system_json}")"
+        nginx_resolver="$(read_system_field ".nginx_resolver.${region_dir}")"
         export NGINX_RESOLVER="${nginx_resolver}"
 
         set -a
