@@ -807,3 +807,197 @@ func TestNoIdleRunner(t *testing.T) {
 	}
 	assertForwardedClientAddress(t, got, "203.0.113.50:45678")
 }
+
+// portForwardHost は port-forward 用サブドメインを組み立てる。
+// 32 hex label + {stack}.internal.test の形式でしかテスト対象 server にはマッチしない。
+func portForwardHost(hex, stack string) string {
+	return hex + "." + stack + ".internal.test"
+}
+
+// startPortForwardApp は runner に busybox httpd を daemon 起動し :5000 で応答させる。
+// runner の /api/execute が同期実行なので、httpd はコマンド完了時点で背景に居座る。
+// busybox httpd はデフォルトで daemonize する。
+func startPortForwardApp(t *testing.T, cookies sessionCookies) {
+	t.Helper()
+	events := executeCommand(t, cookies, "mkdir -p /tmp/pf-www && echo ok > /tmp/pf-www/probe && busybox httpd -p 5000 -h /tmp/pf-www")
+	for _, e := range events {
+		if e.ExitCode != nil && *e.ExitCode != 0 {
+			t.Fatalf("busybox httpd failed exitCode=%d event=%+v", *e.ExitCode, e)
+		}
+	}
+}
+
+// TestPortForward_OwnStackReachable は自 stack のセッションで :5000 に到達できることを検証する。
+func TestPortForward_OwnStackReachable(t *testing.T) {
+	cookies := setupSession(t)
+	hex := strings.TrimPrefix(cookies.SessionID, "ap-northeast-1_")
+	if hex == cookies.SessionID || len(hex) != 32 {
+		t.Fatalf("session_id = %q must be prefixed with own stack + hex32", cookies.SessionID)
+	}
+	startPortForwardApp(t, cookies)
+
+	resp := doRequestWithHeaders(
+		t,
+		http.MethodGet,
+		nginxBase+"/probe",
+		"",
+		"",
+		map[string]string{"Host": portForwardHost(hex, "ap-northeast-1")},
+	)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET pf own stack: want 200, got %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if strings.TrimSpace(string(body)) != "ok" {
+		t.Errorf("body = %q, want %q", string(body), "ok")
+	}
+}
+
+// TestPortForward_ForeignStack404 は他 stack 宛の Host は転送せず 404 に落とすことを検証する。
+func TestPortForward_ForeignStack404(t *testing.T) {
+	cookies := setupSession(t)
+	hex := strings.TrimPrefix(cookies.SessionID, "ap-northeast-1_")
+	if hex == cookies.SessionID {
+		t.Fatalf("session_id = %q must be prefixed with own stack", cookies.SessionID)
+	}
+	resetForwardTarget(t)
+
+	resp := doRequestWithHeaders(
+		t,
+		http.MethodGet,
+		nginxBase+"/",
+		"",
+		"",
+		map[string]string{"Host": portForwardHost(hex, "ap-northeast-3")},
+	)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("GET pf foreign stack: want 404, got %d", resp.StatusCode)
+	}
+	if got := lastForwardedRequestOrNil(t); got != nil {
+		t.Errorf("must not forward to peer stack, but forward-target recorded %+v", got)
+	}
+}
+
+// TestPortForward_UnknownSession404 は未使用 32 hex が 404 を返すことを検証する。
+func TestPortForward_UnknownSession404(t *testing.T) {
+	resp := doRequestWithHeaders(
+		t,
+		http.MethodGet,
+		nginxBase+"/",
+		"",
+		"",
+		map[string]string{"Host": portForwardHost(strings.Repeat("f", 32), "ap-northeast-1")},
+	)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("GET pf unknown session: want 404, got %d", resp.StatusCode)
+	}
+}
+
+// TestPortForward_UnknownStack404 は BUNSHIN_STACKS に含まれない stack を 404 で拒むことを検証する。
+func TestPortForward_UnknownStack404(t *testing.T) {
+	resp := doRequestWithHeaders(
+		t,
+		http.MethodGet,
+		nginxBase+"/",
+		"",
+		"",
+		map[string]string{"Host": portForwardHost(strings.Repeat("a", 32), "ap-southeast-9")},
+	)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("GET pf unknown stack: want 404, got %d", resp.StatusCode)
+	}
+}
+
+// TestPortForward_InvalidHexShape_FallsToCatchAll は 31 桁や uppercase の hex が
+// port-forward server にマッチせず、既存の catch-all の 404 経路に落ちることを検証する。
+func TestPortForward_InvalidHexShape_FallsToCatchAll(t *testing.T) {
+	cases := []struct {
+		name string
+		hex  string
+	}{
+		{"too short", strings.Repeat("a", 31)},
+		{"uppercase", strings.Repeat("A", 32)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := doRequestWithHeaders(
+				t,
+				http.MethodGet,
+				nginxBase+"/",
+				"",
+				"",
+				map[string]string{"Host": portForwardHost(tc.hex, "ap-northeast-1")},
+			)
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusNotFound {
+				t.Errorf("GET pf invalid hex %q: want 404, got %d", tc.hex, resp.StatusCode)
+			}
+		})
+	}
+}
+
+// TestPortForward_PublicHostDoesNotRelayFallbackHeaders は #259 の回帰。
+// port-forward 経路以外の Host に紛れた X-Fallback-* / X-Bunshin-Client-Address は
+// nginx が /_resolve へ中継せず、他 stack への転送で forward-target のヘッダにも現れない。
+func TestPortForward_PublicHostDoesNotRelayFallbackHeaders(t *testing.T) {
+	resetForwardTarget(t)
+	headers := map[string]string{
+		"Host":                     "aaaaaa111.ap-northeast-1.example.com",
+		"X-Fallback-Stack":         "attacker-stack",
+		"X-Fallback-Remaining":     "attacker-remaining",
+		"X-Bunshin-Client-Address": "198.51.100.10:11111",
+	}
+	resp := doRequestWithHeaders(
+		t,
+		http.MethodPost,
+		nginxBase+"/api/execute",
+		`{"command":"pwd"}`,
+		"session_id=ap-northeast-3_deadbeef; shell_id=shell-x",
+		headers,
+	)
+	resp.Body.Close()
+
+	got := lastForwardedRequest(t)
+	if values := got.Header["X-Fallback-Stack"]; len(values) > 0 {
+		t.Errorf("X-Fallback-Stack should be stripped from public host, got %q", values)
+	}
+	if values := got.Header["X-Fallback-Remaining"]; len(values) > 0 {
+		t.Errorf("X-Fallback-Remaining should be stripped from public host, got %q", values)
+	}
+	values := got.Header["X-Bunshin-Client-Address"]
+	if len(values) != 1 {
+		t.Fatalf("X-Bunshin-Client-Address = %q, want exactly one value", values)
+	}
+	if values[0] == "198.51.100.10:11111" {
+		t.Errorf("public host must not relay spoofed X-Bunshin-Client-Address, got %q", values[0])
+	}
+}
+
+// lastForwardedRequestOrNil は forward-target が転送を記録していれば返し、無ければ nil を返す。
+// port-forward の 404 テストで「forward-target に到達しなかったこと」を検証するために使う。
+func lastForwardedRequestOrNil(t *testing.T) *forwardedRequest {
+	t.Helper()
+	resp, err := httpClient.Get(forwardTargetBase + "/__last")
+	if err != nil {
+		t.Fatalf("GET /__last: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /__last: want 200 or 404, got %d", resp.StatusCode)
+	}
+	var got forwardedRequest
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode /__last body: %v", err)
+	}
+	return &got
+}
