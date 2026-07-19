@@ -29,5 +29,5 @@ jobs:
         run: docker build --target config-test -t nginx-config-test nginx/
       - name: Run Lua unit tests
         run: |
-          docker run --rm nginx-config-test /usr/local/openresty/luajit/bin/luajit /usr/local/openresty/nginx/lua/runner_url_test.lua
+          docker run --rm nginx-config-test /usr/local/openresty/luajit/bin/luajit /usr/local/openresty/nginx/lua/runner_host_test.lua
           docker run --rm nginx-config-test /usr/local/openresty/luajit/bin/luajit /usr/local/openresty/nginx/lua/resolve_core_test.lua
