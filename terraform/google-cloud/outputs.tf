@@ -16,5 +16,13 @@ output "user_dns" {
   value = {
     a_record    = google_compute_global_address.external_ipv4.address
     aaaa_record = google_compute_global_address.external_ipv6.address
+    acme_cnames = {
+      apex = {
+        name = google_certificate_manager_dns_authorization.apex.dns_resource_record[0].name
+        data = google_certificate_manager_dns_authorization.apex.dns_resource_record[0].data
+      }
+      internal_asne1 = module.asne1.internal_acme_cname
+      internal_asne2 = module.asne2.internal_acme_cname
+    }
   }
 }
