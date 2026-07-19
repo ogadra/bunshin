@@ -44,9 +44,8 @@ resolve_deployer_email() {
     echo "${email}"
 }
 
-read_tfstate_output() {
-    local key="${1:?}"
-    terraform -chdir="${ROOT_DIR}/terraform/google-cloud" output -raw "${key}"
+read_system_output() {
+    terraform -chdir="${ROOT_DIR}/terraform/google-cloud" output -json system
 }
 
 configure_docker_auth() {
@@ -104,6 +103,7 @@ main() {
     local project
     local image_tag
     local deployer_email
+    local system_json
     local domain_name
     local broker_gsa_email
     local -a target_services=()
@@ -127,8 +127,9 @@ main() {
     deployer_email="$(resolve_deployer_email)"
     image_tag="$(git -C "${ROOT_DIR}" rev-parse HEAD)"
 
-    domain_name="$(read_tfstate_output domain_name)"
-    broker_gsa_email="$(read_tfstate_output broker_gsa_email)"
+    system_json="$(read_system_output)"
+    domain_name="$(jq -r '.domain_name' <<<"${system_json}")"
+    broker_gsa_email="$(jq -r '.broker_gsa_email' <<<"${system_json}")"
 
     echo "Deploying to google-cloud env=${env_name} project=${project} image_tag=${image_tag}"
 
@@ -155,7 +156,7 @@ main() {
         membership="${MEMBERSHIPS[$i]}"
         context="connectgateway_${project}_global_${membership}"
 
-        nginx_resolver="$(read_tfstate_output "nginx_resolver_${region_dir}")"
+        nginx_resolver="$(jq -r ".nginx_resolver.${region_dir}" <<<"${system_json}")"
         export NGINX_RESOLVER="${nginx_resolver}"
 
         set -a
