@@ -55,7 +55,7 @@ spec:
             failureThreshold: 1
           env:
             - name: STACK_NAME
-              value: ${STACK_NAME}
+              value: ${REGION}
             - name: INTERNAL_DOMAIN
               value: ${INTERNAL_DOMAIN}
             - name: BUNSHIN_STACKS
