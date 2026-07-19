@@ -169,6 +169,9 @@ main() {
         fi
     done
 
+    # shellcheck disable=SC1091
+    source "${ROOT_DIR}/deploy/google-cloud/environments/${env_name}.env"
+
     project="$(resolve_project)"
     deployer_email="$(resolve_deployer_email)"
     image_tag="$(git -C "${ROOT_DIR}" rev-parse HEAD)"
