@@ -85,6 +85,37 @@ function _M.host_of(stack, stacks, domain)
     return stack .. "." .. domain
 end
 
+-- 内部 ALB 経由 (= Host が <stack>.<internal_domain> の完全一致) の要求か判定する。
+-- 完全一致にしないと、公開経路から regex にマッチする Host を作られ X-Fallback-* を詐称できる。
+function _M.is_internal_host(host)
+    if type(host) ~= "string" or internal_domain_name == "" then
+        return false
+    end
+    local dot = host:find(".", 1, true)
+    if not dot then
+        return false
+    end
+    return allowed_stacks[host:sub(1, dot - 1)] == true
+        and host:sub(dot + 1) == internal_domain_name
+end
+
+function _M.relay_if_internal(from_internal, value)
+    if from_internal and value ~= nil then
+        return value
+    end
+    return ""
+end
+
+function _M.client_address(from_internal, bunshin_header, cloudfront_header, remote_addr, remote_port)
+    if from_internal and bunshin_header ~= nil and bunshin_header ~= "" then
+        return bunshin_header
+    end
+    if cloudfront_header ~= nil and cloudfront_header ~= "" then
+        return cloudfront_header
+    end
+    return tostring(remote_addr or "") .. ":" .. tostring(remote_port or "")
+end
+
 function _M.decide_arrival(session_id, stack, stacks, domain, fallback_stack)
     -- fallback 転送は session 所属未確定の到着なので、この stack の broker で解決を続ける。
     if fallback_stack ~= nil and fallback_stack ~= "" then

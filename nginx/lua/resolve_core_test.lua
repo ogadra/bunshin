@@ -149,6 +149,40 @@ r = core.decide({ status = 503, header = { ["X-Fallback-Stack"] = "" } }, STACKS
 check("fallback terminal on empty header exit", r.exit == 503)
 check("fallback terminal on empty header no host", r.forward_host == nil)
 
+-- is_internal_host: <stack>.<internal_domain> の完全一致だけを内部 ALB と認める
+core.configure("ap-northeast-1", "internal.example.com", "ap-northeast-1,ap-northeast-3")
+check("is_internal_host accepts own stack host", core.is_internal_host("ap-northeast-1.internal.example.com"))
+check("is_internal_host accepts peer stack host", core.is_internal_host("ap-northeast-3.internal.example.com"))
+check("is_internal_host rejects public host", not core.is_internal_host("app.example.com"))
+check("is_internal_host rejects regex-matching public host", not core.is_internal_host("aaa111.ap-northeast-1.internal.example.com"))
+check("is_internal_host rejects trailing garbage", not core.is_internal_host("ap-northeast-1.internal.example.com.evil"))
+check("is_internal_host rejects unknown stack in known domain", not core.is_internal_host("ap-southeast-9.internal.example.com"))
+check("is_internal_host rejects nil", not core.is_internal_host(nil))
+check("is_internal_host rejects empty", not core.is_internal_host(""))
+check("is_internal_host rejects leading dot", not core.is_internal_host(".internal.example.com"))
+check("is_internal_host rejects double dot", not core.is_internal_host("ap-northeast-1..internal.example.com"))
+check("is_internal_host rejects stack without domain", not core.is_internal_host("ap-northeast-1."))
+
+-- relay_if_internal: 内部 ALB のときのみヘッダを通し、公開経路では空文字を返す
+check("relay_if_internal returns header when internal", core.relay_if_internal(true, "ap-northeast-3") == "ap-northeast-3")
+check("relay_if_internal returns empty when public", core.relay_if_internal(false, "ap-northeast-3") == "")
+check("relay_if_internal returns empty when internal but header nil", core.relay_if_internal(true, nil) == "")
+check("relay_if_internal returns empty when public and header nil", core.relay_if_internal(false, nil) == "")
+
+-- client_address: 内部 → X-Bunshin-Client-Address、公開 → CloudFront、いずれも無しなら remote_addr:port
+check("client_address internal picks bunshin header",
+    core.client_address(true, "1.2.3.4:5678", "9.9.9.9:1", "10.0.0.1", "12345") == "1.2.3.4:5678")
+check("client_address internal falls to cloudfront when bunshin empty",
+    core.client_address(true, "", "9.9.9.9:1", "10.0.0.1", "12345") == "9.9.9.9:1")
+check("client_address internal falls to remote when both empty",
+    core.client_address(true, "", "", "10.0.0.1", "12345") == "10.0.0.1:12345")
+check("client_address public ignores bunshin header",
+    core.client_address(false, "1.2.3.4:5678", "9.9.9.9:1", "10.0.0.1", "12345") == "9.9.9.9:1")
+check("client_address public falls to remote when cloudfront empty",
+    core.client_address(false, "spoof", "", "10.0.0.1", "12345") == "10.0.0.1:12345")
+check("client_address public falls to remote when cloudfront nil",
+    core.client_address(false, nil, nil, "10.0.0.1", "12345") == "10.0.0.1:12345")
+
 if failed > 0 then
     io.stderr:write(string.format("resolve_core: %d check(s) failed\n", failed))
     os.exit(1)
