@@ -11,6 +11,7 @@ local own_stack_name = ""
 local internal_domain_name = ""
 local allowed_stacks = {}
 local ordered_stacks = {}
+local app_port_number = 0
 
 local function string_header(headers, name, label)
     local value = headers[name]
@@ -20,12 +21,16 @@ local function string_header(headers, name, label)
     return value, nil
 end
 
-function _M.configure(stack, domain, stack_names)
+function _M.configure(stack, domain, stack_names, app_port)
     if stack == nil or stack == "" or domain == nil or domain == "" then
         error("resolve_core: STACK_NAME and INTERNAL_DOMAIN must be set")
     end
     if stack_names == nil or stack_names == "" then
         error("resolve_core: BUNSHIN_STACKS must be set")
+    end
+    local port = tonumber(app_port)
+    if port == nil or port <= 0 or port > 65535 or port ~= math.floor(port) then
+        error("resolve_core: RUNNER_APP_PORT must be a valid TCP port")
     end
     local set = {}
     local list = {}
@@ -43,6 +48,7 @@ function _M.configure(stack, domain, stack_names)
     internal_domain_name = domain
     allowed_stacks = set
     ordered_stacks = list
+    app_port_number = port
 end
 
 function _M.own_stack()
@@ -55,6 +61,10 @@ end
 
 function _M.stacks()
     return allowed_stacks
+end
+
+function _M.app_port()
+    return app_port_number
 end
 
 function _M.fallback_remaining_excluding(stack)
@@ -191,6 +201,57 @@ function _M.decide(res, stacks, domain)
         set_cookie = set_cookie,
         reassigned = res.header["X-Session-Reassigned"],
     }
+end
+
+-- port-forward の Host `<hex32>.<stack>.<internal_domain>` を分解する。
+-- suffix は internal_domain と完全一致でなければ nil。stack は BUNSHIN_STACKS の
+-- allowlist で必ず絞る。nginx server_name 段階の regex を通過していても未知 stack は落とす。
+function _M.parse_app_host(host)
+    if type(host) ~= "string" or internal_domain_name == "" then
+        return nil
+    end
+    local hex, stack, suffix = host:match("^([0-9a-f]+)%.([a-z0-9-]+)%.(.+)$")
+    if hex == nil or #hex ~= 32 then
+        return nil
+    end
+    if suffix ~= internal_domain_name then
+        return nil
+    end
+    if not allowed_stacks[stack] then
+        return nil
+    end
+    return { hex = hex, stack = stack }
+end
+
+-- 所有 stack へは DNS で直接着弾する前提のため、他 stack の Host は解決せず 404 に落とす。
+-- cross-stack forward を許すと port-forward が nginx の serverless セッション経路になり、
+-- fallback / relay と混ざる。
+function _M.decide_app_arrival(host)
+    local parsed = _M.parse_app_host(host)
+    if parsed == nil then
+        return { exit = 404 }
+    end
+    if parsed.stack ~= own_stack_name then
+        return { exit = 404 }
+    end
+    return { hex = parsed.hex }
+end
+
+-- broker /resolve/app の応答から port-forward 先 (host:app_port) を組み立てる。
+-- 200 以外や不正な runner URL は 404 に丸め、他 stack や不在と同じ結果を返す。
+function _M.decide_app_resolve(status, headers)
+    if status ~= HTTP_OK then
+        return { exit = 404 }
+    end
+    local url = headers["X-Runner-Url"]
+    if not runner_url.is_valid(url) then
+        return { exit = 404 }
+    end
+    local host = runner_url.host_only(url)
+    if host == nil then
+        return { exit = 404 }
+    end
+    return { upstream = "http://" .. host .. ":" .. tostring(app_port_number) }
 end
 
 return _M
