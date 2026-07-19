@@ -843,10 +843,10 @@ func snapshotHandler(t *testing.T, cookies sessionCookies) {
 	})
 }
 
-// putHandlerRaw は PUT /api/app/handler を送る。
-// 失敗時の通知は fail 経由で行う。
-// 本体テストでは t.Fatalf、cleanup では t.Errorf を渡すことで、
-// 書き込みと復元で送信経路 (Content-Type 含む) を一本化する。
+// putHandlerRaw の fail 引数は、書き込み側 (t.Fatalf) と cleanup 側 (t.Errorf)
+// で失敗経路を切り替えるためのもの。
+// cleanup で t.Fatalf すると後続 cleanup が走らない一方で、
+// 本体テストでは即時停止させたいため経路を一本化するのに引数化する。
 func putHandlerRaw(t *testing.T, cookies sessionCookies, body io.Reader, fail func(format string, args ...any)) {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodPut, nginxBase+"/api/app/handler", body)
@@ -885,11 +885,11 @@ func getPerl(t *testing.T, host string) (int, string) {
 	return resp.StatusCode, string(body)
 }
 
-// waitPerlResponse は port-forward Host 経由の GET :5000/ が
-// 指定の status を返し (wantBody が空でなければ body に wantBody を含む) まで
-// 30 秒ポーリングする。
-// 固定 sleep を避けることで supervisor 起動、Module::Refresh の mtime 検知、
-// 復旧 PUT の反映のいずれも同じ形で待てる。
+// waitPerlResponse は固定 sleep ではなくポーリングにすることで、
+// supervisor 起動待ち・Module::Refresh の mtime 検知待ち・復旧 PUT の反映待ちを
+// 同じ待ち方に揃える。
+// ただし連続書き込みの mtime 衝突は response 待ちでは解消できないため、
+// PUT 側で境界跨ぎを保証する必要がある (TestPerlHmrSyntaxErrorRecovers 参照)。
 func waitPerlResponse(t *testing.T, host string, wantStatus int, wantBody string) {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
@@ -938,8 +938,18 @@ func TestPerlHmrSyntaxErrorRecovers(t *testing.T) {
 	host := portForwardHost(t, cookies)
 	snapshotHandler(t, cookies)
 
+	brokenPutAt := time.Now()
 	putHandler(t, cookies, "this is not perl at all !!!\n")
 	waitPerlResponse(t, host, http.StatusInternalServerError, "DaiKichijoji.pm load failed")
+
+	// Module::Refresh は mtime 比較で reload の要否を判定する。
+	// 粗い解像度のファイルシステム (nsec mtime を持たないマウント) では、
+	// 同一 wall-clock 秒内の 2 回の書き込みが同じ mtime に丸められ、
+	// 復旧 PUT が silent に reload をスキップされ得る。
+	// 復旧 PUT が次の秒境界を跨いだ mtime を持つよう待機する。
+	if wait := time.Until(brokenPutAt.Add(1100 * time.Millisecond)); wait > 0 {
+		time.Sleep(wait)
+	}
 
 	putHandler(t, cookies, handlerModuleSource("recovered"))
 	waitPerlResponse(t, host, http.StatusOK, "recovered")
