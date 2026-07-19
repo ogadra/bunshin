@@ -12,7 +12,7 @@ type Runner struct {
 	RunnerID         string `dynamodbav:"runnerId"`
 	State            State  `dynamodbav:"state,omitempty"`
 	CurrentSessionID string `dynamodbav:"currentSessionId,omitempty"`
-	PrivateURL       string `dynamodbav:"privateUrl,omitempty"`
+	PrivateHost      string `dynamodbav:"privateHost,omitempty"`
 }
 
 func (r *Runner) IsIdle() bool {

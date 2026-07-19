@@ -5,9 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"net/url"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -19,12 +17,16 @@ import (
 
 var runnerHostRe = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
 
+var sessionHexRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
 // sessionIDCookie は session 識別用の cookie 名。
 const sessionIDCookie = "session_id"
 
 const fallbackStackHeader = "X-Fallback-Stack"
 
 const fallbackRemainingHeader = "X-Fallback-Remaining"
+
+const runnerHostHeader = "X-Runner-Host"
 
 // Handler は broker の HTTP ハンドラー。
 type Handler struct {
@@ -44,8 +46,9 @@ func NewHandler(svc service.Service, fallbackStacks []string) *Handler {
 type registerRequest struct {
 	// RunnerID は runner の一意識別子。
 	RunnerID string `json:"runnerId" binding:"required"`
-	// PrivateURL は runner のプライベート URL。
-	PrivateURL string `json:"privateUrl" binding:"required"`
+	// PrivateHost は runner の hostname (port を含まない)。
+	// 用途別 port (RUNNER_PORT / RUNNER_APP_PORT) は broker と nginx がそれぞれ知る。
+	PrivateHost string `json:"privateHost" binding:"required"`
 }
 
 // DeleteSession は DELETE /sessions/:sessionId を処理しセッションを終了する。
@@ -63,9 +66,9 @@ func (h *Handler) DeleteSession(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// GetResolve は GET /resolve を処理し session_id cookie からセッションを解決する。
+// GetResolveSession は GET /resolve/session を処理し session_id cookie からセッションを解決する。
 // cookie が無い、またはセッションが見つからない場合は新規作成して Set-Cookie を返す。
-func (h *Handler) GetResolve(c *gin.Context) {
+func (h *Handler) GetResolveSession(c *gin.Context) {
 	sessionID, _ := c.Cookie(sessionIDCookie)
 	result, err := h.svc.ResolveSession(c.Request.Context(), sessionID)
 	if err != nil {
@@ -84,8 +87,41 @@ func (h *Handler) GetResolve(c *gin.Context) {
 	if result.Reassigned {
 		c.Header("X-Session-Reassigned", "true")
 	}
-	c.Header("X-Runner-Url", result.RunnerURL)
+	c.Header(runnerHostHeader, result.RunnerHost)
 	c.Status(http.StatusOK)
+}
+
+// GetResolveApp は GET /resolve/app を処理し Host の先頭 hex ラベルから所属 runner を引く。
+// port-forward 用に session 割り当ては行わず、既存 session の runner host のみ返す。
+// 自 stack / internal_domain 完全一致は nginx で完結しているため、broker は hex ラベルだけ検証する。
+func (h *Handler) GetResolveApp(c *gin.Context) {
+	hex, ok := extractSessionHex(c.Request.Host)
+	if !ok {
+		writeError(c, http.StatusBadRequest, model.CodeInvalidRequest, "Host must start with 32 lowercase hex characters followed by a dot")
+		return
+	}
+	result, err := h.svc.LookupSession(c.Request.Context(), hex)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeError(c, http.StatusNotFound, model.CodeSessionNotFound, "session not found")
+			return
+		}
+		writeError(c, http.StatusInternalServerError, model.CodeInternalError, "failed to look up session")
+		return
+	}
+	c.Header(runnerHostHeader, result.RunnerHost)
+	c.Status(http.StatusOK)
+}
+
+func extractSessionHex(host string) (string, bool) {
+	label, _, ok := strings.Cut(host, ".")
+	if !ok {
+		return "", false
+	}
+	if !sessionHexRe.MatchString(label) {
+		return "", false
+	}
+	return label, true
 }
 
 // X-Fallback-Stack の有無を転送済み判定に兼用し、専用のマーカーヘッダを増やさない。
@@ -122,32 +158,14 @@ func sessionCookie(c *gin.Context) string {
 	return sessionID
 }
 
-// runner の PrivateURL が http スキームの host[:port] 形式であることを検証する。
-func validateRunnerURL(rawURL string) error {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return err
-	}
-	if u.Scheme != "http" {
-		return errors.New("scheme must be http")
-	}
-	if u.User != nil {
-		return errors.New("userinfo is not allowed")
-	}
-	if u.Host == "" {
+// validateRunnerHost は register 時に受けた host label を検証する。
+// 用途別 port は broker / nginx がそれぞれ env で持つため、ここで port を検証しない。
+func validateRunnerHost(host string) error {
+	if host == "" {
 		return errors.New("host is required")
 	}
-	if u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
-		return errors.New("url must not contain path, query, or fragment")
-	}
-	if !runnerHostRe.MatchString(u.Hostname()) {
+	if !runnerHostRe.MatchString(host) {
 		return errors.New("host must be hostname-style")
-	}
-	if port := u.Port(); port != "" {
-		n, err := strconv.Atoi(port)
-		if err != nil || n < 1 || n > 65535 {
-			return errors.New("port must be between 1 and 65535")
-		}
 	}
 	return nil
 }
@@ -159,11 +177,11 @@ func (h *Handler) PostRegister(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, model.CodeInvalidRequest, "invalid request body")
 		return
 	}
-	if err := validateRunnerURL(req.PrivateURL); err != nil {
-		writeError(c, http.StatusBadRequest, model.CodeInvalidRequest, "invalid privateUrl: "+err.Error())
+	if err := validateRunnerHost(req.PrivateHost); err != nil {
+		writeError(c, http.StatusBadRequest, model.CodeInvalidRequest, "invalid privateHost: "+err.Error())
 		return
 	}
-	err := h.svc.RegisterRunner(c.Request.Context(), req.RunnerID, req.PrivateURL)
+	err := h.svc.RegisterRunner(c.Request.Context(), req.RunnerID, req.PrivateHost)
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
 			writeError(c, http.StatusConflict, model.CodeRunnerConflict, "runner already registered with different attributes")

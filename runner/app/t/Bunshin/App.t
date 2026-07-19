@@ -126,6 +126,77 @@ subtest 'real defaults: refresh failure gets wrapped with the load-failed prefix
     like $r, qr{DaiKichijoji\.pm load failed: parse: line 3 syntax error};
 };
 
+subtest 'real defaults: Compilation-failed-in-require warning surfaces on the 500 page' => sub {
+    no warnings 'redefine';
+    local *Module::Refresh::refresh = sub {
+        warn "syntax error at /app/DaiKichijoji.pm line 2, at EOF\nCompilation failed in require at Module/Refresh.pm line 121.\n";
+    };
+    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
+    like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
+    like $r, qr{DaiKichijoji\.pm load failed:};
+    like $r, qr{syntax error at /app/DaiKichijoji\.pm line 2};
+};
+
+subtest 'real defaults: aborted-due-to-compilation-errors warning also surfaces on the 500 page' => sub {
+    no warnings 'redefine';
+    local *Module::Refresh::refresh = sub {
+        warn "Execution of /app/DaiKichijoji.pm aborted due to compilation errors.\n";
+    };
+    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
+    like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
+    like $r, qr{DaiKichijoji\.pm load failed:};
+    like $r, qr{aborted due to compilation errors};
+};
+
+subtest 'real defaults: non-compile warnings from refresh pass through to STDERR' => sub {
+    no warnings 'redefine';
+    local *Module::Refresh::refresh = sub {
+        warn "Use of uninitialized value in something at foo.pm line 5.\n";
+    };
+    my $stderr = '';
+    open(my $saved_stderr, '>&', \*STDERR) or die "dup STDERR: $!";
+    close STDERR;
+    open(STDERR, '>', \$stderr)            or die "capture STDERR: $!";
+    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
+    open(STDERR, '>&', $saved_stderr)      or die "restore STDERR: $!";
+    like $r,       qr{^HTTP/1\.1 200 OK\r\n},                'no 500';
+    like $stderr,  qr{Use of uninitialized value},           're-emitted to STDERR';
+};
+
+subtest 'integration: real Module::Refresh + a real broken file dies with the compiler diagnostic' => sub {
+    require File::Temp;
+    my $tmpdir   = File::Temp->newdir;
+    my $mod_name = "BunshinTestFake_$$";
+    my $mod_file = "$mod_name.pm";
+    my $mod_path = "$tmpdir/$mod_file";
+
+    local @INC = (@INC, "$tmpdir");
+
+    open my $fh, '>', $mod_path or die "write initial: $!";
+    print $fh "package $mod_name;\nsub content { 'ok' }\n1;\n";
+    close $fh;
+    utime time - 2, time - 2, $mod_path;
+
+    require $mod_file;
+    Module::Refresh->refresh;
+
+    open my $fh2, '>', $mod_path or die "rewrite broken: $!";
+    print $fh2 "package $mod_name;\nsub content { 'broken'\n";
+    close $fh2;
+    utime time, time, $mod_path;
+
+    my $ok = eval { $Bunshin::App::RUN_CONTENT_FN->(); 1 };
+    my $err = $@;
+
+    delete $INC{$mod_file};
+    { no strict 'refs'; delete $::{"${mod_name}::"}; }
+
+    ok !$ok, 'RUN_CONTENT_FN dies when Module::Refresh warns on a real compile error';
+    like $err, qr{DaiKichijoji\.pm load failed:}, 'wrapped with load-failed prefix';
+    like $err, qr{Compilation failed in require}, 'carries the require diagnostic';
+    like $err, qr{\Q$mod_name\E\.pm},              'names the broken file';
+};
+
 subtest 'real defaults: dispatches through the real ContentRunner and DaiKichijoji' => sub {
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 200 OK\r\n};

@@ -3,3 +3,9 @@ output "deploy_role_arns" {
   description = "Map of service name to deploy IAM role ARN"
   value       = { for k, v in aws_iam_role.github_actions_deploy : k => v.arn }
 }
+
+# Consumed by ecspresso via tfstate plugin for nginx INTERNAL_DOMAIN env var
+output "domain_name" {
+  description = "FQDN served by nginx, consumed at deploy render time"
+  value       = var.domain_name
+}

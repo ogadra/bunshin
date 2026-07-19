@@ -125,19 +125,19 @@ func TestNewFirestoreRepositoryWithAPI(t *testing.T) {
 
 func TestRunnerDoc_ToModel_Idle(t *testing.T) {
 	t.Parallel()
-	doc := runnerDoc{RunnerID: "r1", PrivateURL: "http://10.0.0.1:8080"}
+	doc := runnerDoc{RunnerID: "r1", PrivateHost: "10.0.0.1"}
 	r := doc.toModel()
 	if !r.IsIdle() {
 		t.Errorf("expected idle, state = %q", r.State)
 	}
-	if r.PrivateURL != "http://10.0.0.1:8080" {
-		t.Errorf("PrivateURL = %q", r.PrivateURL)
+	if r.PrivateHost != "10.0.0.1" {
+		t.Errorf("PrivateHost = %q", r.PrivateHost)
 	}
 }
 
 func TestRunnerDoc_ToModel_Busy(t *testing.T) {
 	t.Parallel()
-	doc := runnerDoc{RunnerID: "r1", PrivateURL: "http://10.0.0.1:8080", CurrentSessionID: "sess-1"}
+	doc := runnerDoc{RunnerID: "r1", PrivateHost: "10.0.0.1", CurrentSessionID: "sess-1"}
 	r := doc.toModel()
 	if !r.IsBusy() {
 		t.Errorf("expected busy, state = %q", r.State)
@@ -157,32 +157,32 @@ func TestSnapshotToDoc(t *testing.T) {
 	}{
 		{
 			name: "idle (currentSessionId is nil)",
-			data: map[string]any{FieldPrivateURL: "http://10.0.0.1:8080", FieldCurrentSessionID: nil},
-			want: &runnerDoc{RunnerID: "r1", PrivateURL: "http://10.0.0.1:8080"},
+			data: map[string]any{FieldPrivateHost: "10.0.0.1", FieldCurrentSessionID: nil},
+			want: &runnerDoc{RunnerID: "r1", PrivateHost: "10.0.0.1"},
 		},
 		{
 			name: "busy",
-			data: map[string]any{FieldPrivateURL: "http://10.0.0.1:8080", FieldCurrentSessionID: "sess-1"},
-			want: &runnerDoc{RunnerID: "r1", PrivateURL: "http://10.0.0.1:8080", CurrentSessionID: "sess-1"},
+			data: map[string]any{FieldPrivateHost: "10.0.0.1", FieldCurrentSessionID: "sess-1"},
+			want: &runnerDoc{RunnerID: "r1", PrivateHost: "10.0.0.1", CurrentSessionID: "sess-1"},
 		},
 		{
-			name:    "missing privateUrl",
+			name:    "missing privateHost",
 			data:    map[string]any{FieldCurrentSessionID: nil},
 			wantErr: true,
 		},
 		{
-			name:    "privateUrl not string",
-			data:    map[string]any{FieldPrivateURL: 42, FieldCurrentSessionID: nil},
+			name:    "privateHost not string",
+			data:    map[string]any{FieldPrivateHost: 42, FieldCurrentSessionID: nil},
 			wantErr: true,
 		},
 		{
 			name:    "missing currentSessionId",
-			data:    map[string]any{FieldPrivateURL: "http://10.0.0.1:8080"},
+			data:    map[string]any{FieldPrivateHost: "10.0.0.1"},
 			wantErr: true,
 		},
 		{
 			name:    "currentSessionId neither nil nor string",
-			data:    map[string]any{FieldPrivateURL: "http://10.0.0.1:8080", FieldCurrentSessionID: 42},
+			data:    map[string]any{FieldPrivateHost: "10.0.0.1", FieldCurrentSessionID: 42},
 			wantErr: true,
 		},
 	}
@@ -214,18 +214,18 @@ func TestFirestoreRegister_InvalidRunnerID(t *testing.T) {
 			return nil
 		},
 	})
-	err := repo.Register(context.Background(), "not-hex", "http://10.0.0.1:8080")
+	err := repo.Register(context.Background(), "not-hex", "10.0.0.1")
 	if !errors.Is(err, ErrInvalidRunnerID) {
 		t.Errorf("got %v, want ErrInvalidRunnerID", err)
 	}
 }
 
-func TestFirestoreRegister_EmptyPrivateURL(t *testing.T) {
+func TestFirestoreRegister_EmptyPrivateHost(t *testing.T) {
 	t.Parallel()
 	repo := NewFirestoreRepositoryWithAPI(&mockFirestoreClientAPI{})
 	err := repo.Register(context.Background(), firestoreTestRunnerID, "")
-	if !errors.Is(err, ErrInvalidPrivateURL) {
-		t.Errorf("got %v, want ErrInvalidPrivateURL", err)
+	if !errors.Is(err, ErrInvalidPrivateHost) {
+		t.Errorf("got %v, want ErrInvalidPrivateHost", err)
 	}
 }
 
@@ -238,14 +238,14 @@ func TestFirestoreRegister_Success(t *testing.T) {
 			if runnerID != firestoreTestRunnerID {
 				t.Errorf("runnerID = %q", runnerID)
 			}
-			want := map[string]any{FieldPrivateURL: "http://10.0.0.1:8080", FieldCurrentSessionID: nil}
+			want := map[string]any{FieldPrivateHost: "10.0.0.1", FieldCurrentSessionID: nil}
 			if !reflect.DeepEqual(data, want) {
 				t.Errorf("data = %v, want %v", data, want)
 			}
 			return nil
 		},
 	})
-	if err := repo.Register(context.Background(), firestoreTestRunnerID, "http://10.0.0.1:8080"); err != nil {
+	if err := repo.Register(context.Background(), firestoreTestRunnerID, "10.0.0.1"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !called {
@@ -258,7 +258,7 @@ func TestFirestoreRegister_Conflict(t *testing.T) {
 	repo := NewFirestoreRepositoryWithAPI(&mockFirestoreClientAPI{
 		createFn: func(context.Context, string, map[string]any) error { return ErrConflict },
 	})
-	err := repo.Register(context.Background(), firestoreTestRunnerID, "http://10.0.0.1:8080")
+	err := repo.Register(context.Background(), firestoreTestRunnerID, "10.0.0.1")
 	if !errors.Is(err, ErrConflict) {
 		t.Fatalf("expected ErrConflict, got: %v", err)
 	}
@@ -269,7 +269,7 @@ func TestFirestoreRegister_CreateError(t *testing.T) {
 	repo := NewFirestoreRepositoryWithAPI(&mockFirestoreClientAPI{
 		createFn: func(context.Context, string, map[string]any) error { return errors.New("network error") },
 	})
-	err := repo.Register(context.Background(), firestoreTestRunnerID, "http://10.0.0.1:8080")
+	err := repo.Register(context.Background(), firestoreTestRunnerID, "10.0.0.1")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -284,7 +284,7 @@ func TestFirestoreAcquireIdle_Success(t *testing.T) {
 			if after != firestoreTestStart || upTo != "" || limit != acquireQueryLimit {
 				t.Errorf("args = (%q,%q,%d)", after, upTo, limit)
 			}
-			return []FirestoreDocSnapshot{{ID: "r1", Data: idleData("http://10.0.0.1:8080")}}, nil
+			return []FirestoreDocSnapshot{{ID: "r1", Data: idleData("10.0.0.1")}}, nil
 		},
 		runTxFn: func(_ context.Context, _ func(FirestoreTx) error) error {
 			assigned = true
@@ -301,7 +301,7 @@ func TestFirestoreAcquireIdle_Success(t *testing.T) {
 	if !assigned {
 		t.Error("RunTx was not called")
 	}
-	if runner.RunnerID != "r1" || runner.CurrentSessionID != "sess-1" || !runner.IsBusy() || runner.PrivateURL != "http://10.0.0.1:8080" {
+	if runner.RunnerID != "r1" || runner.CurrentSessionID != "sess-1" || !runner.IsBusy() || runner.PrivateHost != "10.0.0.1" {
 		t.Errorf("runner = %+v", runner)
 	}
 }
@@ -323,7 +323,7 @@ func TestFirestoreAcquireIdle_WrapFromHead(t *testing.T) {
 				if after != "" || upTo != firestoreTestStart {
 					t.Errorf("call2 (after,upTo) = (%q,%q), want (\"\",%q)", after, upTo, firestoreTestStart)
 				}
-				return []FirestoreDocSnapshot{{ID: "r-low", Data: idleData("http://10.0.0.1:8080")}}, nil
+				return []FirestoreDocSnapshot{{ID: "r-low", Data: idleData("10.0.0.1")}}, nil
 			}
 			t.Fatalf("unexpected extra QueryIdleRange call")
 			return nil, nil
@@ -413,8 +413,8 @@ func TestFirestoreAcquireIdle_SkipStaleInPage(t *testing.T) {
 		queryIdleRangeFn: func(context.Context, string, string, int) ([]FirestoreDocSnapshot, error) {
 			queryCalls++
 			return []FirestoreDocSnapshot{
-				{ID: "r-busy", Data: idleData("http://10.0.0.1:8080")},
-				{ID: "r-good", Data: idleData("http://10.0.0.2:8080")},
+				{ID: "r-busy", Data: idleData("10.0.0.1")},
+				{ID: "r-good", Data: idleData("10.0.0.2")},
 			}, nil
 		},
 		runTxFn: func(_ context.Context, _ func(FirestoreTx) error) error {
@@ -445,11 +445,11 @@ func TestFirestoreAcquireIdle_AdvanceCursor(t *testing.T) {
 	t.Parallel()
 	queryCalls := 0
 	firstPage := []FirestoreDocSnapshot{
-		{ID: "r-stale-1", Data: idleData("http://10.0.0.1:8080")},
-		{ID: "r-stale-2", Data: idleData("http://10.0.0.2:8080")},
-		{ID: "r-stale-3", Data: idleData("http://10.0.0.3:8080")},
-		{ID: "r-stale-4", Data: idleData("http://10.0.0.4:8080")},
-		{ID: "r-stale-5", Data: idleData("http://10.0.0.5:8080")},
+		{ID: "r-stale-1", Data: idleData("10.0.0.1")},
+		{ID: "r-stale-2", Data: idleData("10.0.0.2")},
+		{ID: "r-stale-3", Data: idleData("10.0.0.3")},
+		{ID: "r-stale-4", Data: idleData("10.0.0.4")},
+		{ID: "r-stale-5", Data: idleData("10.0.0.5")},
 	}
 	api := &mockFirestoreClientAPI{
 		queryIdleRangeFn: func(_ context.Context, after, _ string, _ int) ([]FirestoreDocSnapshot, error) {
@@ -464,7 +464,7 @@ func TestFirestoreAcquireIdle_AdvanceCursor(t *testing.T) {
 				if after != "r-stale-5" {
 					t.Errorf("call2 after = %q, want r-stale-5", after)
 				}
-				return []FirestoreDocSnapshot{{ID: "r-good", Data: idleData("http://10.0.0.9:8080")}}, nil
+				return []FirestoreDocSnapshot{{ID: "r-good", Data: idleData("10.0.0.9")}}, nil
 			}
 			t.Fatalf("unexpected extra QueryIdleRange call")
 			return nil, nil
@@ -500,7 +500,7 @@ func TestFirestoreAcquireIdle_AssignError(t *testing.T) {
 	t.Parallel()
 	api := &mockFirestoreClientAPI{
 		queryIdleRangeFn: func(context.Context, string, string, int) ([]FirestoreDocSnapshot, error) {
-			return []FirestoreDocSnapshot{{ID: "r1", Data: idleData("http://10.0.0.1:8080")}}, nil
+			return []FirestoreDocSnapshot{{ID: "r1", Data: idleData("10.0.0.1")}}, nil
 		},
 		runTxFn: func(context.Context, func(FirestoreTx) error) error { return errors.New("assign error") },
 	}
@@ -528,7 +528,7 @@ func TestFirestoreAcquireIdle_AllStale(t *testing.T) {
 			if after == "r-stale" {
 				return nil, nil
 			}
-			return []FirestoreDocSnapshot{{ID: "r-stale", Data: idleData("http://10.0.0.1:8080")}}, nil
+			return []FirestoreDocSnapshot{{ID: "r-stale", Data: idleData("10.0.0.1")}}, nil
 		},
 		runTxFn: func(context.Context, func(FirestoreTx) error) error {
 			assignCalls++
@@ -594,7 +594,7 @@ func TestFirestoreAcquireIdle_SkipMalformedContinueToNext(t *testing.T) {
 			queryCalls++
 			return []FirestoreDocSnapshot{
 				{ID: "r-bad", Data: map[string]any{}},
-				{ID: "r-good", Data: idleData("http://10.0.0.2:8080")},
+				{ID: "r-good", Data: idleData("10.0.0.2")},
 			}, nil
 		},
 		runTxFn: func(_ context.Context, fn func(FirestoreTx) error) error {
@@ -685,7 +685,7 @@ func TestFirestoreAssignSession_MissingSessionField(t *testing.T) {
 	t.Parallel()
 	tx := &mockFirestoreTx{
 		getFn: func(string) (map[string]any, bool, error) {
-			return map[string]any{FieldPrivateURL: "http://10.0.0.1:8080"}, true, nil
+			return map[string]any{FieldPrivateHost: "10.0.0.1"}, true, nil
 		},
 	}
 	api := &mockFirestoreClientAPI{
@@ -751,8 +751,8 @@ func TestFirestoreListBusyRunners_Success(t *testing.T) {
 	stopCount := 0
 	iter := &mockFirestoreDocIter{
 		results: []nextResult{
-			{id: "r1", data: busyData("http://10.0.0.1:8080", "sess-1")},
-			{id: "r2", data: busyData("http://10.0.0.2:8080", "sess-2")},
+			{id: "r1", data: busyData("10.0.0.1", "sess-1")},
+			{id: "r2", data: busyData("10.0.0.2", "sess-2")},
 			{done: true},
 		},
 		stopCounter: &stopCount,
@@ -800,7 +800,7 @@ func TestFirestoreListBusyRunners_IterError(t *testing.T) {
 	want := errors.New("iter boom")
 	iter := &mockFirestoreDocIter{
 		results: []nextResult{
-			{id: "r1", data: busyData("http://10.0.0.1:8080", "sess-1")},
+			{id: "r1", data: busyData("10.0.0.1", "sess-1")},
 			{err: want},
 		},
 		stopCounter: &stopCount,
@@ -826,7 +826,7 @@ func TestFirestoreListBusyRunners_SkipMalformed(t *testing.T) {
 	iter := &mockFirestoreDocIter{
 		results: []nextResult{
 			{id: "r-bad", data: map[string]any{}},
-			{id: "r-good", data: busyData("http://10.0.0.2:8080", "sess-9")},
+			{id: "r-good", data: busyData("10.0.0.2", "sess-9")},
 		},
 	}
 	api := &mockFirestoreClientAPI{
@@ -855,7 +855,7 @@ func TestFirestoreFindBySessionID_Success(t *testing.T) {
 	t.Parallel()
 	api := &mockFirestoreClientAPI{
 		queryBySessionFn: func(_ context.Context, sessionID string) (string, map[string]any, bool, error) {
-			return "r1", busyData("http://10.0.0.1:8080", sessionID), true, nil
+			return "r1", busyData("10.0.0.1", sessionID), true, nil
 		},
 	}
 	repo := NewFirestoreRepositoryWithAPI(api)
@@ -912,7 +912,7 @@ func TestFirestoreFindByID_Success(t *testing.T) {
 	t.Parallel()
 	api := &mockFirestoreClientAPI{
 		getFn: func(_ context.Context, runnerID string) (map[string]any, bool, error) {
-			return idleData("http://10.0.0.1:8080"), true, nil
+			return idleData("10.0.0.1"), true, nil
 		},
 	}
 	repo := NewFirestoreRepositoryWithAPI(api)
@@ -1012,27 +1012,27 @@ func TestFirestoreRegister_ModelRoundtrip(t *testing.T) {
 		},
 	}
 	repo := NewFirestoreRepositoryWithAPI(api)
-	if err := repo.Register(context.Background(), firestoreTestRunnerID, "http://10.0.0.9:8080"); err != nil {
+	if err := repo.Register(context.Background(), firestoreTestRunnerID, "10.0.0.9"); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 	runner, err := repo.FindByID(context.Background(), firestoreTestRunnerID)
 	if err != nil {
 		t.Fatalf("FindByID: %v", err)
 	}
-	if runner.PrivateURL != "http://10.0.0.9:8080" {
-		t.Errorf("PrivateURL = %q", runner.PrivateURL)
+	if runner.PrivateHost != "10.0.0.9" {
+		t.Errorf("PrivateHost = %q", runner.PrivateHost)
 	}
 	if runner.State != model.StateIdle {
 		t.Errorf("state = %q, want idle", runner.State)
 	}
 }
 
-func idleData(privateURL string) map[string]any {
-	return map[string]any{FieldPrivateURL: privateURL, FieldCurrentSessionID: nil}
+func idleData(privateHost string) map[string]any {
+	return map[string]any{FieldPrivateHost: privateHost, FieldCurrentSessionID: nil}
 }
 
-func busyData(privateURL, sessionID string) map[string]any {
-	return map[string]any{FieldPrivateURL: privateURL, FieldCurrentSessionID: sessionID}
+func busyData(privateHost, sessionID string) map[string]any {
+	return map[string]any{FieldPrivateHost: privateHost, FieldCurrentSessionID: sessionID}
 }
 
 func TestFirestoreRepository_Close(t *testing.T) {

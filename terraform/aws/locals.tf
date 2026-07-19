@@ -5,11 +5,6 @@ locals {
     runner = { port = 3000 }
   }
 
-  bunshin_stacks = [
-    data.aws_region.apne1.region,
-    data.aws_region.apne3.region,
-  ]
-
   common_tags = {
     Project   = "Bunshin"
     ManagedBy = "terraform"

@@ -87,8 +87,8 @@ func TestMainSuccess(t *testing.T) {
 	if err != nil || len(raw) != 16 {
 		t.Errorf("runnerId = %q, want 32-char hex (16 bytes)", body.RunnerID)
 	}
-	if !strings.HasSuffix(body.PrivateURL, ":3000") || !strings.HasPrefix(body.PrivateURL, "http://") {
-		t.Errorf("privateUrl = %q, want http://<host>:3000", body.PrivateURL)
+	if body.PrivateHost == "" || strings.Contains(body.PrivateHost, ":") {
+		t.Errorf("privateHost = %q, want non-empty hostname without port", body.PrivateHost)
 	}
 }
 
@@ -554,54 +554,6 @@ func TestStartIdentityError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "identity failure") {
 		t.Fatalf("error should mention identity failure, got: %v", err)
-	}
-}
-
-// TestStartPortParsing verifies that start correctly extracts the port from
-// addresses with a host component like 127.0.0.1:12345.
-func TestStartPortParsing(t *testing.T) {
-	orig := resolveIdentityFn
-	defer func() { resolveIdentityFn = orig }()
-
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Listen error: %v", err)
-	}
-	addr := ln.Addr().String()
-	_, wantPort, _ := net.SplitHostPort(addr)
-	ln.Close()
-
-	var gotPort string
-	resolveIdentityFn = func(ctx context.Context, deps identityDeps) (Identity, error) {
-		gotPort = deps.port
-		return Identity{}, errors.New("stop here")
-	}
-
-	err = start(addr)
-	if err == nil || !strings.Contains(err.Error(), "stop here") {
-		t.Fatalf("start error = %v, want contains %q", err, "stop here")
-	}
-	if gotPort != wantPort {
-		t.Fatalf("port = %q, want %q", gotPort, wantPort)
-	}
-}
-
-// TestStartEphemeralPort verifies that start resolves the actual port when
-// the listen address uses port 0 to request an ephemeral port from the OS.
-func TestStartEphemeralPort(t *testing.T) {
-	orig := resolveIdentityFn
-	defer func() { resolveIdentityFn = orig }()
-
-	var gotPort string
-	resolveIdentityFn = func(ctx context.Context, deps identityDeps) (Identity, error) {
-		gotPort = deps.port
-		return Identity{}, errors.New("stop here")
-	}
-
-	start(":0")
-
-	if gotPort == "0" || gotPort == "" {
-		t.Fatalf("port should be resolved to actual ephemeral port, got %q", gotPort)
 	}
 }
 

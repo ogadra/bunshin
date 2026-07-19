@@ -31,9 +31,19 @@ my $CONTENT_FN = sub {
     $sub->();
 };
 our $RUN_CONTENT_FN = sub {
-    unless (eval { Module::Refresh->refresh; 1 }) {
-        die "DaiKichijoji.pm load failed: $@";
+    my @load_errors;
+    {
+        local $SIG{__WARN__} = sub {
+            my ($msg) = @_;
+            if ($msg =~ /Compilation failed in require|aborted due to compilation errors/) {
+                push @load_errors, $msg;
+                return;
+            }
+            warn $msg;
+        };
+        eval { Module::Refresh->refresh; 1 } or push @load_errors, $@;
     }
+    die "DaiKichijoji.pm load failed: " . join("\n", @load_errors) if @load_errors;
     return Bunshin::ContentRunner::run(
         content_fn => $CONTENT_FN,
         timeout_ms => 3000,
