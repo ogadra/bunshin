@@ -243,15 +243,22 @@ function _M.decide_app_arrival(host)
 end
 
 -- broker /resolve/appの応答からport-forward先 (host:app_port) を組み立てる。
--- 200以外や不正なhostは404に丸める。
--- 他stackや不在と同じ結果を返し、session存在を推測させない。
+-- 404は他stack/未知stackと同じ404に丸め、session存在を推測させない。
+-- 他のnon-200はbroker側のシステム状態としてそのまま透過する。
+-- 200 + 不正hostはbroker側のバグ。500 + logで観測できるようにする。
 function _M.decide_app_resolve(status, headers)
-    if status ~= HTTP_OK then
+    if status == HTTP_NOT_FOUND then
         return { exit = HTTP_NOT_FOUND }
+    end
+    if status ~= HTTP_OK then
+        return { exit = status }
     end
     local host = headers["X-Runner-Host"]
     if not runner_host.is_valid(host) then
-        return { exit = HTTP_NOT_FOUND }
+        return {
+            exit = HTTP_INTERNAL_ERROR,
+            log = "pf_resolve: invalid X-Runner-Host from broker: " .. tostring(host),
+        }
     end
     return { upstream = "http://" .. host .. ":" .. tostring(app_port_number) }
 end
