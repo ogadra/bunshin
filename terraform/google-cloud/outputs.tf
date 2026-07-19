@@ -7,6 +7,7 @@ output "system" {
       asne1 = module.asne1.nginx_resolver
       asne2 = module.asne2.nginx_resolver
     }
+    static_bucket = google_storage_bucket.static.name
   }
 }
 

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
-SERVICES=(broker nginx runner)
+SERVICES=(broker nginx runner front)
 REGIONS=(asia-northeast1 asia-northeast2)
 REGION_DIRS=(asne1 asne2)
 REPOSITORY="bunshin"
@@ -26,6 +26,12 @@ contains_service() {
     done
 
     return 1
+}
+
+is_static_only() {
+    local service="${1:?}"
+
+    [[ "${service}" == "front" ]]
 }
 
 resolve_project() {
@@ -108,6 +114,20 @@ wait_rollout() {
         --timeout=5m
 }
 
+deploy_front() {
+    local bucket
+    bucket="$(read_system_field .static_bucket)"
+
+    echo "[front] building via pnpm"
+    pnpm --dir "${ROOT_DIR}/front" build
+
+    echo "[front] syncing to gs://${bucket}/"
+    gcloud storage rsync -r \
+        --delete-unmatched-destination-objects \
+        "${ROOT_DIR}/front/dist/" \
+        "gs://${bucket}/"
+}
+
 main() {
     local env_name="${1:?Usage: scripts/google-cloud/deploy.sh <env> [service...]}"
     shift
@@ -118,6 +138,8 @@ main() {
     local domain_name
     local broker_gsa_email
     local -a target_services=()
+    local -a container_services=()
+    local include_front=false
     local service
     local i
     local region_dir
@@ -134,6 +156,14 @@ main() {
         done
     fi
 
+    for service in "${target_services[@]}"; do
+        if is_static_only "${service}"; then
+            include_front=true
+        else
+            container_services+=("${service}")
+        fi
+    done
+
     project="$(resolve_project)"
     deployer_email="$(resolve_deployer_email)"
     image_tag="$(git -C "${ROOT_DIR}" rev-parse HEAD)"
@@ -144,8 +174,16 @@ main() {
 
     echo "Deploying to google-cloud env=${env_name} project=${project} image_tag=${image_tag}"
 
+    if [[ "${include_front}" == "true" ]]; then
+        deploy_front
+    fi
+
+    if [[ ${#container_services[@]} -eq 0 ]]; then
+        return 0
+    fi
+
     configure_docker_auth
-    for service in "${target_services[@]}"; do
+    for service in "${container_services[@]}"; do
         build_and_push "${service}" "${project}" "${image_tag}"
     done
 
@@ -181,7 +219,7 @@ main() {
 
         apply_manifests "${context}"
 
-        for service in "${target_services[@]}"; do
+        for service in "${container_services[@]}"; do
             wait_rollout "${context}" "${service}"
         done
     done
