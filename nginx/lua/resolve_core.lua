@@ -4,6 +4,7 @@ local runner_url = require("runner_url")
 local _M = {}
 
 local HTTP_OK = 200
+local HTTP_NOT_FOUND = 404
 local HTTP_INTERNAL_ERROR = 500
 local HTTP_SERVICE_UNAVAILABLE = 503
 
@@ -61,10 +62,6 @@ end
 
 function _M.stacks()
     return allowed_stacks
-end
-
-function _M.app_port()
-    return app_port_number
 end
 
 function _M.fallback_remaining_excluding(stack)
@@ -203,9 +200,9 @@ function _M.decide(res, stacks, domain)
     }
 end
 
--- port-forward の Host `<hex32>.<stack>.<internal_domain>` を分解する。
--- suffix は internal_domain と完全一致でなければ nil。stack は BUNSHIN_STACKS の
--- allowlist で必ず絞る。nginx server_name 段階の regex を通過していても未知 stack は落とす。
+-- port-forwardのHost `<hex32>.<stack>.<internal_domain>` を分解する。
+-- suffixはinternal_domainと完全一致でなければnil。stackはBUNSHIN_STACKSの
+-- allowlistで必ず絞る。nginx server_name段階のregexを通過していても未知stackは落とす。
 function _M.parse_app_host(host)
     if type(host) ~= "string" or internal_domain_name == "" then
         return nil
@@ -223,33 +220,33 @@ function _M.parse_app_host(host)
     return { hex = hex, stack = stack }
 end
 
--- 所有 stack へは DNS で直接着弾する前提のため、他 stack の Host は解決せず 404 に落とす。
--- cross-stack forward を許すと port-forward が nginx の serverless セッション経路になり、
--- fallback / relay と混ざる。
+-- 所有stackへはDNSで直接着弾する前提のため、他stackのHostは解決せず404に落とす。
+-- cross-stack forwardを許すとport-forwardがnginxのserverlessセッション経路になり、
+-- fallback / relayと混ざる。
 function _M.decide_app_arrival(host)
     local parsed = _M.parse_app_host(host)
     if parsed == nil then
-        return { exit = 404 }
+        return { exit = HTTP_NOT_FOUND }
     end
     if parsed.stack ~= own_stack_name then
-        return { exit = 404 }
+        return { exit = HTTP_NOT_FOUND }
     end
     return { hex = parsed.hex }
 end
 
--- broker /resolve/app の応答から port-forward 先 (host:app_port) を組み立てる。
--- 200 以外や不正な runner URL は 404 に丸め、他 stack や不在と同じ結果を返す。
+-- broker /resolve/app の応答からport-forward先 (host:app_port) を組み立てる。
+-- 200以外や不正なrunner URLは404に丸め、他stackや不在と同じ結果を返す。
 function _M.decide_app_resolve(status, headers)
     if status ~= HTTP_OK then
-        return { exit = 404 }
+        return { exit = HTTP_NOT_FOUND }
     end
     local url = headers["X-Runner-Url"]
     if not runner_url.is_valid(url) then
-        return { exit = 404 }
+        return { exit = HTTP_NOT_FOUND }
     end
     local host = runner_url.host_only(url)
     if host == nil then
-        return { exit = 404 }
+        return { exit = HTTP_NOT_FOUND }
     end
     return { upstream = "http://" .. host .. ":" .. tostring(app_port_number) }
 end
