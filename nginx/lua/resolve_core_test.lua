@@ -1,4 +1,4 @@
--- resolve_core の分岐テスト。broker は host-only 契約 (X-Runner-Host) を返す前提。
+-- resolve_coreの分岐テスト。brokerはhost-only契約 (X-Runner-Host) を返す前提。
 package.path = "/usr/local/openresty/nginx/lua/?.lua;" .. package.path
 local core = require("resolve_core")
 
@@ -12,7 +12,7 @@ local function check(name, cond)
     end
 end
 
--- 事前 configure。RUNNER_PORT=3000 / RUNNER_APP_PORT=5000 で decide の組み立てを検証する。
+-- 事前configure。RUNNER_PORT=3000 / RUNNER_APP_PORT=5000でdecideの組み立てを検証する。
 core.configure("ap-northeast-1", "example.com", "ap-northeast-1,ap-northeast-3", 3000, 5000)
 
 -- broker 非 2xx はそのステータスを保持して終了 (503/500 透過)
@@ -23,18 +23,18 @@ check("503 transparency no runner", r.runner_url == nil)
 r = core.decide({ status = 500, header = {} }, STACKS, "example.com")
 check("500 transparency", r.exit == 500)
 
--- 200 + 不正 X-Runner-Host は 500 で遮断
+-- 200 + 不正X-Runner-Hostは500で遮断
 for _, bad in ipairs({ "runner:3000", "http://runner", "runner/", "runner_01", "user@runner", "" }) do
     r = core.decide({ status = 200, header = { ["X-Runner-Host"] = bad } }, STACKS, "example.com")
     check("ssrf guard exit " .. bad, r.exit == 500)
     check("ssrf guard log " .. bad, r.log ~= nil)
 end
 
--- 200 + X-Runner-Host ヘッダ欠落 (nil) も 500
+-- 200 + X-Runner-Hostヘッダ欠落 (nil) も500
 r = core.decide({ status = 200, header = {} }, STACKS, "example.com")
 check("missing X-Runner-Host", r.exit == 500)
 
--- 正常: broker の X-Runner-Host に RUNNER_PORT を貼って runner_url を組む。
+-- 正常: brokerのX-Runner-HostにRUNNER_PORTを貼ってrunner_urlを組む。
 r = core.decide({ status = 200, header = { ["X-Runner-Host"] = "runner-1" } }, STACKS, "example.com")
 check("valid proxy no exit", r.exit == nil)
 check("valid proxy runner", r.runner_url == "http://runner-1:3000")
@@ -70,7 +70,7 @@ check("host_of rejects unknown stack", core.host_of("ap-southeast-9", STACKS, "e
 check("host_of rejects injection value", core.host_of("evil.example.com/", STACKS, "example.com") == nil)
 check("host_of rejects nil stack", core.host_of(nil, STACKS, "example.com") == nil)
 
--- configure は STACK_NAME / INTERNAL_DOMAIN / BUNSHIN_STACKS / RUNNER_PORT / RUNNER_APP_PORT 未設定を許さず起動を失敗させる
+-- configureはSTACK_NAME / INTERNAL_DOMAIN / BUNSHIN_STACKS / RUNNER_PORT / RUNNER_APP_PORT未設定を許さず起動を失敗させる
 check("configure rejects missing stack", not pcall(core.configure, nil, "example.com", "ap-northeast-1", 3000, 5000))
 check("configure rejects empty stack", not pcall(core.configure, "", "example.com", "ap-northeast-1", 3000, 5000))
 check("configure rejects missing domain", not pcall(core.configure, "ap-northeast-1", nil, "ap-northeast-1", 3000, 5000))
@@ -162,7 +162,7 @@ r = core.decide({ status = 503, header = { ["X-Fallback-Stack"] = "" } }, STACKS
 check("fallback terminal on empty header exit", r.exit == 503)
 check("fallback terminal on empty header no host", r.forward_host == nil)
 
--- is_internal_host: <stack>.<internal_domain> の完全一致だけを内部 ALB と認める
+-- is_internal_host: <stack>.<internal_domain>の完全一致だけを内部ALBと認める
 core.configure("ap-northeast-1", "internal.example.com", "ap-northeast-1,ap-northeast-3", 3000, 5000)
 check("is_internal_host accepts own stack host", core.is_internal_host("ap-northeast-1.internal.example.com"))
 check("is_internal_host accepts peer stack host", core.is_internal_host("ap-northeast-3.internal.example.com"))
@@ -176,13 +176,13 @@ check("is_internal_host rejects leading dot", not core.is_internal_host(".intern
 check("is_internal_host rejects double dot", not core.is_internal_host("ap-northeast-1..internal.example.com"))
 check("is_internal_host rejects stack without domain", not core.is_internal_host("ap-northeast-1."))
 
--- relay_if_internal: 内部 ALB のときのみヘッダを通し、公開経路では空文字を返す
+-- relay_if_internal: 内部ALBのときのみヘッダを通し、公開経路では空文字を返す
 check("relay_if_internal returns header when internal", core.relay_if_internal(true, "ap-northeast-3") == "ap-northeast-3")
 check("relay_if_internal returns empty when public", core.relay_if_internal(false, "ap-northeast-3") == "")
 check("relay_if_internal returns empty when internal but header nil", core.relay_if_internal(true, nil) == "")
 check("relay_if_internal returns empty when public and header nil", core.relay_if_internal(false, nil) == "")
 
--- client_address: 内部 → X-Bunshin-Client-Address、公開 → CloudFront、いずれも無しなら remote_addr:port
+-- client_address: 内部→X-Bunshin-Client-Address、公開→CloudFront、いずれも無しならremote_addr:port
 check("client_address internal picks bunshin header",
     core.client_address(true, "1.2.3.4:5678", "9.9.9.9:1", "10.0.0.1", "12345") == "1.2.3.4:5678")
 check("client_address internal falls to cloudfront when bunshin empty",
@@ -222,7 +222,7 @@ check("app_arrival unknown stack 404", r.exit == 404)
 r = core.decide_app_arrival("app.example.com")
 check("app_arrival non-pf host 404", r.exit == 404)
 
--- decide_app_resolve: 200 + 有効な host のときだけ host:app_port の upstream を返す
+-- decide_app_resolve: 200 + 有効なhostのときだけhost:app_portのupstreamを返す
 r = core.decide_app_resolve(200, { ["X-Runner-Host"] = "runner-1" })
 check("app_resolve builds upstream with app_port", r.upstream == "http://runner-1:5000")
 r = core.decide_app_resolve(200, { ["X-Runner-Host"] = "10.0.0.1" })
