@@ -108,6 +108,7 @@ main() {
     local region_dir
     local membership
     local context
+    local nginx_resolver
 
     if [[ $# -eq 0 ]]; then
         target_services=("${SERVICES[@]}")
@@ -145,10 +146,13 @@ main() {
     source "${MANIFESTS_DIR}/stacks.env"
     set +a
 
-    for i in "${!REGIONS[@]}"; do
+    for i in "${!REGION_DIRS[@]}"; do
         region_dir="${REGION_DIRS[$i]}"
         membership="${MEMBERSHIPS[$i]}"
         context="connectgateway_${project}_global_${membership}"
+
+        nginx_resolver="$(read_tfstate_output "nginx_resolver_${region_dir}")"
+        export NGINX_RESOLVER="${nginx_resolver}"
 
         set -a
         # shellcheck disable=SC1090
