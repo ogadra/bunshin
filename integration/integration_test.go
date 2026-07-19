@@ -810,36 +810,49 @@ func TestNoIdleRunner(t *testing.T) {
 	assertForwardedClientAddress(t, got, "203.0.113.50:45678")
 }
 
-// perlHmrClientAddress は PUT /api/app/handler が要求する X-Bunshin-Client-Address
-// の固定値。通常 nginx が挿入するが、統合テストでは runner を直接叩くので明示的に設定する。
-const perlHmrClientAddress = "203.0.113.50:12345"
+// perlHmrRunnerHostname is the runner GET/PUT /api/app/handler must land on.
+// nginx does not proxy port 5000 (only /api/* routes there), so the perl HMR
+// tests pin the session to this hostname and then check :5000 on it directly.
+const perlHmrRunnerHostname = "runner-1"
 
-// perlHmrRunnerHTTP は runner-1 の Go サーバー (/api/*) の URL。compose ネットワーク内から解決する。
-const perlHmrRunnerHTTP = "http://runner-1:3000"
+// perlHmrPerlHTTP は perlHmrRunnerHostname の Perl サーバー (:5000) の URL。
+const perlHmrPerlHTTP = "http://" + perlHmrRunnerHostname + ":5000"
 
-// perlHmrPerlHTTP は runner-1 の Perl サーバー (:5000) の URL。
-const perlHmrPerlHTTP = "http://runner-1:5000"
-
-// snapshotHandler は現在の DaiKichijoji.pm を GET し、テスト終了時に PUT で書き戻す。
-// テスト間で DaiKichijoji.pm の状態が汚染されないようにするための helper。
-func snapshotHandler(t *testing.T) {
+// pinnedRunnerSession は broker の idle pool から hostname 以外の全 runner を
+// 一時的に外した上で nginx 経由のセッションを作成し、resolve が hostname に
+// 解決されることを保証する。テスト終了時に resetRunners で全 runner を戻す。
+func pinnedRunnerSession(t *testing.T, hostname string) sessionCookies {
 	t.Helper()
-	resp, err := httpClient.Get(perlHmrRunnerHTTP + "/api/app/handler")
-	if err != nil {
-		t.Fatalf("GET /api/app/handler: %v", err)
+	for _, h := range runnerHostnames {
+		if h == hostname {
+			continue
+		}
+		if err := deleteFromBroker(brokerBase + "/internal/runners/" + hostnameRunnerID(h)); err != nil {
+			t.Fatalf("delete runner %s: %v", h, err)
+		}
 	}
+	cookies := createSession(t)
+	t.Cleanup(func() { resetRunners(t, cookies.SessionID) })
+	return cookies
+}
+
+// snapshotHandler は現在の DaiKichijoji.pm を nginx 経由で GET し、テスト終了時に
+// PUT で書き戻す。テスト間で DaiKichijoji.pm の状態が汚染されないようにする。
+func snapshotHandler(t *testing.T, cookies sessionCookies) {
+	t.Helper()
+	resp := doRequest(t, http.MethodGet, nginxBase+"/api/app/handler", "", cookies.cookieHeader())
 	original, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("snapshot GET status = %d, body = %s", resp.StatusCode, original)
 	}
 	t.Cleanup(func() {
-		req, err := http.NewRequest(http.MethodPut, perlHmrRunnerHTTP+"/api/app/handler", strings.NewReader(string(original)))
+		req, err := http.NewRequest(http.MethodPut, nginxBase+"/api/app/handler", strings.NewReader(string(original)))
 		if err != nil {
 			t.Logf("restore DaiKichijoji.pm: new request: %v", err)
 			return
 		}
-		req.Header.Set("X-Bunshin-Client-Address", perlHmrClientAddress)
+		req.Header.Set("Cookie", cookies.cookieHeader())
 		resp, err := httpClient.Do(req)
 		if err != nil {
 			t.Logf("restore DaiKichijoji.pm: PUT: %v", err)
@@ -849,18 +862,18 @@ func snapshotHandler(t *testing.T) {
 	})
 }
 
-// putHandler は PUT /api/app/handler で DaiKichijoji.pm を上書きし、204 でなければ fail する。
-func putHandler(t *testing.T, body string) {
+// putHandler は nginx 経由の PUT /api/app/handler で DaiKichijoji.pm を上書きし、
+// 204 でなければ fail する。
+func putHandler(t *testing.T, cookies sessionCookies, body string) {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodPut, perlHmrRunnerHTTP+"/api/app/handler", strings.NewReader(body))
-	if err != nil {
-		t.Fatalf("new PUT: %v", err)
-	}
-	req.Header.Set("X-Bunshin-Client-Address", perlHmrClientAddress)
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		t.Fatalf("PUT /api/app/handler: %v", err)
-	}
+	resp := doRequestWithHeaders(
+		t,
+		http.MethodPut,
+		nginxBase+"/api/app/handler",
+		body,
+		cookies.cookieHeader(),
+		map[string]string{"Content-Type": "text/plain; charset=utf-8"},
+	)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -904,10 +917,11 @@ func TestPerlHmrReachable(t *testing.T) {
 // 新しい content() の戻り値を HTML shell に埋めて返すことを検証する
 // (Module::Refresh による HMR)。
 func TestPerlHmrPutSwapsHandler(t *testing.T) {
-	snapshotHandler(t)
+	cookies := pinnedRunnerSession(t, perlHmrRunnerHostname)
+	snapshotHandler(t, cookies)
 
 	marker := fmt.Sprintf("hmr-marker-%d", time.Now().UnixNano())
-	putHandler(t, handlerModuleSource(marker))
+	putHandler(t, cookies, handlerModuleSource(marker))
 
 	status, body := getPerl(t)
 	if status != http.StatusOK {
@@ -922,9 +936,10 @@ func TestPerlHmrPutSwapsHandler(t *testing.T) {
 // 500 を返し、修正版を PUT すると 200 に戻ることを検証する。
 // server.pl がコンパイルエラーで死なないことも兼ねる (supervisor の再起動を必要としない)。
 func TestPerlHmrSyntaxErrorRecovers(t *testing.T) {
-	snapshotHandler(t)
+	cookies := pinnedRunnerSession(t, perlHmrRunnerHostname)
+	snapshotHandler(t, cookies)
 
-	putHandler(t, "this is not perl at all !!!\n")
+	putHandler(t, cookies, "this is not perl at all !!!\n")
 	status, body := getPerl(t)
 	if status != http.StatusInternalServerError {
 		t.Fatalf("broken status = %d, body = %q", status, body)
@@ -933,7 +948,7 @@ func TestPerlHmrSyntaxErrorRecovers(t *testing.T) {
 		t.Errorf("expected error body from 500, got empty")
 	}
 
-	putHandler(t, handlerModuleSource("recovered"))
+	putHandler(t, cookies, handlerModuleSource("recovered"))
 	status2, body2 := getPerl(t)
 	if status2 != http.StatusOK {
 		t.Fatalf("fixed status = %d, body = %q", status2, body2)
