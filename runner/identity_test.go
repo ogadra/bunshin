@@ -43,7 +43,6 @@ func TestResolveIdentityECS(t *testing.T) {
 		hostname: func() (string, error) { return "", errors.New("should not be called") },
 		httpGet:  defaultHTTPGet,
 		randRead: stubRandRead(0xab, nil),
-		port:     "3000",
 	}
 
 	id, err := resolveIdentity(context.Background(), deps)
@@ -54,8 +53,8 @@ func TestResolveIdentityECS(t *testing.T) {
 	if id.RunnerID != want {
 		t.Errorf("RunnerID = %q, want %q", id.RunnerID, want)
 	}
-	if id.PrivateURL != "http://10.0.1.5:3000" {
-		t.Errorf("PrivateURL = %q, want %q", id.PrivateURL, "http://10.0.1.5:3000")
+	if id.PrivateHost != "10.0.1.5" {
+		t.Errorf("PrivateHost = %q, want %q", id.PrivateHost, "10.0.1.5")
 	}
 }
 
@@ -74,15 +73,14 @@ func TestResolveIdentityECSApNortheast3(t *testing.T) {
 		}),
 		httpGet:  defaultHTTPGet,
 		randRead: stubRandRead(0x01, nil),
-		port:     "3000",
 	}
 
 	id, err := resolveIdentity(context.Background(), deps)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if id.PrivateURL != "http://10.0.1.6:3000" {
-		t.Errorf("PrivateURL = %q, want %q", id.PrivateURL, "http://10.0.1.6:3000")
+	if id.PrivateHost != "10.0.1.6" {
+		t.Errorf("PrivateHost = %q, want %q", id.PrivateHost, "10.0.1.6")
 	}
 }
 
@@ -90,7 +88,6 @@ func TestResolveIdentityECSMissingMetadataURI(t *testing.T) {
 	deps := identityDeps{
 		getenv:   stubGetenv(map[string]string{"STACK_NAME": "ap-northeast-1"}),
 		randRead: stubRandRead(0x01, nil),
-		port:     "3000",
 	}
 
 	_, err := resolveIdentity(context.Background(), deps)
@@ -104,7 +101,6 @@ func TestResolveIdentityRandReadError(t *testing.T) {
 		getenv:   stubGetenv(map[string]string{"STACK_NAME": "local"}),
 		hostname: func() (string, error) { return "host", nil },
 		randRead: stubRandRead(0, errors.New("no entropy")),
-		port:     "3000",
 	}
 
 	_, err := resolveIdentity(context.Background(), deps)
@@ -124,7 +120,6 @@ func TestResolveIdentityRandShortRead(t *testing.T) {
 			b[0] = 0xff
 			return 1, nil
 		},
-		port: "3000",
 	}
 
 	_, err := resolveIdentity(context.Background(), deps)
@@ -143,7 +138,6 @@ func TestResolveIdentityECSContainerFetchError(t *testing.T) {
 			return nil, errors.New("connection refused")
 		},
 		randRead: stubRandRead(0x01, nil),
-		port:     "3000",
 	}
 
 	_, err := resolveIdentity(context.Background(), deps)
@@ -162,7 +156,6 @@ func TestResolveIdentityECSContainerInvalidJSON(t *testing.T) {
 			return []byte("{bad"), nil
 		},
 		randRead: stubRandRead(0x01, nil),
-		port:     "3000",
 	}
 
 	_, err := resolveIdentity(context.Background(), deps)
@@ -181,7 +174,6 @@ func TestResolveIdentityECSEmptyNetworks(t *testing.T) {
 			return []byte(`{"Networks":[]}`), nil
 		},
 		randRead: stubRandRead(0x01, nil),
-		port:     "3000",
 	}
 
 	_, err := resolveIdentity(context.Background(), deps)
@@ -200,7 +192,6 @@ func TestResolveIdentityECSEmptyIPv4(t *testing.T) {
 			return []byte(`{"Networks":[{"IPv4Addresses":[]}]}`), nil
 		},
 		randRead: stubRandRead(0x01, nil),
-		port:     "3000",
 	}
 
 	_, err := resolveIdentity(context.Background(), deps)
@@ -219,15 +210,14 @@ func TestResolveIdentityGKEPodIP(t *testing.T) {
 			}, nil
 		},
 		randRead: stubRandRead(0x02, nil),
-		port:     "3000",
 	}
 
 	id, err := resolveIdentity(context.Background(), deps)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if id.PrivateURL != "http://10.4.0.9:3000" {
-		t.Errorf("PrivateURL = %q, want %q", id.PrivateURL, "http://10.4.0.9:3000")
+	if id.PrivateHost != "10.4.0.9" {
+		t.Errorf("PrivateHost = %q, want %q", id.PrivateHost, "10.4.0.9")
 	}
 }
 
@@ -240,15 +230,14 @@ func TestResolveIdentityGKEAsiaNortheast2(t *testing.T) {
 			}, nil
 		},
 		randRead: stubRandRead(0x02, nil),
-		port:     "3000",
 	}
 
 	id, err := resolveIdentity(context.Background(), deps)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if id.PrivateURL != "http://10.4.0.10:3000" {
-		t.Errorf("PrivateURL = %q, want %q", id.PrivateURL, "http://10.4.0.10:3000")
+	if id.PrivateHost != "10.4.0.10" {
+		t.Errorf("PrivateHost = %q, want %q", id.PrivateHost, "10.4.0.10")
 	}
 }
 
@@ -259,7 +248,6 @@ func TestResolveIdentityGKEInterfaceAddrsError(t *testing.T) {
 			return nil, errors.New("interface lookup failed")
 		},
 		randRead: stubRandRead(0x02, nil),
-		port:     "3000",
 	}
 
 	_, err := resolveIdentity(context.Background(), deps)
@@ -278,7 +266,6 @@ func TestResolveIdentityGKENoIPv4(t *testing.T) {
 			}, nil
 		},
 		randRead: stubRandRead(0x02, nil),
-		port:     "3000",
 	}
 
 	_, err := resolveIdentity(context.Background(), deps)
@@ -295,7 +282,6 @@ func TestResolveIdentityLocalHostname(t *testing.T) {
 			return nil, errors.New("should not be called")
 		},
 		randRead: stubRandRead(0xcd, nil),
-		port:     "3000",
 	}
 
 	id, err := resolveIdentity(context.Background(), deps)
@@ -306,8 +292,8 @@ func TestResolveIdentityLocalHostname(t *testing.T) {
 	if id.RunnerID != wantID {
 		t.Errorf("RunnerID = %q, want %q", id.RunnerID, wantID)
 	}
-	if id.PrivateURL != "http://runner-host:3000" {
-		t.Errorf("PrivateURL = %q, want %q", id.PrivateURL, "http://runner-host:3000")
+	if id.PrivateHost != "runner-host" {
+		t.Errorf("PrivateHost = %q, want %q", id.PrivateHost, "runner-host")
 	}
 }
 
@@ -316,7 +302,6 @@ func TestResolveIdentityLocalHostnameError(t *testing.T) {
 		getenv:   stubGetenv(map[string]string{"STACK_NAME": "local"}),
 		hostname: func() (string, error) { return "", errors.New("no hostname") },
 		randRead: stubRandRead(0x01, nil),
-		port:     "3000",
 	}
 
 	_, err := resolveIdentity(context.Background(), deps)
@@ -329,7 +314,6 @@ func TestResolveIdentityStackNameMissing(t *testing.T) {
 	deps := identityDeps{
 		getenv:   stubGetenv(nil),
 		randRead: stubRandRead(0x01, nil),
-		port:     "3000",
 	}
 
 	_, err := resolveIdentity(context.Background(), deps)
@@ -342,7 +326,6 @@ func TestResolveIdentityStackNameUnsupported(t *testing.T) {
 	deps := identityDeps{
 		getenv:   stubGetenv(map[string]string{"STACK_NAME": "us-east-1"}),
 		randRead: stubRandRead(0x01, nil),
-		port:     "3000",
 	}
 
 	_, err := resolveIdentity(context.Background(), deps)
