@@ -56,8 +56,8 @@ func (m *mockDynamoDBAPI) Query(ctx context.Context, params *dynamodb.QueryInput
 // idleItem は state = StateIdle の GSI item を組み立てるヘルパー。
 func idleItem(runnerID string) map[string]types.AttributeValue {
 	return map[string]types.AttributeValue{
-		"runnerId":   &types.AttributeValueMemberS{Value: runnerID},
-		"state":      &types.AttributeValueMemberS{Value: string(model.StateIdle)},
+		"runnerId":    &types.AttributeValueMemberS{Value: runnerID},
+		"state":       &types.AttributeValueMemberS{Value: string(model.StateIdle)},
 		"privateHost": &types.AttributeValueMemberS{Value: testPrivateHost},
 	}
 }
@@ -68,7 +68,7 @@ func busyItem(runnerID, sessionID string) map[string]types.AttributeValue {
 		"runnerId":         &types.AttributeValueMemberS{Value: runnerID},
 		"state":            &types.AttributeValueMemberS{Value: string(model.StateBusy)},
 		"currentSessionId": &types.AttributeValueMemberS{Value: sessionID},
-		"privateHost":       &types.AttributeValueMemberS{Value: testPrivateHost},
+		"privateHost":      &types.AttributeValueMemberS{Value: testPrivateHost},
 	}
 }
 

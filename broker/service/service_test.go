@@ -223,7 +223,7 @@ func TestCreateSession_Success(t *testing.T) {
 			return &model.Runner{
 				RunnerID:         "r1",
 				CurrentSessionID: sessionID,
-				PrivateHost:       "10.0.0.1",
+				PrivateHost:      "10.0.0.1",
 			}, nil
 		},
 	}
@@ -526,7 +526,7 @@ func TestResolveSession_NotFound_CreatesNew(t *testing.T) {
 			return &model.Runner{
 				RunnerID:         "r2",
 				CurrentSessionID: sessionID,
-				PrivateHost:       "10.0.0.2",
+				PrivateHost:      "10.0.0.2",
 			}, nil
 		},
 	}
@@ -598,7 +598,7 @@ func TestResolveSession_EmptySessionID(t *testing.T) {
 			return &model.Runner{
 				RunnerID:         "r1",
 				CurrentSessionID: sessionID,
-				PrivateHost:       "10.0.0.1",
+				PrivateHost:      "10.0.0.1",
 			}, nil
 		},
 	}
@@ -650,7 +650,7 @@ func TestResolveSession_ExistingUnhealthy_Reassigned(t *testing.T) {
 			return &model.Runner{
 				RunnerID:         "r-new",
 				CurrentSessionID: sessionID,
-				PrivateHost:       "10.0.0.2",
+				PrivateHost:      "10.0.0.2",
 			}, nil
 		},
 		deleteFn: func(_ context.Context, runnerID string) error {
@@ -698,13 +698,13 @@ func TestCreateSession_RetryOnUnhealthy(t *testing.T) {
 				return &model.Runner{
 					RunnerID:         "r-healthy",
 					CurrentSessionID: sessionID,
-					PrivateHost:       "10.0.0.3",
+					PrivateHost:      "10.0.0.3",
 				}, nil
 			}
 			return &model.Runner{
 				RunnerID:         "r-dead-" + string(rune('0'+acquireCount)),
 				CurrentSessionID: sessionID,
-				PrivateHost:       "10.0.0.1",
+				PrivateHost:      "10.0.0.1",
 			}, nil
 		},
 		deleteFn: func(_ context.Context, _ string) error {
@@ -750,7 +750,7 @@ func TestCreateSession_AllUnhealthyThenNoIdle(t *testing.T) {
 			return &model.Runner{
 				RunnerID:         "r-dead",
 				CurrentSessionID: sessionID,
-				PrivateHost:       "10.0.0.1",
+				PrivateHost:      "10.0.0.1",
 			}, nil
 		},
 		deleteFn: func(_ context.Context, _ string) error { return nil },
@@ -789,7 +789,7 @@ func TestCreateSession_ContextCanceled(t *testing.T) {
 			return &model.Runner{
 				RunnerID:         "r1",
 				CurrentSessionID: sessionID,
-				PrivateHost:       "10.0.0.1",
+				PrivateHost:      "10.0.0.1",
 			}, nil
 		},
 		deleteFn: func(_ context.Context, _ string) error {
@@ -820,7 +820,7 @@ func TestCreateSession_DeleteError(t *testing.T) {
 			return &model.Runner{
 				RunnerID:         "r1",
 				CurrentSessionID: sessionID,
-				PrivateHost:       "10.0.0.1",
+				PrivateHost:      "10.0.0.1",
 			}, nil
 		},
 		deleteFn: func(_ context.Context, _ string) error {

@@ -32,7 +32,7 @@ type Service interface {
 
 type ResolveResult struct {
 	SessionID  string
-	RunnerHost  string
+	RunnerHost string
 	Created    bool
 	Reassigned bool
 }
@@ -151,7 +151,7 @@ func (s *BrokerService) ResolveSession(ctx context.Context, sessionID string) (*
 	}
 	return &ResolveResult{
 		SessionID:  result.SessionID,
-		RunnerHost:  result.Runner.PrivateHost,
+		RunnerHost: result.Runner.PrivateHost,
 		Created:    true,
 		Reassigned: reassigned,
 	}, nil

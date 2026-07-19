@@ -596,7 +596,7 @@ func TestGetResolve_Reassigned(t *testing.T) {
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return &service.ResolveResult{
 				SessionID:  "new-sess",
-				RunnerHost:  "10.0.0.2",
+				RunnerHost: "10.0.0.2",
 				Created:    true,
 				Reassigned: true,
 			}, nil
@@ -627,7 +627,7 @@ func TestGetResolve_NotReassigned(t *testing.T) {
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return &service.ResolveResult{
 				SessionID:  "sess-1",
-				RunnerHost:  "10.0.0.1",
+				RunnerHost: "10.0.0.1",
 				Created:    false,
 				Reassigned: false,
 			}, nil
