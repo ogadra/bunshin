@@ -1,5 +1,3 @@
-# Consumed by scripts/google-cloud/deploy.sh via `terraform output -json system`
-# to render deploy/google-cloud manifests at kubectl apply time.
 output "system" {
   description = "Values wired into k8s manifests by deploy.sh; not intended for humans"
   value = {
@@ -12,7 +10,6 @@ output "system" {
   }
 }
 
-# For the operator to register in whatever DNS zone hosts var.domain_name.
 output "user_dns" {
   description = "DNS records to publish for var.domain_name in the operator's DNS provider"
   value = {

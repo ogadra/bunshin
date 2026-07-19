@@ -24,7 +24,8 @@ resource "google_container_cluster" "bunshin" {
   }
 
   # enable_private_endpoint is the legacy alias of control_plane_endpoints_config.ip_endpoints_config.enabled = false.
-  # google provider 7.40 surfaces it as a perpetual "true -> null" diff when omitted, so we mirror it.
+  # google provider 7.40 surfaces it as a perpetual "true -> null" diff when omitted.
+  # Mirror it here to keep the plan clean.
   private_cluster_config {
     enable_private_nodes    = true
     enable_private_endpoint = true
