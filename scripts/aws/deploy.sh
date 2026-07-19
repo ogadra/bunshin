@@ -90,6 +90,9 @@ main() {
     # shellcheck disable=SC1091
     source "${ROOT_DIR}/deploy/aws/stacks.env"
 
+    # shellcheck disable=SC1091
+    source "${ROOT_DIR}/deploy/aws/environments/${env_name}.env"
+
     for service in "${target_services[@]}"; do
         run_service "${service}" "${env_name}" "${aws_account_id}" &
         pids+=("$!")

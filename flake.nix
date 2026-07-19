@@ -22,6 +22,7 @@
           ecspresso
           gettext
           gitleaks
+          jq
           just
           go_1_26
           (google-cloud-sdk.withExtraComponents [ google-cloud-sdk.components.gke-gcloud-auth-plugin ])

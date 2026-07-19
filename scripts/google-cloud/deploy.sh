@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
-SERVICES=(broker nginx runner)
+SERVICES=(broker nginx runner front)
 REGIONS=(asia-northeast1 asia-northeast2)
 REGION_DIRS=(asne1 asne2)
 REPOSITORY="bunshin"
@@ -28,6 +28,12 @@ contains_service() {
     return 1
 }
 
+is_static_only() {
+    local service="${1:?}"
+
+    [[ "${service}" == "front" ]]
+}
+
 resolve_project() {
     local project
     project="$(gcloud config get-value project 2>/dev/null)"
@@ -44,9 +50,19 @@ resolve_deployer_email() {
     echo "${email}"
 }
 
-read_tfstate_output() {
-    local key="${1:?}"
-    terraform -chdir="${ROOT_DIR}/terraform/google-cloud" output -raw "${key}"
+read_system_output() {
+    terraform -chdir="${ROOT_DIR}/terraform/google-cloud" output -json system
+}
+
+# jq -r prints the literal "null" for missing keys, which would render into
+# manifests undetected, so bail out instead of returning it.
+read_system_field() {
+    local json="${1:?}"
+    local path="${2:?}"
+    local value
+    value="$(jq -r "${path}" <<<"${json}")"
+    [[ "${value}" != "null" ]] || die "terraform output 'system${path}' is null"
+    printf '%s' "${value}"
 }
 
 configure_docker_auth() {
@@ -79,7 +95,10 @@ apply_manifests() {
     local defined_envs='$BROKER_GSA_EMAIL,$BROKER_KSA_NAME,$BROKER_REPLICAS,$BUNSHIN_STACKS,$DEPLOYER_EMAIL,$FIRESTORE_DATABASE,$GOOGLE_CLOUD_PROJECT,$IMAGE_TAG,$INTERNAL_DOMAIN,$INTERNAL_LB_NAME,$NGINX_NEG_NAME,$NGINX_REPLICAS,$NGINX_RESOLVER,$REGION,$REPOSITORY,$RUNNER_REPLICAS'
     local f
 
+    kubectl --context="${context}" apply -f "${MANIFESTS_DIR}/base/namespace.yaml"
+
     for f in "${MANIFESTS_DIR}/base/"*.yaml; do
+        [[ "${f}" == */namespace.yaml ]] && continue
         envsubst "${defined_envs}" < "${f}" | kubectl --context="${context}" apply -f -
     done
 }
@@ -95,21 +114,43 @@ wait_rollout() {
         --timeout=5m
 }
 
+deploy_front() {
+    local system_json="${1:?}"
+    local bucket
+    bucket="$(read_system_field "${system_json}" .static_bucket)"
+
+    echo "[front] building via pnpm"
+    pnpm --dir "${ROOT_DIR}/front" build
+
+    echo "[front] syncing to gs://${bucket}/"
+    gcloud storage rsync -r \
+        --delete-unmatched-destination-objects \
+        "${ROOT_DIR}/front/dist/" \
+        "gs://${bucket}/"
+}
+
 main() {
     local env_name="${1:?Usage: scripts/google-cloud/deploy.sh <env> [service...]}"
     shift
     local project
     local image_tag
     local deployer_email
+    local system_json
     local domain_name
     local broker_gsa_email
     local -a target_services=()
+    local -a container_services=()
+    local include_front=false
     local service
     local i
     local region_dir
     local membership
     local context
     local nginx_resolver
+    local svc
+    local svc_upper
+    local replicas_var
+    local replicas_value
 
     if [[ $# -eq 0 ]]; then
         target_services=("${SERVICES[@]}")
@@ -120,17 +161,37 @@ main() {
         done
     fi
 
+    for service in "${target_services[@]}"; do
+        if is_static_only "${service}"; then
+            include_front=true
+        else
+            container_services+=("${service}")
+        fi
+    done
+
+    # shellcheck disable=SC1091
+    source "${ROOT_DIR}/deploy/google-cloud/environments/${env_name}.env"
+
     project="$(resolve_project)"
     deployer_email="$(resolve_deployer_email)"
     image_tag="$(git -C "${ROOT_DIR}" rev-parse HEAD)"
 
-    domain_name="$(read_tfstate_output domain_name)"
-    broker_gsa_email="$(read_tfstate_output broker_gsa_email)"
+    system_json="$(read_system_output)"
+    domain_name="$(read_system_field "${system_json}" .domain_name)"
+    broker_gsa_email="$(read_system_field "${system_json}" .broker_gsa_email)"
 
     echo "Deploying to google-cloud env=${env_name} project=${project} image_tag=${image_tag}"
 
+    if [[ "${include_front}" == "true" ]]; then
+        deploy_front "${system_json}"
+    fi
+
+    if [[ ${#container_services[@]} -eq 0 ]]; then
+        return 0
+    fi
+
     configure_docker_auth
-    for service in "${target_services[@]}"; do
+    for service in "${container_services[@]}"; do
         build_and_push "${service}" "${project}" "${image_tag}"
     done
 
@@ -152,7 +213,7 @@ main() {
         membership="${MEMBERSHIPS[$i]}"
         context="connectgateway_${project}_global_${membership}"
 
-        nginx_resolver="$(read_tfstate_output "nginx_resolver_${region_dir}")"
+        nginx_resolver="$(read_system_field "${system_json}" ".nginx_resolver.${region_dir}")"
         export NGINX_RESOLVER="${nginx_resolver}"
 
         set -a
@@ -160,13 +221,22 @@ main() {
         source "${MANIFESTS_DIR}/regions/${region_dir}/region.env"
         set +a
 
+        for svc in broker nginx runner; do
+            svc_upper="${svc^^}"
+            replicas_var="${svc_upper}_REPLICAS_${region_dir^^}"
+            replicas_value="${!replicas_var:-}"
+            [[ -n "${replicas_value}" ]] \
+                || die "${replicas_var} must be set (e.g. ${replicas_var}=1)"
+            export "${svc_upper}_REPLICAS=${replicas_value}"
+        done
+
         echo "[${membership}] fetching Connect Gateway credentials"
         gcloud container fleet memberships get-credentials "${membership}" \
             --project="${project}" >/dev/null
 
         apply_manifests "${context}"
 
-        for service in "${target_services[@]}"; do
+        for service in "${container_services[@]}"; do
             wait_rollout "${context}" "${service}"
         done
     done

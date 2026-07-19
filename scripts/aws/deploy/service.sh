@@ -6,6 +6,11 @@ ECR_REGION="ap-northeast-1"
 REPLICA_REGION="ap-northeast-3"
 REGION_DIRS=(apne1 apne3)
 
+die() {
+    echo "Error: $*" >&2
+    exit 1
+}
+
 platform_for_service() {
     case "${1:?}" in
         broker|nginx) echo "linux/arm64" ;;
@@ -41,9 +46,13 @@ wait_for_replication() {
 deploy_to_region() {
     local service="${1:?}"
     local region_dir="${2:?}"
+    local svc_upper="${service^^}"
+    local desired_var="${svc_upper}_DESIRED_COUNT_${region_dir^^}"
+    local desired_value="${!desired_var:-}"
 
-    # shellcheck disable=SC1090,SC1091
-    source "${ROOT_DIR}/deploy/aws/${region_dir}/region.env"
+    [[ -n "${desired_value}" ]] \
+        || die "${desired_var} must be set (e.g. ${desired_var}=3)"
+    export "${svc_upper}_DESIRED_COUNT=${desired_value}"
 
     echo "[${region_dir}] deploying ${service} via ecspresso"
     ecspresso deploy \
