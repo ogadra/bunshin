@@ -810,30 +810,23 @@ func TestNoIdleRunner(t *testing.T) {
 	assertForwardedClientAddress(t, got, "203.0.113.50:45678")
 }
 
-// perlHmrRunnerHostname is the runner GET/PUT /api/app/handler must land on.
-// nginx does not proxy port 5000 (only /api/* routes there), so the perl HMR
-// tests pin the session to this hostname and then check :5000 on it directly.
-const perlHmrRunnerHostname = "runner-1"
+// perlHmrStack is this integration environment's own STACK_NAME (see
+// .env.example).
+const perlHmrStack = "ap-northeast-1"
 
-// perlHmrPerlHTTP は perlHmrRunnerHostname の Perl サーバー (:5000) の URL。
-const perlHmrPerlHTTP = "http://" + perlHmrRunnerHostname + ":5000"
+// perlHmrPortForwardDomain is the domain suffix nginx's port-forward routing
+// matches Host against.
+const perlHmrPortForwardDomain = "internal.test"
 
-// pinnedRunnerSession は broker の idle pool から hostname 以外の全 runner を
-// 一時的に外した上で nginx 経由のセッションを作成し、resolve が hostname に
-// 解決されることを保証する。テスト終了時に resetRunners で全 runner を戻す。
-func pinnedRunnerSession(t *testing.T, hostname string) sessionCookies {
-	t.Helper()
-	for _, h := range runnerHostnames {
-		if h == hostname {
-			continue
-		}
-		if err := deleteFromBroker(brokerBase + "/internal/runners/" + hostnameRunnerID(h)); err != nil {
-			t.Fatalf("delete runner %s: %v", h, err)
-		}
-	}
-	cookies := createSession(t)
-	t.Cleanup(func() { resetRunners(t, cookies.SessionID) })
-	return cookies
+func sessionHex(sessionID string) string {
+	_, hex, _ := strings.Cut(sessionID, "_")
+	return hex
+}
+
+// portForwardHost builds the "{hex32}.{stack}.<domain>" Host that nginx's
+// port-forward routing resolves to the session's runner on :5000.
+func portForwardHost(hex string) string {
+	return hex + "." + perlHmrStack + "." + perlHmrPortForwardDomain
 }
 
 // snapshotHandler は現在の DaiKichijoji.pm を nginx 経由で GET し、テスト終了時に
@@ -841,29 +834,33 @@ func pinnedRunnerSession(t *testing.T, hostname string) sessionCookies {
 func snapshotHandler(t *testing.T, cookies sessionCookies) {
 	t.Helper()
 	resp := doRequest(t, http.MethodGet, nginxBase+"/api/app/handler", "", cookies.cookieHeader())
-	original, _ := io.ReadAll(resp.Body)
+	original, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
+	if err != nil {
+		t.Fatalf("snapshot GET body: %v", err)
+	}
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("snapshot GET status = %d, body = %s", resp.StatusCode, original)
 	}
 	t.Cleanup(func() {
 		req, err := http.NewRequest(http.MethodPut, nginxBase+"/api/app/handler", strings.NewReader(string(original)))
 		if err != nil {
-			t.Logf("restore DaiKichijoji.pm: new request: %v", err)
+			t.Errorf("restore DaiKichijoji.pm: new request: %v", err)
 			return
 		}
 		req.Header.Set("Cookie", cookies.cookieHeader())
 		resp, err := httpClient.Do(req)
 		if err != nil {
-			t.Logf("restore DaiKichijoji.pm: PUT: %v", err)
+			t.Errorf("restore DaiKichijoji.pm: PUT: %v", err)
 			return
 		}
 		resp.Body.Close()
+		if resp.StatusCode != http.StatusNoContent {
+			t.Errorf("restore DaiKichijoji.pm: status = %d", resp.StatusCode)
+		}
 	})
 }
 
-// putHandler は nginx 経由の PUT /api/app/handler で DaiKichijoji.pm を上書きし、
-// 204 でなければ fail する。
 func putHandler(t *testing.T, cookies sessionCookies, body string) {
 	t.Helper()
 	resp := doRequestWithHeaders(
@@ -885,26 +882,28 @@ func handlerModuleSource(contentBody string) string {
 	return fmt.Sprintf("package DaiKichijoji;\nuse strict;\nuse warnings;\nsub content { return %q; }\n1;\n", contentBody)
 }
 
-// getPerl は Perl サーバー (:5000) にリクエストし、ステータスと本文を返す。
-func getPerl(t *testing.T) (int, string) {
+// getPerl は nginx の port-forward ルーティング経由で
+// {hex32}.{stack}.<domain> の Perl サーバー (:5000) へ GET し、
+// ステータスと本文を返す。
+func getPerl(t *testing.T, host string) (int, string) {
 	t.Helper()
-	resp, err := httpClient.Get(perlHmrPerlHTTP + "/")
-	if err != nil {
-		t.Fatalf("GET :5000/: %v", err)
-	}
+	resp := doRequestWithHeaders(t, http.MethodGet, nginxBase+"/", "", "", map[string]string{"Host": host})
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	return resp.StatusCode, string(body)
 }
 
 // TestPerlHmrReachable は supervisor が起動時に server.pl を立ち上げていることを、
-// :5000/ が 200 を返すまでポーリングして確認する。backoff 再試行があるため 30 秒待つ。
+// port-forward Host 経由の GET :5000/ が 200 を返すまでポーリングして確認する。
+// backoff 再試行があるため 30 秒待つ。
 func TestPerlHmrReachable(t *testing.T) {
+	cookies := setupSession(t)
+	host := portForwardHost(sessionHex(cookies.SessionID))
 	deadline := time.Now().Add(30 * time.Second)
 	var status int
 	var body string
 	for time.Now().Before(deadline) {
-		status, body = getPerl(t)
+		status, body = getPerl(t, host)
 		if status == http.StatusOK {
 			return
 		}
@@ -913,17 +912,18 @@ func TestPerlHmrReachable(t *testing.T) {
 	t.Fatalf("perl server did not become reachable within 30s: last status = %d, body = %q", status, body)
 }
 
-// TestPerlHmrPutSwapsHandler は PUT /api/app/handler の直後の GET :5000 が
-// 新しい content() の戻り値を HTML shell に埋めて返すことを検証する
+// TestPerlHmrPutSwapsHandler は PUT /api/app/handler の直後の GET (port-forward
+// 経由の :5000) が新しい content() の戻り値を HTML shell に埋めて返すことを検証する
 // (Module::Refresh による HMR)。
 func TestPerlHmrPutSwapsHandler(t *testing.T) {
-	cookies := pinnedRunnerSession(t, perlHmrRunnerHostname)
+	cookies := setupSession(t)
+	host := portForwardHost(sessionHex(cookies.SessionID))
 	snapshotHandler(t, cookies)
 
 	marker := fmt.Sprintf("hmr-marker-%d", time.Now().UnixNano())
 	putHandler(t, cookies, handlerModuleSource(marker))
 
-	status, body := getPerl(t)
+	status, body := getPerl(t, host)
 	if status != http.StatusOK {
 		t.Fatalf("status = %d, body = %q", status, body)
 	}
@@ -932,24 +932,33 @@ func TestPerlHmrPutSwapsHandler(t *testing.T) {
 	}
 }
 
-// TestPerlHmrSyntaxErrorRecovers は壊れた DaiKichijoji.pm を PUT した直後の GET :5000 が
-// 500 を返し、修正版を PUT すると 200 に戻ることを検証する。
-// server.pl がコンパイルエラーで死なないことも兼ねる (supervisor の再起動を必要としない)。
+// TestPerlHmrSyntaxErrorRecovers は壊れた DaiKichijoji.pm を PUT した直後の GET
+// (port-forward 経由の :5000) が 500 を返し、修正版を PUT すると 200 に戻ることを
+// 検証する。server.pl がコンパイルエラーで死なないことも兼ねる
+// (supervisor の再起動を必要としない)。
 func TestPerlHmrSyntaxErrorRecovers(t *testing.T) {
-	cookies := pinnedRunnerSession(t, perlHmrRunnerHostname)
+	cookies := setupSession(t)
+	host := portForwardHost(sessionHex(cookies.SessionID))
 	snapshotHandler(t, cookies)
 
 	putHandler(t, cookies, "this is not perl at all !!!\n")
-	status, body := getPerl(t)
+	status, body := getPerl(t, host)
 	if status != http.StatusInternalServerError {
 		t.Fatalf("broken status = %d, body = %q", status, body)
 	}
-	if body == "" {
-		t.Errorf("expected error body from 500, got empty")
+	if !strings.Contains(body, "DaiKichijoji.pm load failed") {
+		t.Errorf("500 body = %q, want to contain %q", body, "DaiKichijoji.pm load failed")
 	}
 
+	// Module::Refresh detects a stale module by comparing the file mtime to
+	// the mtime it recorded at load time. Coarse-resolution filesystems (any
+	// mount without nsec mtime) can round two writes within the same wall-
+	// clock second to the same mtime, silently skipping the recovery reload.
+	// Wait past the second boundary so the recovered PUT always looks newer.
+	time.Sleep(1100 * time.Millisecond)
+
 	putHandler(t, cookies, handlerModuleSource("recovered"))
-	status2, body2 := getPerl(t)
+	status2, body2 := getPerl(t, host)
 	if status2 != http.StatusOK {
 		t.Fatalf("fixed status = %d, body = %q", status2, body2)
 	}
