@@ -16,6 +16,10 @@ ngx.var.bunshin_client_address = core.client_address(
     ngx.var.remote_addr,
     ngx.var.remote_port
 )
+-- /_resolve サブリクエストは独立した変数スコープを持ちngx.var 書き戻しが届かないため、
+-- リクエストヘッダに焼き直して subrequest 側で継承させる。
+ngx.req.set_header("X-Fallback-Stack", relay_fallback_stack)
+ngx.req.set_header("X-Fallback-Remaining", relay_fallback_remaining)
 
 local fallback_stack = relay_fallback_stack
 local arrival = core.decide_arrival(
