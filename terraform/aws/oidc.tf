@@ -11,23 +11,13 @@ resource "aws_iam_openid_connect_provider" "github" {
 }
 
 locals {
-  # ECS services that need deploy roles with ECR push and ECS update permissions
+  # ECS services that need deploy roles with ECR push and ECS deploy permissions
   ecs_deploy_services = toset(["nginx", "broker", "runner"])
 
-  # Map of service name to ECS service ID for IAM policy resource references
-  ecs_service_ids = {
-    nginx = [
-      module.apne1.nginx_ecs_service_id,
-      module.apne3.nginx_ecs_service_id,
-    ]
-    broker = [
-      module.apne1.broker_ecs_service_id,
-      module.apne3.broker_ecs_service_id,
-    ]
-    runner = [
-      module.apne1.runner_ecs_service_id,
-      module.apne3.runner_ecs_service_id,
-    ]
+  # region set for the ecspresso deploy_ecs policy
+  stack_regions = {
+    apne1 = "ap-northeast-1"
+    apne3 = "ap-northeast-3"
   }
 }
 
@@ -92,7 +82,11 @@ resource "aws_iam_role_policy" "deploy_ecr" {
   })
 }
 
-# ECS deploy permissions scoped to each service
+# ECS deploy permissions for ecspresso.
+# RegisterTaskDefinition / DescribeTaskDefinition / DeregisterTaskDefinition do
+# not support resource-level scoping in IAM, so they are Resource="*"; service
+# and task mutations are pinned to the per-service ARNs; iam:PassRole is scoped
+# to the task/execution roles ecspresso registers with new task definitions.
 resource "aws_iam_role_policy" "deploy_ecs" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   for_each = local.ecs_deploy_services
@@ -102,13 +96,56 @@ resource "aws_iam_role_policy" "deploy_ecs" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "ecs:UpdateService",
-        "ecs:DescribeServices",
-      ]
-      Resource = local.ecs_service_ids[each.key]
-    }]
+    Statement = [
+      {
+        Sid    = "ServiceOps"
+        Effect = "Allow"
+        Action = [
+          "ecs:DescribeServices",
+          "ecs:UpdateService",
+          "ecs:DescribeTasks",
+          "ecs:ListTasks",
+          "ecs:TagResource",
+          "ecs:UntagResource",
+          "ecs:ListTagsForResource",
+        ]
+        Resource = concat(
+          [
+            for region in values(local.stack_regions) :
+            "arn:aws:ecs:${region}:${data.aws_caller_identity.current.account_id}:service/bunshin/bunshin-${each.key}"
+          ],
+          [
+            for region in values(local.stack_regions) :
+            "arn:aws:ecs:${region}:${data.aws_caller_identity.current.account_id}:task/bunshin/*"
+          ],
+        )
+      },
+      {
+        Sid    = "TaskDefinitionOps"
+        Effect = "Allow"
+        Action = [
+          "ecs:RegisterTaskDefinition",
+          "ecs:DescribeTaskDefinition",
+          "ecs:DeregisterTaskDefinition",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "PassTaskRoles"
+        Effect = "Allow"
+        Action = "iam:PassRole"
+        Resource = flatten([
+          for region_slug in keys(local.stack_regions) : [
+            "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/bunshin-${region_slug}-${each.key}-task-execution",
+            "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/bunshin-${region_slug}-${each.key}-task",
+          ]
+        ])
+        Condition = {
+          StringEquals = {
+            "iam:PassedToService" = "ecs-tasks.amazonaws.com"
+          }
+        }
+      },
+    ]
   })
 }
