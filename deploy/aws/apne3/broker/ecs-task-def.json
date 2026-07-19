@@ -26,7 +26,8 @@
         { "name": "AWS_REGION", "value": "ap-northeast-3" },
         { "name": "STACK_NAME", "value": "ap-northeast-3" },
         { "name": "BUNSHIN_STORE", "value": "dynamodb" },
-        { "name": "BUNSHIN_STACKS", "value": "{{ must_env `BUNSHIN_STACKS` }}" }
+        { "name": "BUNSHIN_STACKS", "value": "{{ must_env `BUNSHIN_STACKS` }}" },
+        { "name": "RUNNER_PORT", "value": "3000" }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",

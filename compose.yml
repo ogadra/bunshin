@@ -11,6 +11,8 @@ services:
       STACK_NAME: "${STACK_NAME}"
       INTERNAL_DOMAIN: "${INTERNAL_DOMAIN}"
       BUNSHIN_STACKS: "${BUNSHIN_STACKS}"
+      RUNNER_PORT: "${RUNNER_PORT}"
+      RUNNER_APP_PORT: "${RUNNER_APP_PORT}"
       NGINX_RESOLVER: 127.0.0.11
       BROKER_HOST: broker
     depends_on:
@@ -27,6 +29,7 @@ services:
       - broker/.env.dynamodb.example
     environment:
       BUNSHIN_STACKS: "${BUNSHIN_STACKS}"
+      RUNNER_PORT: "${RUNNER_PORT}"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
       interval: 5s

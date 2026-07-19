@@ -1,7 +1,7 @@
 package.path = "/usr/local/openresty/nginx/lua/?.lua;" .. package.path
 local core = require("resolve_core")
 
-core.configure("ap-northeast-1", "example.com", "ap-northeast-1,ap-northeast-3")
+core.configure("ap-northeast-1", "example.com", "ap-northeast-1,ap-northeast-3", 3000, 5000)
 
 local failed = 0
 local function check(name, cond)
@@ -70,7 +70,7 @@ check("shell fallback does not expire new shell cookie", vars.resolve_expire_she
 _, executed, vars = run({
     status = 200,
     header = {
-        ["X-Runner-Url"] = "http://runner-1:3000",
+        ["X-Runner-Host"] = "runner-1",
         ["Set-Cookie"] = "session_id=ap-northeast-1_deadbeef; Path=/",
     },
 }, "POST", "/api/execute")

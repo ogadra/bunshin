@@ -15,9 +15,9 @@ import (
 // testRunnerID は Register テストで使う 32 桁小文字 hex の runnerId。
 const testRunnerID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
-// testPrivateURL は idleItem/busyItem のヘルパーが GSI 射影として含める privateUrl 値。
-// state-index の Projection = ALL が壊れて privateUrl が消えた場合にテストで検出できるよう、ヘルパー側で必ず載せる。
-const testPrivateURL = "http://10.0.0.1:8080"
+// testPrivateHost は idleItem/busyItem のヘルパーが GSI 射影として含める privateHost 値。
+// state-index の Projection = ALL が壊れて privateHost が消えた場合にテストで検出できるよう、ヘルパー側で必ず載せる。
+const testPrivateHost = "10.0.0.1"
 
 // mockDynamoDBAPI は dynamoDBAPI のモック実装。
 type mockDynamoDBAPI struct {
@@ -56,9 +56,9 @@ func (m *mockDynamoDBAPI) Query(ctx context.Context, params *dynamodb.QueryInput
 // idleItem は state = StateIdle の GSI item を組み立てるヘルパー。
 func idleItem(runnerID string) map[string]types.AttributeValue {
 	return map[string]types.AttributeValue{
-		"runnerId":   &types.AttributeValueMemberS{Value: runnerID},
-		"state":      &types.AttributeValueMemberS{Value: string(model.StateIdle)},
-		"privateUrl": &types.AttributeValueMemberS{Value: testPrivateURL},
+		"runnerId":    &types.AttributeValueMemberS{Value: runnerID},
+		"state":       &types.AttributeValueMemberS{Value: string(model.StateIdle)},
+		"privateHost": &types.AttributeValueMemberS{Value: testPrivateHost},
 	}
 }
 
@@ -68,7 +68,7 @@ func busyItem(runnerID, sessionID string) map[string]types.AttributeValue {
 		"runnerId":         &types.AttributeValueMemberS{Value: runnerID},
 		"state":            &types.AttributeValueMemberS{Value: string(model.StateBusy)},
 		"currentSessionId": &types.AttributeValueMemberS{Value: sessionID},
-		"privateUrl":       &types.AttributeValueMemberS{Value: testPrivateURL},
+		"privateHost":      &types.AttributeValueMemberS{Value: testPrivateHost},
 	}
 }
 
@@ -121,7 +121,7 @@ func TestRegister_MarshalError(t *testing.T) {
 		return nil, errors.New("marshal error")
 	}
 
-	err := repo.Register(context.Background(), testRunnerID, "http://10.0.0.1:8080")
+	err := repo.Register(context.Background(), testRunnerID, "10.0.0.1")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -145,7 +145,7 @@ func TestRegister_InvalidRunnerID(t *testing.T) {
 		"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",   // 31 chars
 		"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // 33 chars
 	} {
-		err := repo.Register(context.Background(), invalid, "http://10.0.0.1:8080")
+		err := repo.Register(context.Background(), invalid, "10.0.0.1")
 		if !errors.Is(err, ErrInvalidRunnerID) {
 			t.Errorf("runnerID=%q: got err=%v, want ErrInvalidRunnerID", invalid, err)
 		}
@@ -166,16 +166,16 @@ func TestRegister_Success(t *testing.T) {
 			if !ok || state.Value != string(model.StateIdle) {
 				t.Errorf("state was not marshaled as idle, got %v", params.Item["state"])
 			}
-			v, ok := params.Item["privateUrl"].(*types.AttributeValueMemberS)
-			if !ok || v.Value != "http://10.0.0.1:8080" {
-				t.Errorf("privateUrl was not marshaled correctly")
+			v, ok := params.Item["privateHost"].(*types.AttributeValueMemberS)
+			if !ok || v.Value != "10.0.0.1" {
+				t.Errorf("privateHost was not marshaled correctly")
 			}
 			return &dynamodb.PutItemOutput{}, nil
 		},
 	}
 	repo := NewDynamoRepository(mock, "t")
 
-	err := repo.Register(context.Background(), testRunnerID, "http://10.0.0.1:8080")
+	err := repo.Register(context.Background(), testRunnerID, "10.0.0.1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -194,20 +194,20 @@ func TestRegister_Conflict(t *testing.T) {
 	}
 	repo := NewDynamoRepository(mock, "t")
 
-	err := repo.Register(context.Background(), testRunnerID, "http://10.0.0.1:8080")
+	err := repo.Register(context.Background(), testRunnerID, "10.0.0.1")
 	if !errors.Is(err, ErrConflict) {
 		t.Fatalf("expected ErrConflict, got: %v", err)
 	}
 }
 
-// TestRegister_EmptyPrivateURL は privateURL が空の場合に ErrInvalidPrivateURL を返すことを検証する。
-func TestRegister_EmptyPrivateURL(t *testing.T) {
+// TestRegister_EmptyPrivateHost は privateHost が空の場合に ErrInvalidPrivateHost を返すことを検証する。
+func TestRegister_EmptyPrivateHost(t *testing.T) {
 	t.Parallel()
 	repo := NewDynamoRepository(&mockDynamoDBAPI{}, "t")
 
 	err := repo.Register(context.Background(), testRunnerID, "")
-	if !errors.Is(err, ErrInvalidPrivateURL) {
-		t.Fatalf("got %v, want ErrInvalidPrivateURL", err)
+	if !errors.Is(err, ErrInvalidPrivateHost) {
+		t.Fatalf("got %v, want ErrInvalidPrivateHost", err)
 	}
 }
 
@@ -221,7 +221,7 @@ func TestRegister_PutItemError(t *testing.T) {
 	}
 	repo := NewDynamoRepository(mock, "t")
 
-	err := repo.Register(context.Background(), testRunnerID, "http://10.0.0.1:8080")
+	err := repo.Register(context.Background(), testRunnerID, "10.0.0.1")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -290,8 +290,8 @@ func TestAcquireIdle_Success(t *testing.T) {
 	if runner.CurrentSessionID != "sess-1" {
 		t.Errorf("currentSessionId = %q, want %q", runner.CurrentSessionID, "sess-1")
 	}
-	if runner.PrivateURL != testPrivateURL {
-		t.Errorf("privateURL = %q, want %q (GSI projection must carry privateUrl)", runner.PrivateURL, testPrivateURL)
+	if runner.PrivateHost != testPrivateHost {
+		t.Errorf("privateHost = %q, want %q (GSI projection must carry privateHost)", runner.PrivateHost, testPrivateHost)
 	}
 	if !runner.IsBusy() {
 		t.Errorf("expected runner to be busy, state = %q", runner.State)
@@ -638,8 +638,8 @@ func TestListBusyRunners_SinglePage(t *testing.T) {
 	if !runners[0].IsBusy() {
 		t.Errorf("expected first runner to be busy, state = %q", runners[0].State)
 	}
-	if runners[0].PrivateURL != testPrivateURL {
-		t.Errorf("runners[0].privateURL = %q, want %q (GSI projection must carry privateUrl)", runners[0].PrivateURL, testPrivateURL)
+	if runners[0].PrivateHost != testPrivateHost {
+		t.Errorf("runners[0].privateHost = %q, want %q (GSI projection must carry privateHost)", runners[0].PrivateHost, testPrivateHost)
 	}
 }
 
@@ -704,8 +704,8 @@ func TestListBusyRunners_MultiPage(t *testing.T) {
 		t.Errorf("runners[2].RunnerID = %q, want r3", runners[2].RunnerID)
 	}
 	for i, r := range runners {
-		if r.PrivateURL != testPrivateURL {
-			t.Errorf("runners[%d].PrivateURL = %q, want %q (multi-page projection must carry privateUrl)", i, r.PrivateURL, testPrivateURL)
+		if r.PrivateHost != testPrivateHost {
+			t.Errorf("runners[%d].PrivateHost = %q, want %q (multi-page projection must carry privateHost)", i, r.PrivateHost, testPrivateHost)
 		}
 	}
 }
