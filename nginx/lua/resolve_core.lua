@@ -120,12 +120,15 @@ function _M.relay_if_internal(from_internal, value)
     return ""
 end
 
-function _M.client_address(from_internal, bunshin_header, cloudfront_header, remote_addr, remote_port)
+function _M.client_address(from_internal, bunshin_header, cloudfront_header, edge_header, remote_addr, remote_port)
     if from_internal and bunshin_header ~= nil and bunshin_header ~= "" then
         return bunshin_header
     end
     if cloudfront_header ~= nil and cloudfront_header ~= "" then
         return cloudfront_header
+    end
+    if edge_header ~= nil and edge_header ~= "" then
+        return edge_header
     end
     return tostring(remote_addr or "") .. ":" .. tostring(remote_port or "")
 end

@@ -182,19 +182,23 @@ check("relay_if_internal returns empty when public", core.relay_if_internal(fals
 check("relay_if_internal returns empty when internal but header nil", core.relay_if_internal(true, nil) == "")
 check("relay_if_internal returns empty when public and header nil", core.relay_if_internal(false, nil) == "")
 
--- client_address: 内部→X-Bunshin-Client-Address、公開→CloudFront、いずれも無しならremote_addr:port
+-- client_address: bunshin(内部転送)→cloudfront(AWS)→edge(GCP)→remote_addr:portの順に採用する
 check("client_address internal picks bunshin header",
-    core.client_address(true, "1.2.3.4:5678", "9.9.9.9:1", "10.0.0.1", "12345") == "1.2.3.4:5678")
+    core.client_address(true, "1.2.3.4:5678", "9.9.9.9:1", "3.3.3.3:9", "10.0.0.1", "12345") == "1.2.3.4:5678")
 check("client_address internal falls to cloudfront when bunshin empty",
-    core.client_address(true, "", "9.9.9.9:1", "10.0.0.1", "12345") == "9.9.9.9:1")
-check("client_address internal falls to remote when both empty",
-    core.client_address(true, "", "", "10.0.0.1", "12345") == "10.0.0.1:12345")
+    core.client_address(true, "", "9.9.9.9:1", "3.3.3.3:9", "10.0.0.1", "12345") == "9.9.9.9:1")
+check("client_address internal falls to edge when bunshin and cloudfront empty",
+    core.client_address(true, "", "", "3.3.3.3:9", "10.0.0.1", "12345") == "3.3.3.3:9")
+check("client_address internal falls to remote when all empty",
+    core.client_address(true, "", "", "", "10.0.0.1", "12345") == "10.0.0.1:12345")
 check("client_address public ignores bunshin header",
-    core.client_address(false, "1.2.3.4:5678", "9.9.9.9:1", "10.0.0.1", "12345") == "9.9.9.9:1")
-check("client_address public falls to remote when cloudfront empty",
-    core.client_address(false, "spoof", "", "10.0.0.1", "12345") == "10.0.0.1:12345")
-check("client_address public falls to remote when cloudfront nil",
-    core.client_address(false, nil, nil, "10.0.0.1", "12345") == "10.0.0.1:12345")
+    core.client_address(false, "1.2.3.4:5678", "9.9.9.9:1", "3.3.3.3:9", "10.0.0.1", "12345") == "9.9.9.9:1")
+check("client_address public picks edge when cloudfront empty",
+    core.client_address(false, "spoof", "", "3.3.3.3:9", "10.0.0.1", "12345") == "3.3.3.3:9")
+check("client_address public falls to remote when cloudfront and edge empty",
+    core.client_address(false, "spoof", "", "", "10.0.0.1", "12345") == "10.0.0.1:12345")
+check("client_address public falls to remote when all headers nil",
+    core.client_address(false, nil, nil, nil, "10.0.0.1", "12345") == "10.0.0.1:12345")
 
 -- parse_app_host: 32 hex label + 既知stack + internal_domain完全一致だけ通す
 core.configure("ap-northeast-1", "internal.example.com", "ap-northeast-1,ap-northeast-3", 3000, 5000)
