@@ -814,20 +814,22 @@ func portForwardHost(hex, stack string) string {
 }
 
 // busybox httpdはforkしてからbindするため、起動コマンド完了時点では:5000未受付の可能性がある。
-// readiness pollでbind完了を待ってから後続のリクエストを走らせないと、CI上でconnection refused / catch-all 404にflakyになる。
-// httpdの子プロセスの起動失敗はshellから見えないので、stderrを/tmp/pf-www/httpd.errに残してreadiness失敗時に読み戻す。
+// readiness pollでbind完了を待ってから後続のリクエストを走らせる。
+// pollの終了判定にexitを使うと/api/executeの永続bashセッションごと終了しmarker protocolが壊れるので、
+// break + 末尾の条件式で判定する。
+// httpdのstdout/stderrはセッションのpipeを継承したまま居座るので/dev/nullへ切り離す。
 func startPortForwardApp(t *testing.T, cookies sessionCookies) {
 	t.Helper()
-	events := executeCommand(t, cookies, "mkdir -p /tmp/pf-www && echo ok > /tmp/pf-www/probe && busybox httpd -p 5000 -h /tmp/pf-www 2>>/tmp/pf-www/httpd.err")
+	events := executeCommand(t, cookies, "mkdir -p /tmp/pf-www && echo ok > /tmp/pf-www/probe && busybox httpd -p 5000 -h /tmp/pf-www >/dev/null 2>&1")
 	for _, e := range events {
 		if e.ExitCode != nil && *e.ExitCode != 0 {
-			t.Fatalf("busybox httpd start failed: events=%+v", events)
+			t.Fatalf("busybox httpd start failed: exitCode=%d", *e.ExitCode)
 		}
 	}
-	readiness := executeCommand(t, cookies, `for i in $(seq 1 100); do busybox wget -q -O /dev/null http://127.0.0.1:5000/probe && exit 0; sleep 0.1; done; echo '--- pf diag ---'; command -v busybox || echo no_busybox_path; busybox --list 2>&1 | grep -E '^(httpd|wget|netstat|ss|pgrep)$' | tr '\n' ',' || true; echo; ls -la /tmp/pf-www 2>&1; (busybox netstat -tln 2>&1 || busybox ss -tln 2>&1) | head -20; busybox pgrep -af httpd 2>&1 || echo no_httpd; echo httpd.err:; cat /tmp/pf-www/httpd.err 2>&1 || echo no_err; echo wget_verbose:; busybox wget -O - http://127.0.0.1:5000/probe 2>&1 | head -10; echo '--- end ---'; exit 1`)
+	readiness := executeCommand(t, cookies, `ready=0; i=0; while [ $i -lt 100 ]; do busybox wget -q -O /dev/null http://127.0.0.1:5000/probe && { ready=1; break; }; i=$((i+1)); sleep 0.1; done; if [ "$ready" -ne 1 ]; then busybox netstat -tln 2>&1; false; fi`)
 	for _, e := range readiness {
 		if e.ExitCode != nil && *e.ExitCode != 0 {
-			t.Fatalf("busybox httpd did not become ready on :5000 within 10s: events=%+v", readiness)
+			t.Fatalf("busybox httpd did not become ready on :5000 within 10s: exitCode=%d events=%+v", *e.ExitCode, readiness)
 		}
 	}
 	t.Cleanup(func() {
