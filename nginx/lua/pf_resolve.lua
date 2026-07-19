@@ -12,6 +12,9 @@ end
 local res = ngx.location.capture("/_pf_resolve")
 
 local decided = core.decide_app_resolve(res.status, res.header)
+if decided.log then
+    ngx.log(ngx.ERR, decided.log)
+end
 if decided.exit then
     return ngx.exit(decided.exit)
 end
