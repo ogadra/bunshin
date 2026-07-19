@@ -825,6 +825,9 @@ func startPortForwardApp(t *testing.T, cookies sessionCookies) {
 			t.Fatalf("busybox httpd failed exitCode=%d event=%+v", *e.ExitCode, e)
 		}
 	}
+	t.Cleanup(func() {
+		executeCommand(t, cookies, "pkill -f 'busybox httpd' 2>/dev/null || true")
+	})
 }
 
 // TestPortForward_OwnStackReachable は自 stack のセッションで :5000 に到達できることを検証する。
@@ -885,6 +888,7 @@ func TestPortForward_ForeignStack404(t *testing.T) {
 
 // TestPortForward_UnknownSession404 は未使用 32 hex が 404 を返すことを検証する。
 func TestPortForward_UnknownSession404(t *testing.T) {
+	resetForwardTarget(t)
 	resp := doRequestWithHeaders(
 		t,
 		http.MethodGet,
@@ -897,10 +901,14 @@ func TestPortForward_UnknownSession404(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("GET pf unknown session: want 404, got %d", resp.StatusCode)
 	}
+	if got := lastForwardedRequestOrNil(t); got != nil {
+		t.Errorf("must not forward unknown session, but forward-target recorded %+v", got)
+	}
 }
 
 // TestPortForward_UnknownStack404 は BUNSHIN_STACKS に含まれない stack を 404 で拒むことを検証する。
 func TestPortForward_UnknownStack404(t *testing.T) {
+	resetForwardTarget(t)
 	resp := doRequestWithHeaders(
 		t,
 		http.MethodGet,
@@ -912,6 +920,9 @@ func TestPortForward_UnknownStack404(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("GET pf unknown stack: want 404, got %d", resp.StatusCode)
+	}
+	if got := lastForwardedRequestOrNil(t); got != nil {
+		t.Errorf("must not forward unknown stack, but forward-target recorded %+v", got)
 	}
 }
 
@@ -927,6 +938,7 @@ func TestPortForward_InvalidHexShape_FallsToCatchAll(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			resetForwardTarget(t)
 			resp := doRequestWithHeaders(
 				t,
 				http.MethodGet,
@@ -939,20 +951,24 @@ func TestPortForward_InvalidHexShape_FallsToCatchAll(t *testing.T) {
 			if resp.StatusCode != http.StatusNotFound {
 				t.Errorf("GET pf invalid hex %q: want 404, got %d", tc.hex, resp.StatusCode)
 			}
+			if got := lastForwardedRequestOrNil(t); got != nil {
+				t.Errorf("must not forward invalid hex %q, but forward-target recorded %+v", tc.hex, got)
+			}
 		})
 	}
 }
 
-// TestPortForward_PublicHostDoesNotRelayFallbackHeaders は #259 の回帰。
-// port-forward 経路以外の Host に紛れた X-Fallback-* / X-Bunshin-Client-Address は
-// nginx が /_resolve へ中継せず、他 stack への転送で forward-target のヘッダにも現れない。
-func TestPortForward_PublicHostDoesNotRelayFallbackHeaders(t *testing.T) {
+// TestPublicHostDoesNotRelayFallbackHeaders は port-forward 経路以外の Host に紛れた
+// X-Fallback-* / X-Bunshin-Client-Address が nginx から /_resolve へ中継されず、
+// 他 stack への転送で forward-target のヘッダにも現れないことを検証する。
+func TestPublicHostDoesNotRelayFallbackHeaders(t *testing.T) {
 	resetForwardTarget(t)
 	headers := map[string]string{
-		"Host":                     "aaaaaa111.ap-northeast-1.example.com",
-		"X-Fallback-Stack":         "attacker-stack",
-		"X-Fallback-Remaining":     "attacker-remaining",
-		"X-Bunshin-Client-Address": "198.51.100.10:11111",
+		"Host":                      "aaaaaa111.ap-northeast-1.example.com",
+		"CloudFront-Viewer-Address": "203.0.113.90:45678",
+		"X-Fallback-Stack":          "attacker-stack",
+		"X-Fallback-Remaining":      "attacker-remaining",
+		"X-Bunshin-Client-Address":  "198.51.100.10:11111",
 	}
 	resp := doRequestWithHeaders(
 		t,
@@ -963,6 +979,9 @@ func TestPortForward_PublicHostDoesNotRelayFallbackHeaders(t *testing.T) {
 		headers,
 	)
 	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("POST /api/execute public host: want 204 from forward target, got %d", resp.StatusCode)
+	}
 
 	got := lastForwardedRequest(t)
 	if values := got.Header["X-Fallback-Stack"]; len(values) > 0 {
@@ -971,13 +990,7 @@ func TestPortForward_PublicHostDoesNotRelayFallbackHeaders(t *testing.T) {
 	if values := got.Header["X-Fallback-Remaining"]; len(values) > 0 {
 		t.Errorf("X-Fallback-Remaining should be stripped from public host, got %q", values)
 	}
-	values := got.Header["X-Bunshin-Client-Address"]
-	if len(values) != 1 {
-		t.Fatalf("X-Bunshin-Client-Address = %q, want exactly one value", values)
-	}
-	if values[0] == "198.51.100.10:11111" {
-		t.Errorf("public host must not relay spoofed X-Bunshin-Client-Address, got %q", values[0])
-	}
+	assertForwardedClientAddress(t, got, "203.0.113.90:45678")
 }
 
 // lastForwardedRequestOrNil は forward-target が転送を記録していれば返し、無ければ nil を返す。
