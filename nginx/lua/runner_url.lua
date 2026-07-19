@@ -2,23 +2,18 @@
 -- http スキームの host[:port] 形式へ限定し、SSRF / ヘッダーインジェクションを防ぐ。
 local _M = {}
 
--- url が http://host または http://host:port 形式かどうかを返す。
-function _M.is_valid(url)
-    if type(url) ~= "string" then
-        return false
-    end
-    -- Lua パターンはグループの ? を扱えないため 2 本で表現する。
-    return url:match("^http://[%w%.%-]+$") ~= nil
-        or url:match("^http://[%w%.%-]+:%d+$") ~= nil
-end
-
--- is_valid が true な url から host 部分だけ取り出す。port-forward で
--- broker が返した runner URL の :3000 を捨てて :5000 に差し替えるために使う。
+-- brokerが返したrunner URLのportを捨ててRUNNER_APP_PORTに差し替えるため、
+-- 検証を兼ねてhost部分だけ抽出する。許可形式外はnil。
+-- Luaパターンはグループの ? を扱えないため2本で表現する。
 function _M.host_only(url)
     if type(url) ~= "string" then
         return nil
     end
     return url:match("^http://([%w%.%-]+)$") or url:match("^http://([%w%.%-]+):%d+$")
+end
+
+function _M.is_valid(url)
+    return _M.host_only(url) ~= nil
 end
 
 return _M

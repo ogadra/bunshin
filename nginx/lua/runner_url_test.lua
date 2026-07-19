@@ -39,11 +39,13 @@ local host_cases = {
     { url = "http://runner-1:3000", want = "runner-1" },
     { url = "http://10.0.0.1:8080", want = "10.0.0.1" },
     { url = "http://runner.local", want = "runner.local" },
-    -- 不正な url は nil を返し、呼び出し側に不在を伝える
+    -- 不正なurlはnilを返し、呼び出し側に不在を伝える
     { url = "https://h:3000", want = nil },
     { url = "http://h/path", want = nil },
     { url = "", want = nil },
     { url = nil, want = nil },
+    { url = 123, want = nil },
+    { url = {}, want = nil },
 }
 for _, c in ipairs(host_cases) do
     local got = runner_url.host_only(c.url)
