@@ -33,7 +33,7 @@ spec:
       serviceAccountName: runner
       containers:
         - name: runner
-          image: ${IMAGE_REGISTRY}/runner:${IMAGE_TAG}
+          image: ${REGION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/bunshin/runner:${IMAGE_TAG}
           ports:
             - containerPort: 3000
               protocol: TCP

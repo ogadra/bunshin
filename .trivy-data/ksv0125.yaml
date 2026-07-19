@@ -1,0 +1,5 @@
+ksv0125:
+  trusted_registries:
+    # GCP Artifact Registry (<region>-docker.pkg.dev).
+    # KSV-0125 uses endswith() to compare the registry host, so no wildcard needed.
+    - "docker.pkg.dev"

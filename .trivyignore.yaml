@@ -102,6 +102,3 @@ misconfigurations:
   - id: KSV-0118
     paths: ["deploy/google-cloud/**"]
     statement: Autopilot enforces container-level securityContext defaults
-  - id: KSV-0125
-    paths: ["deploy/google-cloud/**"]
-    statement: Autopilot manages procMount

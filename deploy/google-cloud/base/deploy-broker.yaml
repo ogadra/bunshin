@@ -33,7 +33,7 @@ spec:
       serviceAccountName: ${BROKER_KSA_NAME}
       containers:
         - name: broker
-          image: ${IMAGE_REGISTRY}/broker:${IMAGE_TAG}
+          image: ${REGION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/bunshin/broker:${IMAGE_TAG}
           ports:
             - containerPort: 8080
               protocol: TCP
