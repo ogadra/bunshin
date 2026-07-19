@@ -19,12 +19,19 @@ import (
 
 var runnerHostRe = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
 
+// hex は capability secret のため、ログに残る query ではなくヘッダで受ける。
+var sessionHexRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
 // sessionIDCookie は session 識別用の cookie 名。
 const sessionIDCookie = "session_id"
 
 const fallbackStackHeader = "X-Fallback-Stack"
 
 const fallbackRemainingHeader = "X-Fallback-Remaining"
+
+const sessionHexHeader = "X-Session-Hex"
+
+const runnerURLHeader = "X-Runner-Url"
 
 // Handler は broker の HTTP ハンドラー。
 type Handler struct {
@@ -84,7 +91,28 @@ func (h *Handler) GetResolve(c *gin.Context) {
 	if result.Reassigned {
 		c.Header("X-Session-Reassigned", "true")
 	}
-	c.Header("X-Runner-Url", result.RunnerURL)
+	c.Header(runnerURLHeader, result.RunnerURL)
+	c.Status(http.StatusOK)
+}
+
+// GetResolveApp は GET /resolve/app を処理し X-Session-Hex から所属 runner を引く。
+// port-forward 用に session 割り当ては行わず、既存 session の runner URL のみ返す。
+func (h *Handler) GetResolveApp(c *gin.Context) {
+	hex := c.GetHeader(sessionHexHeader)
+	if !sessionHexRe.MatchString(hex) {
+		writeError(c, http.StatusBadRequest, model.CodeInvalidRequest, "X-Session-Hex must be 32 lowercase hex characters")
+		return
+	}
+	result, err := h.svc.LookupSession(c.Request.Context(), hex)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeError(c, http.StatusNotFound, model.CodeSessionNotFound, "session not found")
+			return
+		}
+		writeError(c, http.StatusInternalServerError, model.CodeInternalError, "failed to look up session")
+		return
+	}
+	c.Header(runnerURLHeader, result.RunnerURL)
 	c.Status(http.StatusOK)
 }
 

@@ -22,6 +22,7 @@ import (
 type mockService struct {
 	closeSessionFn     func(ctx context.Context, sessionID string) error
 	resolveSessionFn   func(ctx context.Context, sessionID string) (*service.ResolveResult, error)
+	lookupSessionFn    func(ctx context.Context, hex string) (*service.LookupResult, error)
 	registerRunnerFn   func(ctx context.Context, runnerID, privateURL string) error
 	deregisterRunnerFn func(ctx context.Context, runnerID string) error
 	listBusyRunnersFn  func(ctx context.Context) ([]model.Runner, error)
@@ -35,6 +36,11 @@ func (m *mockService) CloseSession(ctx context.Context, sessionID string) error 
 // ResolveSession はモック ResolveSession を呼び出す。
 func (m *mockService) ResolveSession(ctx context.Context, sessionID string) (*service.ResolveResult, error) {
 	return m.resolveSessionFn(ctx, sessionID)
+}
+
+// LookupSession はモック LookupSession を呼び出す。
+func (m *mockService) LookupSession(ctx context.Context, hex string) (*service.LookupResult, error) {
+	return m.lookupSessionFn(ctx, hex)
 }
 
 // RegisterRunner はモック RegisterRunner を呼び出す。
@@ -60,6 +66,7 @@ func newTestRouter(h *Handler) *gin.Engine {
 	}))
 	r.DELETE("/sessions/:sessionId", h.DeleteSession)
 	r.GET("/resolve", h.GetResolve)
+	r.GET("/resolve/app", h.GetResolveApp)
 	r.POST("/internal/runners/register", h.PostRegister)
 	r.DELETE("/internal/runners/:runnerId", h.DeleteRunner)
 	r.GET("/runners/busy", h.GetListBusyRunners)
@@ -768,5 +775,118 @@ func TestGetListBusyRunners_ServiceError(t *testing.T) {
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+}
+
+// TestGetResolveApp_Existing は既存 session の hex から runner URL を返すことを検証する。
+func TestGetResolveApp_Existing(t *testing.T) {
+	t.Parallel()
+	h := NewHandler(&mockService{
+		lookupSessionFn: func(_ context.Context, hex string) (*service.LookupResult, error) {
+			if hex != "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" {
+				t.Errorf("hex = %q, want %q", hex, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+			}
+			return &service.LookupResult{RunnerURL: "http://10.0.0.1:3000"}, nil
+		},
+	}, []string{})
+	req := httptest.NewRequest(http.MethodGet, "/resolve/app", nil)
+	req.Header.Set("X-Session-Hex", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	rec := httptest.NewRecorder()
+	newTestRouter(h).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got := rec.Header().Get("X-Runner-Url"); got != "http://10.0.0.1:3000" {
+		t.Errorf("X-Runner-Url = %q, want %q", got, "http://10.0.0.1:3000")
+	}
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "session_id" {
+			t.Errorf("lookup must not set session_id cookie")
+		}
+	}
+}
+
+// TestGetResolveApp_NotFound は不在 hex が 404 SESSION_NOT_FOUND を返すことを検証する。
+func TestGetResolveApp_NotFound(t *testing.T) {
+	t.Parallel()
+	h := NewHandler(&mockService{
+		lookupSessionFn: func(context.Context, string) (*service.LookupResult, error) {
+			return nil, store.ErrNotFound
+		},
+	}, []string{})
+	req := httptest.NewRequest(http.MethodGet, "/resolve/app", nil)
+	req.Header.Set("X-Session-Hex", "00112233445566778899aabbccddeeff")
+	rec := httptest.NewRecorder()
+	newTestRouter(h).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+	if !strings.Contains(rec.Body.String(), `"code":"SESSION_NOT_FOUND"`) {
+		t.Errorf("body = %q, want SESSION_NOT_FOUND", rec.Body.String())
+	}
+	if got := rec.Header().Get("X-Runner-Url"); got != "" {
+		t.Errorf("X-Runner-Url = %q, want empty", got)
+	}
+}
+
+// TestGetResolveApp_InvalidHex は不正形式の hex が 400 INVALID_REQUEST を返し LookupSession を呼ばないことを検証する。
+func TestGetResolveApp_InvalidHex(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		hex  string
+	}{
+		{"empty", ""},
+		{"too short", "aaaa"},
+		{"too long", strings.Repeat("a", 33)},
+		{"uppercase", strings.Repeat("A", 32)},
+		{"non hex", strings.Repeat("g", 32)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			h := NewHandler(&mockService{
+				lookupSessionFn: func(context.Context, string) (*service.LookupResult, error) {
+					t.Error("LookupSession must not be called for invalid hex")
+					return nil, nil
+				},
+			}, []string{})
+			req := httptest.NewRequest(http.MethodGet, "/resolve/app", nil)
+			if tc.hex != "" {
+				req.Header.Set("X-Session-Hex", tc.hex)
+			}
+			rec := httptest.NewRecorder()
+			newTestRouter(h).ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+			}
+			if !strings.Contains(rec.Body.String(), `"code":"INVALID_REQUEST"`) {
+				t.Errorf("body = %q, want INVALID_REQUEST", rec.Body.String())
+			}
+		})
+	}
+}
+
+// TestGetResolveApp_ServiceError は LookupSession のエラーが 500 INTERNAL_ERROR を返すことを検証する。
+func TestGetResolveApp_ServiceError(t *testing.T) {
+	t.Parallel()
+	h := NewHandler(&mockService{
+		lookupSessionFn: func(context.Context, string) (*service.LookupResult, error) {
+			return nil, errors.New("boom")
+		},
+	}, []string{})
+	req := httptest.NewRequest(http.MethodGet, "/resolve/app", nil)
+	req.Header.Set("X-Session-Hex", "00112233445566778899aabbccddeeff")
+	rec := httptest.NewRecorder()
+	newTestRouter(h).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+	if !strings.Contains(rec.Body.String(), `"code":"INTERNAL_ERROR"`) {
+		t.Errorf("body = %q, want INTERNAL_ERROR", rec.Body.String())
 	}
 }

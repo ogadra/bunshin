@@ -24,6 +24,7 @@ var (
 type Service interface {
 	CloseSession(ctx context.Context, sessionID string) error
 	ResolveSession(ctx context.Context, sessionID string) (*ResolveResult, error)
+	LookupSession(ctx context.Context, hex string) (*LookupResult, error)
 	RegisterRunner(ctx context.Context, runnerID, privateURL string) error
 	DeregisterRunner(ctx context.Context, runnerID string) error
 	ListBusyRunners(ctx context.Context) ([]model.Runner, error)
@@ -34,6 +35,10 @@ type ResolveResult struct {
 	RunnerURL  string
 	Created    bool
 	Reassigned bool
+}
+
+type LookupResult struct {
+	RunnerURL string
 }
 
 type CreateSessionResult struct {
@@ -150,6 +155,14 @@ func (s *BrokerService) ResolveSession(ctx context.Context, sessionID string) (*
 		Created:    true,
 		Reassigned: reassigned,
 	}, nil
+}
+
+func (s *BrokerService) LookupSession(ctx context.Context, hex string) (*LookupResult, error) {
+	runner, err := s.repo.FindBySessionID(ctx, s.stackPrefix+"_"+hex)
+	if err != nil {
+		return nil, err
+	}
+	return &LookupResult{RunnerURL: runner.PrivateURL}, nil
 }
 
 func (s *BrokerService) RegisterRunner(ctx context.Context, runnerID, privateURL string) error {
