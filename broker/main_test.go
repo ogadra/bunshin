@@ -305,7 +305,7 @@ func TestDefaultInitHandler_FallbackSignal(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = closer.Close() })
 
-	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
+	req := httptest.NewRequest(http.MethodGet, "/resolve/session", nil)
 	rec := httptest.NewRecorder()
 	newRouter(h).ServeHTTP(rec, req)
 
@@ -380,7 +380,8 @@ func TestNewRouter_WithHandler(t *testing.T) {
 	expected := map[string]string{
 		"GET /health":                        "",
 		"DELETE /sessions/:sessionId":        "",
-		"GET /resolve":                       "",
+		"GET /resolve/session":               "",
+		"GET /resolve/app":                   "",
 		"POST /internal/runners/register":    "",
 		"DELETE /internal/runners/:runnerId": "",
 	}
