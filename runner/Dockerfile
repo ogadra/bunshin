@@ -80,7 +80,7 @@ RUN nix build --no-link --print-out-paths --file /tmp/prebuilt-tools.nix > /tmp/
     prebuilt_tools="$(cat /tmp/prebuilt-tools-paths.txt)" && \
     mkdir -p /nix/var/nix/gcroots/prebuilt-tools /usr/local/bin && \
     nix-store --add-root /nix/var/nix/gcroots/prebuilt-tools/runner-prebuilt-tools --indirect -r "$prebuilt_tools" && \
-    for bin in ip awk; do \
+    for bin in ip awk busybox; do \
       ln -sf "$prebuilt_tools/bin/$bin" "/usr/local/bin/$bin"; \
     done && \
     nixpkgs_src="$(nix eval --raw --file /tmp/nixpkgs-pin.nix)" && \
