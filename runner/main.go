@@ -48,9 +48,9 @@ func main() {
 // registers with the broker, and runs the server until a termination
 // signal is received. It returns any error from the server lifecycle.
 func start(addr string) error {
-	// listen より先に SIGTERM の受け口を作る。
-	// listen 直後から接続は受け付くため、後から Notify すると
-	// その隙間に届いた SIGTERM が既定動作でプロセスを落とす。
+	// listenより先にSIGTERMの受け口を作る。
+	// listen直後から接続は受け付くため、後からNotifyすると
+	// その隙間に届いたSIGTERMが既定動作でプロセスを落とす。
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
 	defer signal.Stop(sig)

@@ -808,15 +808,13 @@ func TestNoIdleRunner(t *testing.T) {
 	assertForwardedClientAddress(t, got, "203.0.113.50:45678")
 }
 
-// portForwardHost は port-forward 用サブドメインを組み立てる。
-// 32 hex label + {stack}.internal.test の形式でしかテスト対象 server にはマッチしない。
+// 32 hex label + {stack}.internal.testの形式でしかpf serverにマッチしない。
 func portForwardHost(hex, stack string) string {
 	return hex + "." + stack + ".internal.test"
 }
 
-// startPortForwardApp は runner に busybox httpd を daemon 起動し :5000 で応答させる。
-// runner の /api/execute が同期実行なので、httpd はコマンド完了時点で背景に居座る。
-// busybox httpd はデフォルトで daemonize する。
+// busybox httpdはforkしてからbindするため、起動コマンド完了時点では:5000未受付の可能性がある。
+// readiness pollでbind完了を待ってから後続のリクエストを走らせないと、CI上でconnection refused / catch-all 404にflakyになる。
 func startPortForwardApp(t *testing.T, cookies sessionCookies) {
 	t.Helper()
 	events := executeCommand(t, cookies, "mkdir -p /tmp/pf-www && echo ok > /tmp/pf-www/probe && busybox httpd -p 5000 -h /tmp/pf-www")
@@ -825,13 +823,18 @@ func startPortForwardApp(t *testing.T, cookies sessionCookies) {
 			t.Fatalf("busybox httpd failed exitCode=%d event=%+v", *e.ExitCode, e)
 		}
 	}
+	readiness := executeCommand(t, cookies, "for i in $(seq 1 50); do busybox wget -q -O /dev/null http://127.0.0.1:5000/probe && exit 0; sleep 0.1; done; exit 1")
+	for _, e := range readiness {
+		if e.ExitCode != nil && *e.ExitCode != 0 {
+			t.Fatalf("busybox httpd did not become ready on :5000 within 5s: event=%+v", e)
+		}
+	}
 	t.Cleanup(func() {
 		executeCommand(t, cookies, "pkill -f 'busybox httpd' 2>/dev/null || true")
 	})
 }
 
-// TestPortForward_OwnStackReachable は自 stack のセッションで :5000 に到達できることを検証する。
-func TestPortForward_OwnStackReachable(t *testing.T) {
+func TestPortForwardOwnStackReachable(t *testing.T) {
 	cookies := setupSession(t)
 	hex := strings.TrimPrefix(cookies.SessionID, "ap-northeast-1_")
 	if hex == cookies.SessionID || len(hex) != 32 {
@@ -860,8 +863,7 @@ func TestPortForward_OwnStackReachable(t *testing.T) {
 	}
 }
 
-// TestPortForward_ForeignStack404 は他 stack 宛の Host は転送せず 404 に落とすことを検証する。
-func TestPortForward_ForeignStack404(t *testing.T) {
+func TestPortForwardForeignStack404(t *testing.T) {
 	cookies := setupSession(t)
 	hex := strings.TrimPrefix(cookies.SessionID, "ap-northeast-1_")
 	if hex == cookies.SessionID {
@@ -886,8 +888,7 @@ func TestPortForward_ForeignStack404(t *testing.T) {
 	}
 }
 
-// TestPortForward_UnknownSession404 は未使用 32 hex が 404 を返すことを検証する。
-func TestPortForward_UnknownSession404(t *testing.T) {
+func TestPortForwardUnknownSession404(t *testing.T) {
 	resetForwardTarget(t)
 	resp := doRequestWithHeaders(
 		t,
@@ -906,8 +907,7 @@ func TestPortForward_UnknownSession404(t *testing.T) {
 	}
 }
 
-// TestPortForward_UnknownStack404 は BUNSHIN_STACKS に含まれない stack を 404 で拒むことを検証する。
-func TestPortForward_UnknownStack404(t *testing.T) {
+func TestPortForwardUnknownStack404(t *testing.T) {
 	resetForwardTarget(t)
 	resp := doRequestWithHeaders(
 		t,
@@ -926,9 +926,7 @@ func TestPortForward_UnknownStack404(t *testing.T) {
 	}
 }
 
-// TestPortForward_InvalidHexShape_FallsToCatchAll は 31 桁や uppercase の hex が
-// port-forward server にマッチせず、既存の catch-all の 404 経路に落ちることを検証する。
-func TestPortForward_InvalidHexShape_FallsToCatchAll(t *testing.T) {
+func TestPortForwardInvalidHexShapeFallsToCatchAll(t *testing.T) {
 	cases := []struct {
 		name string
 		hex  string
@@ -958,9 +956,8 @@ func TestPortForward_InvalidHexShape_FallsToCatchAll(t *testing.T) {
 	}
 }
 
-// TestPublicHostDoesNotRelayFallbackHeaders は port-forward 経路以外の Host に紛れた
-// X-Fallback-* / X-Bunshin-Client-Address が nginx から /_resolve へ中継されず、
-// 他 stack への転送で forward-target のヘッダにも現れないことを検証する。
+// pf経路以外のHostに紛れたX-Fallback-* / X-Bunshin-Client-Addressをnginxから/_resolveへ中継せず、
+// 他stackへの転送でforward-targetのヘッダにも現れないことを検証する。
 func TestPublicHostDoesNotRelayFallbackHeaders(t *testing.T) {
 	resetForwardTarget(t)
 	headers := map[string]string{
@@ -993,8 +990,8 @@ func TestPublicHostDoesNotRelayFallbackHeaders(t *testing.T) {
 	assertForwardedClientAddress(t, got, "203.0.113.90:45678")
 }
 
-// lastForwardedRequestOrNil は forward-target が転送を記録していれば返し、無ければ nil を返す。
-// port-forward の 404 テストで「forward-target に到達しなかったこと」を検証するために使う。
+// 404テストで「forward-targetに到達しなかったこと」を検証するために使う。
+// lastForwardedRequestとは違い、記録なしをt.Fatalではなくnil返しで扱う。
 func lastForwardedRequestOrNil(t *testing.T) *forwardedRequest {
 	t.Helper()
 	resp, err := httpClient.Get(forwardTargetBase + "/__last")
