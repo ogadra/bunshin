@@ -79,7 +79,10 @@ apply_manifests() {
     local defined_envs='$BROKER_GSA_EMAIL,$BROKER_KSA_NAME,$BROKER_REPLICAS,$BUNSHIN_STACKS,$DEPLOYER_EMAIL,$FIRESTORE_DATABASE,$GOOGLE_CLOUD_PROJECT,$IMAGE_TAG,$INTERNAL_DOMAIN,$INTERNAL_LB_NAME,$NGINX_NEG_NAME,$NGINX_REPLICAS,$NGINX_RESOLVER,$REGION,$REPOSITORY,$RUNNER_REPLICAS'
     local f
 
+    kubectl --context="${context}" apply -f "${MANIFESTS_DIR}/base/namespace.yaml"
+
     for f in "${MANIFESTS_DIR}/base/"*.yaml; do
+        [[ "${f}" == */namespace.yaml ]] && continue
         envsubst "${defined_envs}" < "${f}" | kubectl --context="${context}" apply -f -
     done
 }
