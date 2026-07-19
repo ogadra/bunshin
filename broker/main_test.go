@@ -273,6 +273,9 @@ func (fakeNoIdleService) CloseSession(context.Context, string) error { return ni
 func (fakeNoIdleService) ResolveSession(context.Context, string) (*service.ResolveResult, error) {
 	return nil, store.ErrNoIdleRunner
 }
+func (fakeNoIdleService) LookupSession(context.Context, string) (*service.LookupResult, error) {
+	return nil, store.ErrNotFound
+}
 func (fakeNoIdleService) RegisterRunner(context.Context, string, string) error { return nil }
 func (fakeNoIdleService) DeregisterRunner(context.Context, string) error       { return nil }
 func (fakeNoIdleService) ListBusyRunners(context.Context) ([]model.Runner, error) {

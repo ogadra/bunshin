@@ -886,3 +886,58 @@ func TestResolveSession_DeleteError_ExistingRunner(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+// TestLookupSession_Existing は hex を stackPrefix と結合して FindBySessionID を呼び、
+// 見つかった runner の PrivateURL を返すことを検証する。
+func TestLookupSession_Existing(t *testing.T) {
+	var gotSessionID string
+	repo := &mockRepository{
+		findBySessionIDFn: func(_ context.Context, sessionID string) (*model.Runner, error) {
+			gotSessionID = sessionID
+			return &model.Runner{RunnerID: "r1", PrivateURL: "http://10.0.0.1:3000"}, nil
+		},
+	}
+	svc := NewBrokerService(repo, "ap-northeast-1", healthyChecker())
+
+	result, err := svc.LookupSession(context.Background(), "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotSessionID != "ap-northeast-1_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" {
+		t.Errorf("FindBySessionID sessionID = %q, want stackPrefix + \"_\" + hex", gotSessionID)
+	}
+	if result.RunnerURL != "http://10.0.0.1:3000" {
+		t.Errorf("RunnerURL = %q, want %q", result.RunnerURL, "http://10.0.0.1:3000")
+	}
+}
+
+// TestLookupSession_NotFound は store.ErrNotFound をそのまま透過することを検証する。
+func TestLookupSession_NotFound(t *testing.T) {
+	repo := &mockRepository{
+		findBySessionIDFn: func(context.Context, string) (*model.Runner, error) {
+			return nil, store.ErrNotFound
+		},
+	}
+	svc := NewBrokerService(repo, "ap-northeast-1", healthyChecker())
+
+	_, err := svc.LookupSession(context.Background(), "00112233445566778899aabbccddeeff")
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("err = %v, want store.ErrNotFound", err)
+	}
+}
+
+// TestLookupSession_RepoError は repository のその他エラーを透過することを検証する。
+func TestLookupSession_RepoError(t *testing.T) {
+	want := errors.New("boom")
+	repo := &mockRepository{
+		findBySessionIDFn: func(context.Context, string) (*model.Runner, error) {
+			return nil, want
+		},
+	}
+	svc := NewBrokerService(repo, "ap-northeast-1", healthyChecker())
+
+	_, err := svc.LookupSession(context.Background(), "00112233445566778899aabbccddeeff")
+	if !errors.Is(err, want) {
+		t.Fatalf("err = %v, want %v", err, want)
+	}
+}
