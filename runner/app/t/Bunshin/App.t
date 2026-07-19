@@ -126,28 +126,41 @@ subtest 'real defaults: refresh failure gets wrapped with the load-failed prefix
     like $r, qr{DaiKichijoji\.pm load failed: parse: line 3 syntax error};
 };
 
-subtest 'real defaults: compile-error warning from refresh surfaces on the 500 page' => sub {
+subtest 'real defaults: Compilation-failed-in-require warning surfaces on the 500 page' => sub {
     no warnings 'redefine';
-    my $orig = \&Module::Refresh::refresh;
     local *Module::Refresh::refresh = sub {
         warn "syntax error at /app/DaiKichijoji.pm line 2, at EOF\nCompilation failed in require at Module/Refresh.pm line 121.\n";
     };
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
-    local *Module::Refresh::refresh = $orig;
     like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
     like $r, qr{DaiKichijoji\.pm load failed:};
     like $r, qr{syntax error at /app/DaiKichijoji\.pm line 2};
 };
 
-subtest 'real defaults: non-compile warnings from refresh do not become a 500' => sub {
+subtest 'real defaults: aborted-due-to-compilation-errors warning also surfaces on the 500 page' => sub {
     no warnings 'redefine';
-    my $orig = \&Module::Refresh::refresh;
+    local *Module::Refresh::refresh = sub {
+        warn "Execution of /app/DaiKichijoji.pm aborted due to compilation errors.\n";
+    };
+    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
+    like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
+    like $r, qr{DaiKichijoji\.pm load failed:};
+    like $r, qr{aborted due to compilation errors};
+};
+
+subtest 'real defaults: non-compile warnings from refresh pass through to STDERR' => sub {
+    no warnings 'redefine';
     local *Module::Refresh::refresh = sub {
         warn "Use of uninitialized value in something at foo.pm line 5.\n";
     };
+    my $stderr = '';
+    open(my $saved_stderr, '>&', \*STDERR) or die "dup STDERR: $!";
+    close STDERR;
+    open(STDERR, '>', \$stderr)            or die "capture STDERR: $!";
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
-    local *Module::Refresh::refresh = $orig;
-    like $r, qr{^HTTP/1\.1 200 OK\r\n}, 'unrelated warnings pass through';
+    open(STDERR, '>&', $saved_stderr)      or die "restore STDERR: $!";
+    like $r,       qr{^HTTP/1\.1 200 OK\r\n},                'no 500';
+    like $stderr,  qr{Use of uninitialized value},           're-emitted to STDERR';
 };
 
 subtest 'integration: real Module::Refresh + a real broken file dies with the compiler diagnostic' => sub {

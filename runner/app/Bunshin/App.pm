@@ -43,7 +43,7 @@ our $RUN_CONTENT_FN = sub {
         };
         eval { Module::Refresh->refresh; 1 } or push @load_errors, $@;
     }
-    die "DaiKichijoji.pm load failed: @load_errors" if @load_errors;
+    die "DaiKichijoji.pm load failed: " . join("\n", @load_errors) if @load_errors;
     return Bunshin::ContentRunner::run(
         content_fn => $CONTENT_FN,
         timeout_ms => 3000,
