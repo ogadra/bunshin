@@ -2,7 +2,22 @@
 -- brokerの実ステータスをそのままクライアントへ返す。
 local core = require("resolve_core")
 
-local fallback_stack = ngx.var.relay_fallback_stack
+-- Host が <stack>.<internal_domain> 完全一致のときだけ X-Fallback-* / X-Bunshin-Client-Address
+-- を信頼する。公開経路から regex にマッチする Host を作られても詐称できないよう完全一致で閉じる。
+local from_internal = core.is_internal_host(ngx.var.host)
+local relay_fallback_stack = core.relay_if_internal(from_internal, ngx.var.http_x_fallback_stack)
+local relay_fallback_remaining = core.relay_if_internal(from_internal, ngx.var.http_x_fallback_remaining)
+ngx.var.relay_fallback_stack = relay_fallback_stack
+ngx.var.relay_fallback_remaining = relay_fallback_remaining
+ngx.var.bunshin_client_address = core.client_address(
+    from_internal,
+    ngx.var.http_x_bunshin_client_address,
+    ngx.var.http_cloudfront_viewer_address,
+    ngx.var.remote_addr,
+    ngx.var.remote_port
+)
+
+local fallback_stack = relay_fallback_stack
 local arrival = core.decide_arrival(
     ngx.var.cookie_session_id,
     core.own_stack(),
