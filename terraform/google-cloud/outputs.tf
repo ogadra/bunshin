@@ -1,7 +1,6 @@
-# Consumed by the manifest rendering pipeline in scripts/google-cloud/deploy.sh
-# to fill ${GOOGLE_CLOUD_PROJECT}, ${INTERNAL_DOMAIN}, and ${BROKER_GSA_EMAIL}
-# at kubectl apply time. Image references are built inline from ${REGION} +
-# ${GOOGLE_CLOUD_PROJECT} + a hardcoded artifact-registry repository ("bunshin").
+# Consumed by scripts/google-cloud/deploy.sh (added in the follow-up PR) to
+# fill ${GOOGLE_CLOUD_PROJECT}, ${INTERNAL_DOMAIN}, and ${BROKER_GSA_EMAIL}
+# at kubectl apply time.
 output "project_id" {
   description = "GCP project ID hosting bunshin"
   value       = data.google_project.current.project_id
