@@ -897,8 +897,8 @@ func TestResolveSession_DeleteError_ExistingRunner(t *testing.T) {
 	}
 }
 
-// TestLookupSession_Existing は hex を stackPrefix と結合して FindBySessionID を呼び、
-// 見つかった runner の PrivateHost を返すことを検証する。
+// TestLookupSession_Existing は hex を stackPrefix と結合して FindBySessionID を呼ぶことを検証する。
+// 見つかった runner の PrivateHost を LookupResult に載せて返すことも検証する。
 func TestLookupSession_Existing(t *testing.T) {
 	var gotSessionID string
 	repo := &mockRepository{
