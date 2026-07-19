@@ -23,7 +23,7 @@ type mockService struct {
 	closeSessionFn     func(ctx context.Context, sessionID string) error
 	resolveSessionFn   func(ctx context.Context, sessionID string) (*service.ResolveResult, error)
 	lookupSessionFn    func(ctx context.Context, hex string) (*service.LookupResult, error)
-	registerRunnerFn   func(ctx context.Context, runnerID, privateURL string) error
+	registerRunnerFn   func(ctx context.Context, runnerID, privateHost string) error
 	deregisterRunnerFn func(ctx context.Context, runnerID string) error
 	listBusyRunnersFn  func(ctx context.Context) ([]model.Runner, error)
 }
@@ -44,8 +44,8 @@ func (m *mockService) LookupSession(ctx context.Context, hex string) (*service.L
 }
 
 // RegisterRunner はモック RegisterRunner を呼び出す。
-func (m *mockService) RegisterRunner(ctx context.Context, runnerID, privateURL string) error {
-	return m.registerRunnerFn(ctx, runnerID, privateURL)
+func (m *mockService) RegisterRunner(ctx context.Context, runnerID, privateHost string) error {
+	return m.registerRunnerFn(ctx, runnerID, privateHost)
 }
 
 // DeregisterRunner はモック DeregisterRunner を呼び出す。
@@ -141,7 +141,7 @@ func TestGetResolve_ExistingSession(t *testing.T) {
 			if sessionID != "sess-abc" {
 				t.Errorf("sessionID = %q, want %q", sessionID, "sess-abc")
 			}
-			return &service.ResolveResult{SessionID: "sess-abc", RunnerURL: "http://10.0.0.1:8080", Created: false}, nil
+			return &service.ResolveResult{SessionID: "sess-abc", RunnerHost: "10.0.0.1", Created: false}, nil
 		},
 	}, []string{})
 	r := newTestRouter(h)
@@ -154,8 +154,8 @@ func TestGetResolve_ExistingSession(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
-	if got := rec.Header().Get("X-Runner-Url"); got != "http://10.0.0.1:8080" {
-		t.Errorf("X-Runner-Url = %q, want %q", got, "http://10.0.0.1:8080")
+	if got := rec.Header().Get("X-Runner-Host"); got != "10.0.0.1" {
+		t.Errorf("X-Runner-Host = %q, want %q", got, "10.0.0.1")
 	}
 	for _, c := range rec.Result().Cookies() {
 		if c.Name == "session_id" {
@@ -172,7 +172,7 @@ func TestGetResolve_MissingCookie_CreatesSession(t *testing.T) {
 			if sessionID != "" {
 				t.Errorf("sessionID = %q, want empty", sessionID)
 			}
-			return &service.ResolveResult{SessionID: "ap-northeast-1_new-sess", RunnerURL: "http://10.0.0.2:8080", Created: true}, nil
+			return &service.ResolveResult{SessionID: "ap-northeast-1_new-sess", RunnerHost: "10.0.0.2", Created: true}, nil
 		},
 	}, []string{})
 	r := newTestRouter(h)
@@ -184,8 +184,8 @@ func TestGetResolve_MissingCookie_CreatesSession(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
-	if got := rec.Header().Get("X-Runner-Url"); got != "http://10.0.0.2:8080" {
-		t.Errorf("X-Runner-Url = %q, want %q", got, "http://10.0.0.2:8080")
+	if got := rec.Header().Get("X-Runner-Host"); got != "10.0.0.2" {
+		t.Errorf("X-Runner-Host = %q, want %q", got, "10.0.0.2")
 	}
 	found := false
 	for _, c := range rec.Result().Cookies() {
@@ -323,19 +323,19 @@ func TestGetResolve_InternalError(t *testing.T) {
 func TestPostRegister_Success(t *testing.T) {
 	t.Parallel()
 	h := NewHandler(&mockService{
-		registerRunnerFn: func(_ context.Context, runnerID, privateURL string) error {
+		registerRunnerFn: func(_ context.Context, runnerID, privateHost string) error {
 			if runnerID != "r1" {
 				t.Errorf("runnerID = %q, want %q", runnerID, "r1")
 			}
-			if privateURL != "http://10.0.0.1:8080" {
-				t.Errorf("privateURL = %q, want %q", privateURL, "http://10.0.0.1:8080")
+			if privateHost != "10.0.0.1" {
+				t.Errorf("privateHost = %q, want %q", privateHost, "10.0.0.1")
 			}
 			return nil
 		},
 	}, []string{})
 	r := newTestRouter(h)
 
-	body := strings.NewReader(`{"runnerId":"r1","privateUrl":"http://10.0.0.1:8080"}`)
+	body := strings.NewReader(`{"runnerId":"r1","privateHost":"10.0.0.1"}`)
 	req := httptest.NewRequest(http.MethodPost, "/internal/runners/register", body)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -373,7 +373,7 @@ func TestPostRegister_InternalError(t *testing.T) {
 	}, []string{})
 	r := newTestRouter(h)
 
-	body := strings.NewReader(`{"runnerId":"r1","privateUrl":"http://10.0.0.1:8080"}`)
+	body := strings.NewReader(`{"runnerId":"r1","privateHost":"10.0.0.1"}`)
 	req := httptest.NewRequest(http.MethodPost, "/internal/runners/register", body)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -394,7 +394,7 @@ func TestPostRegister_Conflict(t *testing.T) {
 	}, []string{})
 	r := newTestRouter(h)
 
-	body := strings.NewReader(`{"runnerId":"r1","privateUrl":"http://10.0.0.1:8080"}`)
+	body := strings.NewReader(`{"runnerId":"r1","privateHost":"10.0.0.1"}`)
 	req := httptest.NewRequest(http.MethodPost, "/internal/runners/register", body)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -487,74 +487,72 @@ func TestNewHandler_NilPanics(t *testing.T) {
 	NewHandler(nil, []string{})
 }
 
-// TestPostRegister_InvalidURL は不正な URL 形式の場合に 400 を返すことを検証する。
-func TestPostRegister_InvalidURL(t *testing.T) {
+// TestPostRegister_InvalidHost は host label 形式ではない privateHost に対して 400 を返すことを検証する。
+func TestPostRegister_InvalidHost(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name string
-		url  string
+		host string
 	}{
-		{"no scheme", "10.0.0.1:8080"},
-		{"ftp scheme", "ftp://10.0.0.1:8080"},
-		{"no host", "http://"},
-		{"relative path", "/runner"},
+		{"has colon", "10.0.0.1:8080"},
+		{"has scheme prefix", "http://10.0.0.1"},
+		{"has slash", "runner-1/"},
+		{"underscore", "runner_01"},
+		{"has space", "run ner"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			h := NewHandler(&mockService{
 				registerRunnerFn: func(_ context.Context, _, _ string) error {
-					t.Fatal("service should not be called for invalid URL")
+					t.Fatal("service should not be called for invalid host")
 					return nil
 				},
 			}, []string{})
 			r := newTestRouter(h)
 
-			body := strings.NewReader(`{"runnerId":"r1","privateUrl":"` + tt.url + `"}`)
+			body := strings.NewReader(`{"runnerId":"r1","privateHost":"` + tt.host + `"}`)
 			req := httptest.NewRequest(http.MethodPost, "/internal/runners/register", body)
 			req.Header.Set("Content-Type", "application/json")
 			rec := httptest.NewRecorder()
 			r.ServeHTTP(rec, req)
 
 			if rec.Code != http.StatusBadRequest {
-				t.Errorf("status = %d, want %d for url %q", rec.Code, http.StatusBadRequest, tt.url)
+				t.Errorf("status = %d, want %d for host %q", rec.Code, http.StatusBadRequest, tt.host)
 			}
 		})
 	}
 }
 
-// TestValidateRunnerURL は validateRunnerURL の境界値を検証する。
-func TestValidateRunnerURL(t *testing.T) {
+// TestValidateRunnerHost は validateRunnerHost の境界値を検証する。
+// port / scheme を含まない host label のみを許可する。
+func TestValidateRunnerHost(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name    string
-		url     string
+		host    string
 		wantErr bool
 	}{
-		{"valid http", "http://10.0.0.1:3000", false},
-		{"valid http no port", "http://runner.local", false},
-		{"trailing slash", "http://runner.local:3000/", true},
-		{"https scheme", "https://runner.local:3000", true},
-		{"no scheme", "10.0.0.1:3000", true},
-		{"ftp scheme", "ftp://10.0.0.1:3000", true},
-		{"empty host", "http://", true},
-		{"relative", "/path", true},
-		{"with path", "http://10.0.0.1:3000/base", true},
-		{"with query", "http://10.0.0.1:3000?x=1", true},
-		{"with fragment", "http://10.0.0.1:3000#frag", true},
-		{"userinfo", "http://user:pass@runner.local:3000", true},
-		{"underscore host", "http://runner_01:3000", true},
-		{"ipv6 host", "http://[::1]:3000", true},
-		{"port zero", "http://runner.local:0", true},
-		{"port too large", "http://runner.local:99999", true},
-		{"non-numeric port", "http://runner.local:abc", true},
+		{"ipv4", "10.0.0.1", false},
+		{"dns hostname", "runner.local", false},
+		{"runner with hyphen", "runner-1", false},
+		{"digits mixed", "runner01.internal.example", false},
+		{"empty", "", true},
+		{"colon", "runner:3000", true},
+		{"scheme", "http://runner", true},
+		{"slash", "runner/", true},
+		{"userinfo", "user@runner", true},
+		{"space", "run ner", true},
+		{"underscore", "runner_01", true},
+		{"query", "runner?x=1", true},
+		{"ipv6 brackets", "[::1]", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := validateRunnerURL(tt.url)
+			err := validateRunnerHost(tt.host)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("validateRunnerURL(%q) error = %v, wantErr %v", tt.url, err, tt.wantErr)
+				t.Errorf("validateRunnerHost(%q) error = %v, wantErr %v", tt.host, err, tt.wantErr)
 			}
 		})
 	}
@@ -565,7 +563,7 @@ func TestGetResolve_CookieSecure(t *testing.T) {
 	t.Parallel()
 	h := NewHandler(&mockService{
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
-			return &service.ResolveResult{SessionID: "new-sess", RunnerURL: "http://10.0.0.1:8080", Created: true}, nil
+			return &service.ResolveResult{SessionID: "new-sess", RunnerHost: "10.0.0.1", Created: true}, nil
 		},
 	}, []string{})
 	r := newTestRouter(h)
@@ -598,7 +596,7 @@ func TestGetResolve_Reassigned(t *testing.T) {
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return &service.ResolveResult{
 				SessionID:  "new-sess",
-				RunnerURL:  "http://10.0.0.2:8080",
+				RunnerHost:  "10.0.0.2",
 				Created:    true,
 				Reassigned: true,
 			}, nil
@@ -617,8 +615,8 @@ func TestGetResolve_Reassigned(t *testing.T) {
 	if got := rec.Header().Get("X-Session-Reassigned"); got != "true" {
 		t.Errorf("X-Session-Reassigned = %q, want %q", got, "true")
 	}
-	if got := rec.Header().Get("X-Runner-Url"); got != "http://10.0.0.2:8080" {
-		t.Errorf("X-Runner-Url = %q, want %q", got, "http://10.0.0.2:8080")
+	if got := rec.Header().Get("X-Runner-Host"); got != "10.0.0.2" {
+		t.Errorf("X-Runner-Host = %q, want %q", got, "10.0.0.2")
 	}
 }
 
@@ -629,7 +627,7 @@ func TestGetResolve_NotReassigned(t *testing.T) {
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return &service.ResolveResult{
 				SessionID:  "sess-1",
-				RunnerURL:  "http://10.0.0.1:8080",
+				RunnerHost:  "10.0.0.1",
 				Created:    false,
 				Reassigned: false,
 			}, nil
@@ -645,8 +643,8 @@ func TestGetResolve_NotReassigned(t *testing.T) {
 	if got := rec.Header().Get("X-Session-Reassigned"); got != "" {
 		t.Errorf("X-Session-Reassigned = %q, want empty", got)
 	}
-	if got := rec.Header().Get("X-Runner-Url"); got != "http://10.0.0.1:8080" {
-		t.Errorf("X-Runner-Url = %q, want %q", got, "http://10.0.0.1:8080")
+	if got := rec.Header().Get("X-Runner-Host"); got != "10.0.0.1" {
+		t.Errorf("X-Runner-Host = %q, want %q", got, "10.0.0.1")
 	}
 }
 
@@ -786,7 +784,7 @@ func TestGetResolveApp_Existing(t *testing.T) {
 			if hex != "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" {
 				t.Errorf("hex = %q, want %q", hex, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 			}
-			return &service.LookupResult{RunnerURL: "http://10.0.0.1:3000"}, nil
+			return &service.LookupResult{RunnerHost: "10.0.0.1"}, nil
 		},
 	}, []string{})
 	req := httptest.NewRequest(http.MethodGet, "/resolve/app", nil)
@@ -797,8 +795,8 @@ func TestGetResolveApp_Existing(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
-	if got := rec.Header().Get("X-Runner-Url"); got != "http://10.0.0.1:3000" {
-		t.Errorf("X-Runner-Url = %q, want %q", got, "http://10.0.0.1:3000")
+	if got := rec.Header().Get("X-Runner-Host"); got != "10.0.0.1" {
+		t.Errorf("X-Runner-Host = %q, want %q", got, "10.0.0.1")
 	}
 	for _, c := range rec.Result().Cookies() {
 		if c.Name == "session_id" {
@@ -826,8 +824,8 @@ func TestGetResolveApp_NotFound(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), `"code":"SESSION_NOT_FOUND"`) {
 		t.Errorf("body = %q, want SESSION_NOT_FOUND", rec.Body.String())
 	}
-	if got := rec.Header().Get("X-Runner-Url"); got != "" {
-		t.Errorf("X-Runner-Url = %q, want empty", got)
+	if got := rec.Header().Get("X-Runner-Host"); got != "" {
+		t.Errorf("X-Runner-Host = %q, want empty", got)
 	}
 }
 

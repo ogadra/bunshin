@@ -59,18 +59,18 @@ func NewDynamoRepository(client dynamoDBAPI, tableName string) *DynamoRepository
 	}
 }
 
-func (r *DynamoRepository) Register(ctx context.Context, runnerID, privateURL string) error {
+func (r *DynamoRepository) Register(ctx context.Context, runnerID, privateHost string) error {
 	if !runnerIDRe.MatchString(runnerID) {
 		return ErrInvalidRunnerID
 	}
-	if privateURL == "" {
-		return ErrInvalidPrivateURL
+	if privateHost == "" {
+		return ErrInvalidPrivateHost
 	}
 
 	item, err := r.marshalFn(model.Runner{
-		RunnerID:   runnerID,
-		State:      model.StateIdle,
-		PrivateURL: privateURL,
+		RunnerID:    runnerID,
+		State:       model.StateIdle,
+		PrivateHost: privateHost,
 	})
 	if err != nil {
 		return fmt.Errorf("marshal runner: %w", err)
