@@ -7,3 +7,8 @@ output "nginx_neg_ids" {
   description = "IDs of nginx standalone zonal NEGs backing the Global External ALB"
   value       = [for _, neg in data.google_compute_network_endpoint_group.nginx : neg.id]
 }
+
+output "nginx_resolver" {
+  description = "kube-dns Service IP for nginx.conf resolver directive (10th host in the services secondary range)"
+  value       = cidrhost(local.services_secondary_cidr, 10)
+}

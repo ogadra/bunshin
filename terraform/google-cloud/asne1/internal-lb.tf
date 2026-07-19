@@ -16,69 +16,11 @@ resource "google_certificate_manager_certificate" "internal" {
   }
 }
 
-# Gatewayのdynamic IPは再作成でVIPが変わりDNSを壊す
+# Gateway の dynamic IP は再作成で VIP が変わり DNS を壊すため NamedAddress で固定
 resource "google_compute_address" "internal_lb" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   name         = local.internal_lb_name
   region       = local.region
   subnetwork   = google_compute_subnetwork.workload.id
   address_type = "INTERNAL"
-}
-
-# gke-l7-rilb は annotation `networking.gke.io/certmap` を未サポート。regional Gateway では
-# listenerの`tls.options`に`networking.gke.io/cert-manager-certs`を指定してRegional Certificate
-# を直接参照する
-resource "kubectl_manifest" "internal_gateway" {
-  yaml_body = yamlencode({
-    apiVersion = "gateway.networking.k8s.io/v1"
-    kind       = "Gateway"
-    metadata = {
-      name      = "bunshin-internal"
-      namespace = kubernetes_namespace_v1.bunshin.metadata[0].name
-    }
-    spec = {
-      gatewayClassName = "gke-l7-rilb"
-      addresses = [{
-        type  = "NamedAddress"
-        value = google_compute_address.internal_lb.name
-      }]
-      listeners = [{
-        name     = "https"
-        port     = 443
-        protocol = "HTTPS"
-        tls = {
-          mode = "Terminate"
-          options = {
-            "networking.gke.io/cert-manager-certs" = google_certificate_manager_certificate.internal.name
-          }
-        }
-        allowedRoutes = {
-          namespaces = { from = "Same" }
-        }
-      }]
-    }
-  })
-}
-
-resource "kubectl_manifest" "internal_httproute" {
-  yaml_body = yamlencode({
-    apiVersion = "gateway.networking.k8s.io/v1"
-    kind       = "HTTPRoute"
-    metadata = {
-      name      = "bunshin-internal-nginx"
-      namespace = kubernetes_namespace_v1.bunshin.metadata[0].name
-    }
-    spec = {
-      parentRefs = [{
-        name = "bunshin-internal"
-      }]
-      rules = [{
-        backendRefs = [{
-          name      = kubernetes_service_v1.nginx.metadata[0].name
-          namespace = kubernetes_service_v1.nginx.metadata[0].namespace
-          port      = local.service_ports.nginx
-        }]
-      }]
-    }
-  })
 }

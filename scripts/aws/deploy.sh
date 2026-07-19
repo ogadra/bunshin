@@ -23,10 +23,10 @@ contains_service() {
     return 1
 }
 
-uses_ecs() {
+is_static_only() {
     local service="${1:?}"
 
-    [[ "${service}" == "broker" || "${service}" == "nginx" || "${service}" == "runner" ]]
+    [[ "${service}" == "front" ]]
 }
 
 run_service() {
@@ -34,7 +34,11 @@ run_service() {
     local env_name="${2:?}"
     local aws_account_id="${3:?}"
 
-    "${ROOT_DIR}/scripts/aws/deploy/${service}.sh" "${env_name}" "${aws_account_id}"
+    if is_static_only "${service}"; then
+        "${ROOT_DIR}/scripts/aws/deploy/${service}.sh" "${env_name}" "${aws_account_id}"
+    else
+        "${ROOT_DIR}/scripts/aws/deploy/service.sh" "${service}" "${env_name}" "${aws_account_id}"
+    fi
 }
 
 login_ecr() {
@@ -73,7 +77,7 @@ main() {
     fi
 
     for service in "${target_services[@]}"; do
-        if uses_ecs "${service}"; then
+        if ! is_static_only "${service}"; then
             need_ecr_login=true
             break
         fi
@@ -82,6 +86,9 @@ main() {
     if [[ "${need_ecr_login}" == "true" ]]; then
         login_ecr "${env_name}" "${aws_account_id}"
     fi
+
+    # shellcheck disable=SC1091
+    source "${ROOT_DIR}/deploy/aws/stacks.env"
 
     for service in "${target_services[@]}"; do
         run_service "${service}" "${env_name}" "${aws_account_id}" &
