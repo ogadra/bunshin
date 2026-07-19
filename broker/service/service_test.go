@@ -73,6 +73,16 @@ func healthyChecker() Option {
 	return WithChecker(&mockChecker{checkFn: func(context.Context, string) error { return nil }})
 }
 
+// noCallChecker は Check が呼ばれた瞬間に t.Fatal を起こす checker を注入する Option。
+// healthcheck を行わない契約 (LookupSession 等) を回帰的に守るために使う。
+func noCallChecker(t *testing.T) Option {
+	t.Helper()
+	return WithChecker(&mockChecker{checkFn: func(context.Context, string) error {
+		t.Fatal("checker.Check must not be called")
+		return nil
+	}})
+}
+
 // suppressLog はテスト中のログ出力を抑制し、テスト終了時に復元する。
 func suppressLog(t *testing.T) {
 	t.Helper()
@@ -897,7 +907,7 @@ func TestLookupSession_Existing(t *testing.T) {
 			return &model.Runner{RunnerID: "r1", PrivateHost: "10.0.0.1"}, nil
 		},
 	}
-	svc := NewBrokerService(repo, "ap-northeast-1", healthyChecker())
+	svc := NewBrokerService(repo, "ap-northeast-1", noCallChecker(t))
 
 	result, err := svc.LookupSession(context.Background(), "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	if err != nil {
@@ -918,7 +928,7 @@ func TestLookupSession_NotFound(t *testing.T) {
 			return nil, store.ErrNotFound
 		},
 	}
-	svc := NewBrokerService(repo, "ap-northeast-1", healthyChecker())
+	svc := NewBrokerService(repo, "ap-northeast-1", noCallChecker(t))
 
 	_, err := svc.LookupSession(context.Background(), "00112233445566778899aabbccddeeff")
 	if !errors.Is(err, store.ErrNotFound) {
@@ -934,7 +944,7 @@ func TestLookupSession_RepoError(t *testing.T) {
 			return nil, want
 		},
 	}
-	svc := NewBrokerService(repo, "ap-northeast-1", healthyChecker())
+	svc := NewBrokerService(repo, "ap-northeast-1", noCallChecker(t))
 
 	_, err := svc.LookupSession(context.Background(), "00112233445566778899aabbccddeeff")
 	if !errors.Is(err, want) {

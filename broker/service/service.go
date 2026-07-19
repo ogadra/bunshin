@@ -24,7 +24,7 @@ var (
 type Service interface {
 	CloseSession(ctx context.Context, sessionID string) error
 	ResolveSession(ctx context.Context, sessionID string) (*ResolveResult, error)
-	LookupSession(ctx context.Context, hex string) (*LookupResult, error)
+	LookupSession(ctx context.Context, sessionHex string) (*LookupResult, error)
 	RegisterRunner(ctx context.Context, runnerID, privateHost string) error
 	DeregisterRunner(ctx context.Context, runnerID string) error
 	ListBusyRunners(ctx context.Context) ([]model.Runner, error)
@@ -95,12 +95,16 @@ func defaultSessionFn() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+func (s *BrokerService) namespacedSessionID(sessionHex string) string {
+	return s.stackPrefix + "_" + sessionHex
+}
+
 func (s *BrokerService) createSession(ctx context.Context) (*CreateSessionResult, error) {
 	sessionID, err := s.sessionFn()
 	if err != nil {
 		return nil, err
 	}
-	sessionID = s.stackPrefix + "_" + sessionID
+	sessionID = s.namespacedSessionID(sessionID)
 	for {
 		runner, err := s.repo.AcquireIdle(ctx, sessionID)
 		if err != nil {
@@ -157,8 +161,8 @@ func (s *BrokerService) ResolveSession(ctx context.Context, sessionID string) (*
 	}, nil
 }
 
-func (s *BrokerService) LookupSession(ctx context.Context, hex string) (*LookupResult, error) {
-	runner, err := s.repo.FindBySessionID(ctx, s.stackPrefix+"_"+hex)
+func (s *BrokerService) LookupSession(ctx context.Context, sessionHex string) (*LookupResult, error) {
+	runner, err := s.repo.FindBySessionID(ctx, s.namespacedSessionID(sessionHex))
 	if err != nil {
 		return nil, err
 	}
