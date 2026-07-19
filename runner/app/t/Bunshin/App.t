@@ -150,6 +150,40 @@ subtest 'real defaults: non-compile warnings from refresh do not become a 500' =
     like $r, qr{^HTTP/1\.1 200 OK\r\n}, 'unrelated warnings pass through';
 };
 
+subtest 'integration: real Module::Refresh + a real broken file dies with the compiler diagnostic' => sub {
+    require File::Temp;
+    my $tmpdir   = File::Temp->newdir;
+    my $mod_name = "BunshinTestFake_$$";
+    my $mod_file = "$mod_name.pm";
+    my $mod_path = "$tmpdir/$mod_file";
+
+    local @INC = (@INC, "$tmpdir");
+
+    open my $fh, '>', $mod_path or die "write initial: $!";
+    print $fh "package $mod_name;\nsub content { 'ok' }\n1;\n";
+    close $fh;
+    utime time - 2, time - 2, $mod_path;
+
+    require $mod_file;
+    Module::Refresh->refresh;
+
+    open my $fh2, '>', $mod_path or die "rewrite broken: $!";
+    print $fh2 "package $mod_name;\nsub content { 'broken'\n";
+    close $fh2;
+    utime time, time, $mod_path;
+
+    my $ok = eval { $Bunshin::App::RUN_CONTENT_FN->(); 1 };
+    my $err = $@;
+
+    delete $INC{$mod_file};
+    { no strict 'refs'; delete $::{"${mod_name}::"}; }
+
+    ok !$ok, 'RUN_CONTENT_FN dies when Module::Refresh warns on a real compile error';
+    like $err, qr{DaiKichijoji\.pm load failed:}, 'wrapped with load-failed prefix';
+    like $err, qr{Compilation failed in require}, 'carries the require diagnostic';
+    like $err, qr{\Q$mod_name\E\.pm},              'names the broken file';
+};
+
 subtest 'real defaults: dispatches through the real ContentRunner and DaiKichijoji' => sub {
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 200 OK\r\n};
