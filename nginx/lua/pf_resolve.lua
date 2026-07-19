@@ -9,9 +9,7 @@ if arrival.exit then
     return ngx.exit(arrival.exit)
 end
 
-local res = ngx.location.capture("/_pf_resolve", {
-    vars = { pf_hex = arrival.hex },
-})
+local res = ngx.location.capture("/_pf_resolve")
 
 local decided = core.decide_app_resolve(res.status, res.header)
 if decided.exit then

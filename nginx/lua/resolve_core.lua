@@ -1,4 +1,4 @@
--- /resolve サブリクエスト応答 (res) から、クライアントへの振る舞いを決める純関数。
+-- /resolve/session サブリクエスト応答 (res) から、クライアントへの振る舞いを決める純関数。
 -- broker は host-only 契約 (X-Runner-Host) を返し、nginx が用途別 port を貼る。
 local runner_url = require("runner_url")
 
