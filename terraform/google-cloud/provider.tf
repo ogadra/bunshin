@@ -26,6 +26,4 @@ provider "google" {
 
 data "google_project" "current" {}
 
-data "google_client_config" "default" {}
-
 data "google_client_openid_userinfo" "me" {}
