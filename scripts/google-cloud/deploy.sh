@@ -147,6 +147,10 @@ main() {
     local membership
     local context
     local nginx_resolver
+    local svc
+    local svc_upper
+    local replicas_var
+    local replicas_value
 
     if [[ $# -eq 0 ]]; then
         target_services=("${SERVICES[@]}")
@@ -213,6 +217,15 @@ main() {
         # shellcheck disable=SC1090
         source "${MANIFESTS_DIR}/regions/${region_dir}/region.env"
         set +a
+
+        for svc in broker nginx runner; do
+            svc_upper="${svc^^}"
+            replicas_var="${svc_upper}_REPLICAS_${region_dir^^}"
+            replicas_value="${!replicas_var:-}"
+            [[ -n "${replicas_value}" ]] \
+                || die "${replicas_var} must be set (e.g. ${replicas_var}=1)"
+            export "${svc_upper}_REPLICAS=${replicas_value}"
+        done
 
         echo "[${membership}] fetching Connect Gateway credentials"
         gcloud container fleet memberships get-credentials "${membership}" \
