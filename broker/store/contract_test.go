@@ -155,7 +155,7 @@ func setupFirestore(t *testing.T) store.Repository {
 func TestContract_RegisterAndFindByID(t *testing.T) {
 	runContract(t, func(t *testing.T, repo store.Repository) {
 		ctx := context.Background()
-		if err := repo.Register(ctx, "11111111111111111111111111111111", "http://10.0.0.1:8080"); err != nil {
+		if err := repo.Register(ctx, "11111111111111111111111111111111", "10.0.0.1"); err != nil {
 			t.Fatalf("Register: %v", err)
 		}
 		runner, err := repo.FindByID(ctx, "11111111111111111111111111111111")
@@ -168,32 +168,32 @@ func TestContract_RegisterAndFindByID(t *testing.T) {
 		if runner.State != model.StateIdle {
 			t.Errorf("state = %q, want %q", runner.State, model.StateIdle)
 		}
-		if runner.PrivateURL != "http://10.0.0.1:8080" {
-			t.Errorf("privateURL = %q, want %q", runner.PrivateURL, "http://10.0.0.1:8080")
+		if runner.PrivateHost != "10.0.0.1" {
+			t.Errorf("privateHost = %q, want %q", runner.PrivateHost, "10.0.0.1")
 		}
 	})
 }
 
-func TestContract_RegisterConflict_SamePrivateURL(t *testing.T) {
+func TestContract_RegisterConflict_SamePrivateHost(t *testing.T) {
 	runContract(t, func(t *testing.T, repo store.Repository) {
 		ctx := context.Background()
-		if err := repo.Register(ctx, "11111111111111111111111111111111", "http://10.0.0.1:8080"); err != nil {
+		if err := repo.Register(ctx, "11111111111111111111111111111111", "10.0.0.1"); err != nil {
 			t.Fatalf("first Register: %v", err)
 		}
-		err := repo.Register(ctx, "11111111111111111111111111111111", "http://10.0.0.1:8080")
+		err := repo.Register(ctx, "11111111111111111111111111111111", "10.0.0.1")
 		if !errors.Is(err, store.ErrConflict) {
 			t.Fatalf("expected ErrConflict, got: %v", err)
 		}
 	})
 }
 
-func TestContract_RegisterConflict_DifferentPrivateURL(t *testing.T) {
+func TestContract_RegisterConflict_DifferentPrivateHost(t *testing.T) {
 	runContract(t, func(t *testing.T, repo store.Repository) {
 		ctx := context.Background()
-		if err := repo.Register(ctx, "11111111111111111111111111111111", "http://10.0.0.1:8080"); err != nil {
+		if err := repo.Register(ctx, "11111111111111111111111111111111", "10.0.0.1"); err != nil {
 			t.Fatalf("first Register: %v", err)
 		}
-		err := repo.Register(ctx, "11111111111111111111111111111111", "http://10.0.0.2:9090")
+		err := repo.Register(ctx, "11111111111111111111111111111111", "10.0.0.2")
 		if !errors.Is(err, store.ErrConflict) {
 			t.Fatalf("expected ErrConflict, got: %v", err)
 		}
@@ -203,7 +203,7 @@ func TestContract_RegisterConflict_DifferentPrivateURL(t *testing.T) {
 func TestContract_AcquireIdle(t *testing.T) {
 	runContract(t, func(t *testing.T, repo store.Repository) {
 		ctx := context.Background()
-		if err := repo.Register(ctx, "11111111111111111111111111111111", "http://10.0.0.1:8080"); err != nil {
+		if err := repo.Register(ctx, "11111111111111111111111111111111", "10.0.0.1"); err != nil {
 			t.Fatalf("Register: %v", err)
 		}
 		runner, err := repo.AcquireIdle(ctx, "sess-1")
@@ -219,8 +219,8 @@ func TestContract_AcquireIdle(t *testing.T) {
 		if runner.State != model.StateBusy {
 			t.Errorf("state = %q, want %q", runner.State, model.StateBusy)
 		}
-		if runner.PrivateURL != "http://10.0.0.1:8080" {
-			t.Errorf("privateURL = %q, want %q", runner.PrivateURL, "http://10.0.0.1:8080")
+		if runner.PrivateHost != "10.0.0.1" {
+			t.Errorf("privateHost = %q, want %q", runner.PrivateHost, "10.0.0.1")
 		}
 
 		persisted, err := repo.FindByID(ctx, "11111111111111111111111111111111")
@@ -253,7 +253,7 @@ func TestContract_AcquireIdle_WrapFromHead(t *testing.T) {
 		store.SetRandHexFnForTest(repo, func() string { return "ffffffffffffffffffffffffffffffff" })
 
 		ctx := context.Background()
-		if err := repo.Register(ctx, "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a", "http://10.0.0.1:8080"); err != nil {
+		if err := repo.Register(ctx, "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a", "10.0.0.1"); err != nil {
 			t.Fatalf("Register: %v", err)
 		}
 		runner, err := repo.AcquireIdle(ctx, "sess-wrap")
@@ -269,7 +269,7 @@ func TestContract_AcquireIdle_WrapFromHead(t *testing.T) {
 func TestContract_AcquireIdle_FindBySessionID(t *testing.T) {
 	runContract(t, func(t *testing.T, repo store.Repository) {
 		ctx := context.Background()
-		if err := repo.Register(ctx, "11111111111111111111111111111111", "http://10.0.0.1:8080"); err != nil {
+		if err := repo.Register(ctx, "11111111111111111111111111111111", "10.0.0.1"); err != nil {
 			t.Fatalf("Register: %v", err)
 		}
 		if _, err := repo.AcquireIdle(ctx, "sess-1"); err != nil {
@@ -288,7 +288,7 @@ func TestContract_AcquireIdle_FindBySessionID(t *testing.T) {
 func TestContract_AcquireIdle_AlreadyBusy(t *testing.T) {
 	runContract(t, func(t *testing.T, repo store.Repository) {
 		ctx := context.Background()
-		if err := repo.Register(ctx, "11111111111111111111111111111111", "http://10.0.0.1:8080"); err != nil {
+		if err := repo.Register(ctx, "11111111111111111111111111111111", "10.0.0.1"); err != nil {
 			t.Fatalf("Register: %v", err)
 		}
 		if _, err := repo.AcquireIdle(ctx, "sess-1"); err != nil {
@@ -304,7 +304,7 @@ func TestContract_AcquireIdle_AlreadyBusy(t *testing.T) {
 func TestContract_Delete(t *testing.T) {
 	runContract(t, func(t *testing.T, repo store.Repository) {
 		ctx := context.Background()
-		if err := repo.Register(ctx, "11111111111111111111111111111111", "http://10.0.0.1:8080"); err != nil {
+		if err := repo.Register(ctx, "11111111111111111111111111111111", "10.0.0.1"); err != nil {
 			t.Fatalf("Register: %v", err)
 		}
 		if err := repo.Delete(ctx, "11111111111111111111111111111111"); err != nil {
@@ -352,7 +352,7 @@ func TestContract_ListBusyRunners_All(t *testing.T) {
 		for i := range total {
 			id := fmt.Sprintf("%02d%030d", i, 0)
 			want = append(want, id)
-			if err := repo.Register(ctx, id, fmt.Sprintf("http://10.0.0.%d:8080", i+1)); err != nil {
+			if err := repo.Register(ctx, id, fmt.Sprintf("10.0.0.%d", i+1)); err != nil {
 				t.Fatalf("Register %s: %v", id, err)
 			}
 			if _, err := repo.AcquireIdle(ctx, fmt.Sprintf("sess-%02d", i)); err != nil {
@@ -368,8 +368,8 @@ func TestContract_ListBusyRunners_All(t *testing.T) {
 			if r.State != model.StateBusy {
 				t.Errorf("state = %q, want %q", r.State, model.StateBusy)
 			}
-			if r.PrivateURL == "" {
-				t.Errorf("runner %s: privateURL empty", r.RunnerID)
+			if r.PrivateHost == "" {
+				t.Errorf("runner %s: privateHost empty", r.RunnerID)
 			}
 			got = append(got, r.RunnerID)
 		}
@@ -404,10 +404,10 @@ func TestContract_ListBusyRunners_Empty(t *testing.T) {
 func TestContract_ListBusyRunners_ExcludesIdle(t *testing.T) {
 	runContract(t, func(t *testing.T, repo store.Repository) {
 		ctx := context.Background()
-		if err := repo.Register(ctx, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "http://10.0.0.1:8080"); err != nil {
+		if err := repo.Register(ctx, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "10.0.0.1"); err != nil {
 			t.Fatalf("Register aaaa: %v", err)
 		}
-		if err := repo.Register(ctx, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "http://10.0.0.2:8080"); err != nil {
+		if err := repo.Register(ctx, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "10.0.0.2"); err != nil {
 			t.Fatalf("Register bbbb: %v", err)
 		}
 		acquired, err := repo.AcquireIdle(ctx, "sess-1")

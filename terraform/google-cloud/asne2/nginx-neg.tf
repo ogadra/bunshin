@@ -1,21 +1,24 @@
-# GKE NEG controllerがnginx Service annotationから生成するstandalone zonal NEG群をdataで参照し、
-# Global External ALBのbackend serviceへの供給元としてoutputsから公開する
+# GKE NEG controller が kubectl 側で apply された nginx Service annotation から生成する
+# standalone zonal NEG 群を data で参照し、Global External ALB の backend service への供給元として
+# outputs から公開する。
 
-# kubernetes_service_v1.nginxへのdepends_onはService作成順しか保証せず、NEG controllerが各zoneで
-# NEGを生成し終える前にdataが読まれ初回applyがNot Foundで落ちる。gcloudでNEGの存在確認をポーリング
-# してdata読み取りを止め、Podが未スケジュールなzoneでもcontrollerがNEGを空で作るまで待つ
+# NEG は kubectl apply 契機で作られるため、cluster / infra だけ先に上げた直後の初回 apply では
+# 各 zone に NEG が揃っていない。gcloud で NEG 存在確認をポーリングし、Pod 未スケジュール zone でも
+# controller が空 NEG を作るまで待ってから data source を読ませる
 resource "terraform_data" "nginx_neg_ready" {
   for_each = toset(local.nginx_neg_zones)
 
-  triggers_replace = [kubernetes_service_v1.nginx.metadata[0].uid]
+  # Service とその NEG は kubectl 側で管理されるため、Terraform state からは見えない。
+  # NEG 名が変わったときだけ再ポーリングし、通常の apply では再走しない
+  triggers_replace = [local.nginx_neg_name]
 
   provisioner "local-exec" {
-    interpreter = ["/bin/bash", "-c"]
+    interpreter = ["bash", "-c"]
     command     = <<-EOT
       for i in $(seq 1 60); do
         if gcloud compute network-endpoint-groups describe ${local.nginx_neg_name} \
           --zone=${each.value} \
-          --project=${data.google_project.current.project_id} \
+          --project=${data.google_client_config.default.project} \
           >/dev/null 2>&1; then
           exit 0
         fi

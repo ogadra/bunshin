@@ -30,7 +30,8 @@ func newRouter(h *handler.Handler) *gin.Engine {
 	if h != nil {
 		r.Use(handler.RequestIDMiddleware(handler.DefaultIDFn))
 		r.DELETE("/sessions/:sessionId", h.DeleteSession)
-		r.GET("/resolve", h.GetResolve)
+		r.GET("/resolve/session", h.GetResolveSession)
+		r.GET("/resolve/app", h.GetResolveApp)
 		r.POST("/internal/runners/register", h.PostRegister)
 		r.DELETE("/internal/runners/:runnerId", h.DeleteRunner)
 		r.GET("/runners/busy", h.GetListBusyRunners)
@@ -66,11 +67,15 @@ func defaultInitHandler() (*handler.Handler, io.Closer, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	runnerPort, err := config.NewRunnerPortFromEnv()
+	if err != nil {
+		return nil, nil, err
+	}
 	repo, err := config.NewRepositoryFromEnv(context.Background())
 	if err != nil {
 		return nil, nil, err
 	}
-	checker := healthcheck.NewHTTPChecker(&http.Client{Timeout: 3 * time.Second})
+	checker := healthcheck.NewHTTPChecker(&http.Client{Timeout: 3 * time.Second}, runnerPort)
 	svc := newBrokerService(repo, stack.Self, checker)
 	return handler.NewHandler(svc, stack.Fallbacks), repoCloser(repo), nil
 }
