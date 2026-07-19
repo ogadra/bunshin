@@ -15,5 +15,6 @@ pkgs.symlinkJoin {
     pkgs.figlet
     pkgs.iproute2
     pkgs.gawk
+    pkgs.busybox
   ];
 }

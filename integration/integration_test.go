@@ -807,3 +807,210 @@ func TestNoIdleRunner(t *testing.T) {
 	}
 	assertForwardedClientAddress(t, got, "203.0.113.50:45678")
 }
+
+// 32 hex label + {stack}.internal.testの形式でしかpf serverにマッチしない。
+func portForwardHost(hex, stack string) string {
+	return hex + "." + stack + ".internal.test"
+}
+
+// busybox httpdはforkしてからbindするため、起動コマンド完了時点では:5000未受付の可能性がある。
+// readiness pollでbind完了を待ってから後続のリクエストを走らせる。
+// pollの終了判定にexitを使うと/api/executeの永続bashセッションごと終了しmarker protocolが壊れるので、
+// break + 末尾の条件式で判定する。
+// httpdのstdout/stderrはセッションのpipeを継承したまま居座るので/dev/nullへ切り離す。
+func startPortForwardApp(t *testing.T, cookies sessionCookies) {
+	t.Helper()
+	events := executeCommand(t, cookies, "mkdir -p /tmp/pf-www && echo ok > /tmp/pf-www/probe && busybox httpd -p 5000 -h /tmp/pf-www >/dev/null 2>&1")
+	for _, e := range events {
+		if e.ExitCode != nil && *e.ExitCode != 0 {
+			t.Fatalf("busybox httpd start failed: exitCode=%d", *e.ExitCode)
+		}
+	}
+	readiness := executeCommand(t, cookies, `ready=0; i=0; while [ $i -lt 100 ]; do busybox wget -q -O /dev/null http://127.0.0.1:5000/probe && { ready=1; break; }; i=$((i+1)); sleep 0.1; done; if [ "$ready" -ne 1 ]; then busybox netstat -tln 2>&1; false; fi`)
+	for _, e := range readiness {
+		if e.ExitCode != nil && *e.ExitCode != 0 {
+			t.Fatalf("busybox httpd did not become ready on :5000 within 10s: exitCode=%d events=%+v", *e.ExitCode, readiness)
+		}
+	}
+	t.Cleanup(func() {
+		executeCommand(t, cookies, "pkill -f 'busybox httpd' 2>/dev/null || true")
+	})
+}
+
+func TestPortForwardOwnStackReachable(t *testing.T) {
+	cookies := setupSession(t)
+	hex := strings.TrimPrefix(cookies.SessionID, "ap-northeast-1_")
+	if hex == cookies.SessionID || len(hex) != 32 {
+		t.Fatalf("session_id = %q must be prefixed with own stack + hex32", cookies.SessionID)
+	}
+	startPortForwardApp(t, cookies)
+
+	resp := doRequestWithHeaders(
+		t,
+		http.MethodGet,
+		nginxBase+"/probe",
+		"",
+		"",
+		map[string]string{"Host": portForwardHost(hex, "ap-northeast-1")},
+	)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET pf own stack: want 200, got %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if strings.TrimSpace(string(body)) != "ok" {
+		t.Errorf("body = %q, want %q", string(body), "ok")
+	}
+}
+
+func TestPortForwardForeignStack404(t *testing.T) {
+	cookies := setupSession(t)
+	hex := strings.TrimPrefix(cookies.SessionID, "ap-northeast-1_")
+	if hex == cookies.SessionID {
+		t.Fatalf("session_id = %q must be prefixed with own stack", cookies.SessionID)
+	}
+	resetForwardTarget(t)
+
+	resp := doRequestWithHeaders(
+		t,
+		http.MethodGet,
+		nginxBase+"/",
+		"",
+		"",
+		map[string]string{"Host": portForwardHost(hex, "ap-northeast-3")},
+	)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("GET pf foreign stack: want 404, got %d", resp.StatusCode)
+	}
+	if got := lastForwardedRequestOrNil(t); got != nil {
+		t.Errorf("must not forward to peer stack, but forward-target recorded %+v", got)
+	}
+}
+
+func TestPortForwardUnknownSession404(t *testing.T) {
+	resetForwardTarget(t)
+	resp := doRequestWithHeaders(
+		t,
+		http.MethodGet,
+		nginxBase+"/",
+		"",
+		"",
+		map[string]string{"Host": portForwardHost(strings.Repeat("f", 32), "ap-northeast-1")},
+	)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("GET pf unknown session: want 404, got %d", resp.StatusCode)
+	}
+	if got := lastForwardedRequestOrNil(t); got != nil {
+		t.Errorf("must not forward unknown session, but forward-target recorded %+v", got)
+	}
+}
+
+func TestPortForwardUnknownStack404(t *testing.T) {
+	resetForwardTarget(t)
+	resp := doRequestWithHeaders(
+		t,
+		http.MethodGet,
+		nginxBase+"/",
+		"",
+		"",
+		map[string]string{"Host": portForwardHost(strings.Repeat("a", 32), "ap-southeast-9")},
+	)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("GET pf unknown stack: want 404, got %d", resp.StatusCode)
+	}
+	if got := lastForwardedRequestOrNil(t); got != nil {
+		t.Errorf("must not forward unknown stack, but forward-target recorded %+v", got)
+	}
+}
+
+func TestPortForwardInvalidHexShapeFallsToCatchAll(t *testing.T) {
+	cases := []struct {
+		name string
+		hex  string
+	}{
+		{"too short", strings.Repeat("a", 31)},
+		{"uppercase", strings.Repeat("A", 32)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resetForwardTarget(t)
+			resp := doRequestWithHeaders(
+				t,
+				http.MethodGet,
+				nginxBase+"/",
+				"",
+				"",
+				map[string]string{"Host": portForwardHost(tc.hex, "ap-northeast-1")},
+			)
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusNotFound {
+				t.Errorf("GET pf invalid hex %q: want 404, got %d", tc.hex, resp.StatusCode)
+			}
+			if got := lastForwardedRequestOrNil(t); got != nil {
+				t.Errorf("must not forward invalid hex %q, but forward-target recorded %+v", tc.hex, got)
+			}
+		})
+	}
+}
+
+// pf経路以外のHostに紛れたX-Fallback-* / X-Bunshin-Client-Addressをnginxから/_resolveへ中継せず、
+// 他stackへの転送でforward-targetのヘッダにも現れないことを検証する。
+func TestPublicHostDoesNotRelayFallbackHeaders(t *testing.T) {
+	resetForwardTarget(t)
+	headers := map[string]string{
+		"Host":                      "aaaaaa111.ap-northeast-1.example.com",
+		"CloudFront-Viewer-Address": "203.0.113.90:45678",
+		"X-Fallback-Stack":          "attacker-stack",
+		"X-Fallback-Remaining":      "attacker-remaining",
+		"X-Bunshin-Client-Address":  "198.51.100.10:11111",
+	}
+	resp := doRequestWithHeaders(
+		t,
+		http.MethodPost,
+		nginxBase+"/api/execute",
+		`{"command":"pwd"}`,
+		"session_id=ap-northeast-3_deadbeef; shell_id=shell-x",
+		headers,
+	)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("POST /api/execute public host: want 204 from forward target, got %d", resp.StatusCode)
+	}
+
+	got := lastForwardedRequest(t)
+	if values := got.Header["X-Fallback-Stack"]; len(values) > 0 {
+		t.Errorf("X-Fallback-Stack should be stripped from public host, got %q", values)
+	}
+	if values := got.Header["X-Fallback-Remaining"]; len(values) > 0 {
+		t.Errorf("X-Fallback-Remaining should be stripped from public host, got %q", values)
+	}
+	assertForwardedClientAddress(t, got, "203.0.113.90:45678")
+}
+
+// 404テストで「forward-targetに到達しなかったこと」を検証するために使う。
+// lastForwardedRequestとは違い、記録なしをt.Fatalではなくnil返しで扱う。
+func lastForwardedRequestOrNil(t *testing.T) *forwardedRequest {
+	t.Helper()
+	resp, err := httpClient.Get(forwardTargetBase + "/__last")
+	if err != nil {
+		t.Fatalf("GET /__last: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /__last: want 200 or 404, got %d", resp.StatusCode)
+	}
+	var got forwardedRequest
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode /__last body: %v", err)
+	}
+	return &got
+}
