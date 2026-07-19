@@ -23,6 +23,14 @@ output "user_dns" {
       }
       internal_asne1 = module.asne1.internal_acme_cname
       internal_asne2 = module.asne2.internal_acme_cname
+      port_forward_asne1 = {
+        name = google_certificate_manager_dns_authorization.port_forward_asne1.dns_resource_record[0].name
+        data = google_certificate_manager_dns_authorization.port_forward_asne1.dns_resource_record[0].data
+      }
+      port_forward_asne2 = {
+        name = google_certificate_manager_dns_authorization.port_forward_asne2.dns_resource_record[0].name
+        data = google_certificate_manager_dns_authorization.port_forward_asne2.dns_resource_record[0].data
+      }
     }
   }
 }
