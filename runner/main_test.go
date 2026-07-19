@@ -546,7 +546,6 @@ func TestStartIdentityError(t *testing.T) {
 	}
 }
 
-
 // TestStartMissingBrokerURL verifies that start returns an error when
 // BROKER_URL is not set.
 func TestStartMissingBrokerURL(t *testing.T) {
