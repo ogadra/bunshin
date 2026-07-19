@@ -1,6 +1,6 @@
 -- /resolve/sessionサブリクエスト応答 (res) から、クライアントへの振る舞いを決める純関数。
 -- brokerはhost-only契約 (X-Runner-Host) を返し、nginxが用途別portを貼る。
-local runner_url = require("runner_url")
+local runner_host = require("runner_host")
 
 local _M = {}
 
@@ -188,7 +188,7 @@ function _M.decide(res, stacks, domain)
     end
 
     local host = res.header["X-Runner-Host"]
-    if not runner_url.is_valid(host) then
+    if not runner_host.is_valid(host) then
         return {
             exit = HTTP_INTERNAL_ERROR,
             log = "resolve: invalid X-Runner-Host from broker: " .. tostring(host),
@@ -250,7 +250,7 @@ function _M.decide_app_resolve(status, headers)
         return { exit = HTTP_NOT_FOUND }
     end
     local host = headers["X-Runner-Host"]
-    if not runner_url.is_valid(host) then
+    if not runner_host.is_valid(host) then
         return { exit = HTTP_NOT_FOUND }
     end
     return { upstream = "http://" .. host .. ":" .. tostring(app_port_number) }

@@ -1,7 +1,7 @@
--- runner_url.is_validの境界値テスト。
+-- runner_host.is_validの境界値テスト。
 -- brokerが返すX-Runner-Hostはhost label形式のみを許可する。
 package.path = "/usr/local/openresty/nginx/lua/?.lua;" .. package.path
-local runner_url = require("runner_url")
+local runner_host = require("runner_host")
 
 local cases = {
     -- 正常: 英数字 / ドット / ハイフンだけのhost label
@@ -27,7 +27,7 @@ local cases = {
 
 local failed = 0
 for _, c in ipairs(cases) do
-    local got = runner_url.is_valid(c.host)
+    local got = runner_host.is_valid(c.host)
     if got ~= c.want then
         failed = failed + 1
         io.stderr:write(string.format(
@@ -36,7 +36,7 @@ for _, c in ipairs(cases) do
 end
 
 if failed > 0 then
-    io.stderr:write(string.format("runner_url: %d case(s) failed\n", failed))
+    io.stderr:write(string.format("runner_host: %d case(s) failed\n", failed))
     os.exit(1)
 end
-print(string.format("runner_url: all %d cases passed", #cases))
+print(string.format("runner_host: all %d cases passed", #cases))
