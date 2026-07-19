@@ -48,9 +48,9 @@ resource "aws_globalaccelerator_endpoint_group" "api_ingress_apne3" {
   }
 }
 
-# port-forward で ap-northeast-1 の runner に着弾させたい要求は、stack 固定の
-# listener (8443) を経由させる。ALB は既存 443 で受けるので port_override で 443
-# に付け替え、endpoint group には apne1 の ALB だけを載せる。
+# port-forwardでap-northeast-1のrunnerに着弾させたい要求は、stack固定の
+# listener(8443)を経由させる。ALBは既存443で受けるのでport_overrideで443
+# に付け替え、endpoint groupにはapne1のALBだけを載せる。
 resource "aws_globalaccelerator_listener" "api_ingress_apne1_pf" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   accelerator_arn = aws_globalaccelerator_accelerator.api_ingress.arn
@@ -80,7 +80,7 @@ resource "aws_globalaccelerator_endpoint_group" "api_ingress_apne1_pf" {
   }
 }
 
-# ap-northeast-3 に固定させる port-forward listener。9443 は 8443 と衝突しないよう別に取る。
+# ap-northeast-3に固定させるport-forward listener。9443は8443と衝突しないよう別に取る。
 resource "aws_globalaccelerator_listener" "api_ingress_apne3_pf" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   accelerator_arn = aws_globalaccelerator_accelerator.api_ingress.arn
