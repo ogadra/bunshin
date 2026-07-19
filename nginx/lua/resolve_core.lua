@@ -242,10 +242,9 @@ function _M.decide_app_arrival(host)
     return { hex = parsed.hex }
 end
 
--- broker /resolve/appの応答からport-forward先 (host:app_port) を組み立てる。
 -- 404は他stack/未知stackと同じ404に丸め、session存在を推測させない。
--- 他のnon-200はbroker側のシステム状態としてそのまま透過する。
--- 200 + 不正hostはbroker側のバグ。500 + logで観測できるようにする。
+-- 200 + 不正hostはbroker側のバグ。
+-- 500 + logで観測できるようにする。
 function _M.decide_app_resolve(status, headers)
     if status == HTTP_NOT_FOUND then
         return { exit = HTTP_NOT_FOUND }
