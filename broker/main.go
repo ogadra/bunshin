@@ -67,11 +67,15 @@ func defaultInitHandler() (*handler.Handler, io.Closer, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	runnerPort, err := config.NewRunnerPortFromEnv()
+	if err != nil {
+		return nil, nil, err
+	}
 	repo, err := config.NewRepositoryFromEnv(context.Background())
 	if err != nil {
 		return nil, nil, err
 	}
-	checker := healthcheck.NewHTTPChecker(&http.Client{Timeout: 3 * time.Second})
+	checker := healthcheck.NewHTTPChecker(&http.Client{Timeout: 3 * time.Second}, runnerPort)
 	svc := newBrokerService(repo, stack.Self, checker)
 	return handler.NewHandler(svc, stack.Fallbacks), repoCloser(repo), nil
 }
