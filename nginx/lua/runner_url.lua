@@ -12,4 +12,13 @@ function _M.is_valid(url)
         or url:match("^http://[%w%.%-]+:%d+$") ~= nil
 end
 
+-- is_valid が true な url から host 部分だけ取り出す。port-forward で
+-- broker が返した runner URL の :3000 を捨てて :5000 に差し替えるために使う。
+function _M.host_only(url)
+    if type(url) ~= "string" then
+        return nil
+    end
+    return url:match("^http://([%w%.%-]+)$") or url:match("^http://([%w%.%-]+):%d+$")
+end
+
 return _M

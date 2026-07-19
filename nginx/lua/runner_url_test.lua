@@ -35,8 +35,27 @@ for _, c in ipairs(cases) do
     end
 end
 
+local host_cases = {
+    { url = "http://runner-1:3000", want = "runner-1" },
+    { url = "http://10.0.0.1:8080", want = "10.0.0.1" },
+    { url = "http://runner.local", want = "runner.local" },
+    -- 不正な url は nil を返し、呼び出し側に不在を伝える
+    { url = "https://h:3000", want = nil },
+    { url = "http://h/path", want = nil },
+    { url = "", want = nil },
+    { url = nil, want = nil },
+}
+for _, c in ipairs(host_cases) do
+    local got = runner_url.host_only(c.url)
+    if got ~= c.want then
+        failed = failed + 1
+        io.stderr:write(string.format(
+            "FAIL host_only(%s) = %s, want %s\n", tostring(c.url), tostring(got), tostring(c.want)))
+    end
+end
+
 if failed > 0 then
     io.stderr:write(string.format("runner_url: %d case(s) failed\n", failed))
     os.exit(1)
 end
-print(string.format("runner_url: all %d cases passed", #cases))
+print(string.format("runner_url: all %d cases passed", #cases + #host_cases))

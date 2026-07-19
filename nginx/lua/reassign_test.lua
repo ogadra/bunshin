@@ -1,7 +1,7 @@
 package.path = "/usr/local/openresty/nginx/lua/?.lua;" .. package.path
 local core = require("resolve_core")
 
-core.configure("ap-northeast-1", "example.com", "ap-northeast-1,ap-northeast-3")
+core.configure("ap-northeast-1", "example.com", "ap-northeast-1,ap-northeast-3", 5000)
 
 local failed = 0
 local function check(name, cond)
