@@ -6,7 +6,7 @@ const highlight = (page: Page) => page.locator(".editor-highlight");
 
 // vite preview は SPA fallback で /api/app/handler にも index.html を返してしまうので、
 // GET を明示的にモックしないと initial code が HTML になって Perl のトークン検証が壊れる。
-// PUT/GET と iframe :5000 をまとめて捕まえるヘルパー
+// PUT/GET と iframe preview 先をまとめて捕まえるヘルパー
 async function stubHandlerApi(page: Page, initialSource: string): Promise<{ puts: string[] }> {
   const puts: string[] = [];
   let current = initialSource;
@@ -24,15 +24,22 @@ async function stubHandlerApi(page: Page, initialSource: string): Promise<{ puts
     }
     await route.continue();
   });
-  // iframe の :5000 は preview サーバーからは到達不能なので、任意の 200 を返して DevTools の
-  // net::ERR ノイズと視覚的な壊れ表示を抑える
-  await page.route("http://127.0.0.1:5000/**", async (route) => {
+  // preview 先ドメインは preview サーバーからは到達不能なので、任意の 200 を返して DevTools の
+  // net::ERR ノイズと視覚的な壊れ表示を抑える。webServer.env の VITE_PERL_ORIGIN_TEMPLATE と揃える
+  await page.route("http://*.preview.test/**", async (route) => {
     await route.fulfill({ status: 200, body: current, contentType: "text/plain" });
   });
   return { puts };
 }
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page, context }) => {
+  await context.addCookies([
+    {
+      name: "session_id",
+      value: "ap-northeast-1_e2edeadbeef",
+      url: "http://localhost:4273",
+    },
+  ]);
   await stubHandlerApi(page, samplePerl);
   await page.goto("/");
   await highlight(page).locator("span").first().waitFor();
@@ -162,7 +169,14 @@ test.describe("Perl HMR wiring", () => {
   // beforeEach を上書きして goto 前に個別 stub を仕込む
   let stub: { puts: string[] };
 
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, context }) => {
+    await context.addCookies([
+      {
+        name: "session_id",
+        value: "ap-northeast-1_e2edeadbeef",
+        url: "http://localhost:4273",
+      },
+    ]);
     stub = await stubHandlerApi(page, 'sub { return (200, "text/plain", "before"); };\n');
     await page.goto("/");
     await highlight(page).locator("span").first().waitFor();

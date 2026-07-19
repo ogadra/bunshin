@@ -1,5 +1,6 @@
 import { getAppHandler, putAppHandler } from "./client";
 import { createPerlEditor, type PerlEditorHandle } from "./editor";
+import { previewUrl, sessionHexFromCookie } from "./previewUrl";
 import { samplePerl } from "./samplePerl";
 import "./style.css";
 
@@ -7,7 +8,10 @@ import "./style.css";
 // debounce は編集の手が止まった判定に使う時間で、送信間隔ではない
 const DEBOUNCE_MS = 1000;
 
-const PERL_URL = "http://127.0.0.1:5000/";
+const PERL_ORIGIN_TEMPLATE = import.meta.env.VITE_PERL_ORIGIN_TEMPLATE;
+if (!PERL_ORIGIN_TEMPLATE) {
+  throw new Error("VITE_PERL_ORIGIN_TEMPLATE is required (see front/.env.example)");
+}
 
 const editorEl = document.getElementById("editor") as HTMLElement;
 const iframe = document.getElementById("preview") as HTMLIFrameElement;
@@ -24,9 +28,17 @@ let inFlight = false;
 let lastSent: string | null = initialCode;
 
 const reloadPreview = (): void => {
+  const hex = sessionHexFromCookie(document.cookie);
+  if (hex === null) {
+    console.warn("session_id cookie missing; skipping preview reload");
+    return;
+  }
+  const base = previewUrl(PERL_ORIGIN_TEMPLATE, hex);
   // 同じ URL を代入しても reload しないブラウザがあるため、cache-buster を付ける
-  iframe.src = `${PERL_URL}?_=${String(performance.now())}`;
+  iframe.src = `${base}?_=${String(performance.now())}`;
 };
+
+reloadPreview();
 
 const flush = async (): Promise<void> => {
   if (inFlight) return;

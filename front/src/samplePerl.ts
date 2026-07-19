@@ -4,7 +4,7 @@ use warnings;
 
 =pod
 
-Edit sub content to change the page rendered at http://127.0.0.1:5000/.
+Edit sub content to change the page rendered in the preview iframe.
 The HTML shell around the returned string lives in BunshinServer.pm.
 
 =cut
