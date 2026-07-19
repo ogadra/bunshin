@@ -1,6 +1,7 @@
--- port-forwardの{hex32}.{stack}.<internal_domain> Hostからrunnerの:app_port
--- へ振り分けるaccess phase。所有stackでなければ404、brokerがsessionを持って
--- いなければ404、成功したら$pf_upstreamを組み立ててproxy_passに渡す。
+-- port-forwardの{hex32}.{stack}.<internal_domain> Hostをrunnerの:app_portへ振り分ける。
+-- 所有stackでなければ404。
+-- brokerがsessionを持たなければ404。
+-- 成功したら$pf_upstreamを組み立ててproxy_passに渡す。
 local core = require("resolve_core")
 
 local arrival = core.decide_app_arrival(ngx.var.host)
