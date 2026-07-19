@@ -88,24 +88,3 @@ resource "google_gke_hub_membership" "bunshin" {
 
   labels = local.common_labels
 }
-
-resource "terraform_data" "cluster_ready" {
-  triggers_replace = [google_gke_hub_membership.bunshin.id]
-
-  provisioner "local-exec" {
-    interpreter = ["bash", "-c"]
-    command     = <<-EOT
-      for i in $(seq 1 120); do
-        state="$(gcloud container fleet memberships describe ${google_gke_hub_membership.bunshin.membership_id} \
-          --project=${google_gke_hub_membership.bunshin.project} \
-          --location=global --format='value(state.code)' 2>/dev/null || true)"
-        if [ "$state" = "READY" ]; then
-          exit 0
-        fi
-        sleep 10
-      done
-      echo "fleet membership ${google_gke_hub_membership.bunshin.membership_id} did not become READY within 1200s" >&2
-      exit 1
-    EOT
-  }
-}
