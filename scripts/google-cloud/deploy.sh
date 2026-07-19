@@ -141,6 +141,7 @@ main() {
     export GOOGLE_CLOUD_PROJECT="${project}"
     export BROKER_GSA_EMAIL="${broker_gsa_email}"
     export DEPLOYER_EMAIL="${deployer_email}"
+    export REPOSITORY
 
     # BUNSHIN_STACKS は region 非依存の共通値なのでループの外で 1 回 source する
     set -a

@@ -33,7 +33,7 @@ spec:
       serviceAccountName: nginx
       containers:
         - name: nginx
-          image: ${REGION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/bunshin/nginx:${IMAGE_TAG}
+          image: ${REGION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${REPOSITORY}/nginx:${IMAGE_TAG}
           ports:
             - containerPort: 8080
               protocol: TCP
