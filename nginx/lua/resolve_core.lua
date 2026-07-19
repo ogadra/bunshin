@@ -242,13 +242,10 @@ function _M.decide_app_arrival(host)
     return { hex = parsed.hex }
 end
 
--- 404は他stack/未知stackと同じ404に丸め、session存在を推測させない。
+-- 200以外はそのまま透過する。broker 404はsession不在で、decide_app_arrivalの404と同形なので推測されない。
 -- 200 + 不正hostはbroker側のバグ。
 -- 500 + logで観測できるようにする。
 function _M.decide_app_resolve(status, headers)
-    if status == HTTP_NOT_FOUND then
-        return { exit = HTTP_NOT_FOUND }
-    end
     if status ~= HTTP_OK then
         return { exit = status }
     end
