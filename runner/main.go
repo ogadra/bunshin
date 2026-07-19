@@ -53,8 +53,6 @@ func start(addr string) error {
 		return fmt.Errorf("listen: %w", err)
 	}
 
-	_, port, _ := net.SplitHostPort(ln.Addr().String())
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	identity, err := resolveIdentityFn(ctx, identityDeps{
@@ -63,13 +61,12 @@ func start(addr string) error {
 		httpGet:        defaultHTTPGet,
 		interfaceAddrs: net.InterfaceAddrs,
 		randRead:       rand.Read,
-		port:           port,
 	})
 	if err != nil {
 		ln.Close()
 		return fmt.Errorf("resolve identity: %w", err)
 	}
-	log.Printf("runner identity: id=%s url=%s", identity.RunnerID, identity.PrivateURL)
+	log.Printf("runner identity: id=%s host=%s", identity.RunnerID, identity.PrivateHost)
 
 	brokerURL := os.Getenv("BROKER_URL")
 	if brokerURL == "" {

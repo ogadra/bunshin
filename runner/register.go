@@ -26,8 +26,8 @@ type registerDeps struct {
 type registerRequest struct {
 	// RunnerID is the unique identifier for this runner.
 	RunnerID string `json:"runnerId"`
-	// PrivateURL is the URL that the broker uses to reach this runner.
-	PrivateURL string `json:"privateUrl"`
+	// PrivateHost is the hostname (no port) that the broker uses to reach this runner.
+	PrivateHost string `json:"privateHost"`
 }
 
 // register sends POST /internal/runners/register to broker with retry.
@@ -35,8 +35,8 @@ type registerRequest struct {
 // This function blocks until registration succeeds.
 func register(ctx context.Context, deps registerDeps) error {
 	reqBody := registerRequest{
-		RunnerID:   deps.identity.RunnerID,
-		PrivateURL: deps.identity.PrivateURL,
+		RunnerID:    deps.identity.RunnerID,
+		PrivateHost: deps.identity.PrivateHost,
 	}
 	payload, _ := json.Marshal(reqBody)
 
@@ -47,7 +47,7 @@ func register(ctx context.Context, deps registerDeps) error {
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusCreated {
-				deps.logf("registered with broker: id=%s url=%s", deps.identity.RunnerID, deps.identity.PrivateURL)
+				deps.logf("registered with broker: id=%s host=%s", deps.identity.RunnerID, deps.identity.PrivateHost)
 				return nil
 			}
 			deps.logf("broker registration returned %d, retrying in %s", resp.StatusCode, registerRetryInterval)
