@@ -13,12 +13,12 @@ import (
 )
 
 var (
-	ErrNotFound          = errors.New("runner not found")
-	ErrNoIdleRunner      = errors.New("no idle runner available")
-	ErrConditionFailed   = errors.New("condition check failed")
-	ErrConflict          = errors.New("runner already exists with different attributes")
-	ErrInvalidRunnerID   = errors.New("runnerID must be 32 lowercase hex characters")
-	ErrInvalidPrivateURL = errors.New("privateURL must not be empty")
+	ErrNotFound           = errors.New("runner not found")
+	ErrNoIdleRunner       = errors.New("no idle runner available")
+	ErrConditionFailed    = errors.New("condition check failed")
+	ErrConflict           = errors.New("runner already exists with different attributes")
+	ErrInvalidRunnerID    = errors.New("runnerID must be 32 lowercase hex characters")
+	ErrInvalidPrivateHost = errors.New("privateHost must not be empty")
 )
 
 // AcquireIdle が 1 ページで取得する idle 候補の件数上限。dynamo / firestore 両実装で共有する。
@@ -40,7 +40,7 @@ func defaultRandHexFn() string {
 }
 
 type Repository interface {
-	Register(ctx context.Context, runnerID, privateURL string) error
+	Register(ctx context.Context, runnerID, privateHost string) error
 	AcquireIdle(ctx context.Context, sessionID string) (*model.Runner, error)
 	ListBusyRunners(ctx context.Context) ([]model.Runner, error)
 	FindBySessionID(ctx context.Context, sessionID string) (*model.Runner, error)

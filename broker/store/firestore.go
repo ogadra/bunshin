@@ -13,22 +13,22 @@ import (
 // FirestoreCollection は runner document を格納する Firestore collection 名。
 const FirestoreCollection = "runners"
 
-// FieldPrivateURL / FieldCurrentSessionID は runner document の field 名。DynamoDB 側の属性名と揃える。
+// FieldPrivateHost / FieldCurrentSessionID は runner document の field 名。DynamoDB 側の属性名と揃える。
 const (
-	FieldPrivateURL       = "privateUrl"
+	FieldPrivateHost      = "privateHost"
 	FieldCurrentSessionID = "currentSessionId"
 )
 
 type runnerDoc struct {
 	RunnerID         string
-	PrivateURL       string
+	PrivateHost      string
 	CurrentSessionID string
 }
 
 func (d runnerDoc) toModel() *model.Runner {
 	r := &model.Runner{
 		RunnerID:         d.RunnerID,
-		PrivateURL:       d.PrivateURL,
+		PrivateHost:      d.PrivateHost,
 		CurrentSessionID: d.CurrentSessionID,
 	}
 	if d.CurrentSessionID == "" {
@@ -93,15 +93,15 @@ func (r *FirestoreRepository) Close() error {
 	return r.api.Close()
 }
 
-func (r *FirestoreRepository) Register(ctx context.Context, runnerID, privateURL string) error {
+func (r *FirestoreRepository) Register(ctx context.Context, runnerID, privateHost string) error {
 	if !runnerIDRe.MatchString(runnerID) {
 		return ErrInvalidRunnerID
 	}
-	if privateURL == "" {
-		return ErrInvalidPrivateURL
+	if privateHost == "" {
+		return ErrInvalidPrivateHost
 	}
 	return r.api.Create(ctx, runnerID, map[string]any{
-		FieldPrivateURL:       privateURL,
+		FieldPrivateHost:      privateHost,
 		FieldCurrentSessionID: nil,
 	})
 }
@@ -151,7 +151,7 @@ func (r *FirestoreRepository) assignFirstIdle(ctx context.Context, sessionID str
 			return &model.Runner{
 				RunnerID:         s.ID,
 				State:            model.StateBusy,
-				PrivateURL:       doc.PrivateURL,
+				PrivateHost:      doc.PrivateHost,
 				CurrentSessionID: sessionID,
 			}, nil
 		}
@@ -235,14 +235,14 @@ func (r *FirestoreRepository) Delete(ctx context.Context, runnerID string) error
 }
 
 // snapshotToDoc は Firestore document snapshot を厳格に runnerDoc に変換する。
-// privateUrl 不在 / 非 string、currentSessionId 不在、currentSessionId が nil でも string でもない
+// privateHost 不在 / 非 string、currentSessionId 不在、currentSessionId が nil でも string でもない
 // 場合はエラーで返し、silent に空値を上位に流さない。
 func snapshotToDoc(runnerID string, data map[string]any) (*runnerDoc, error) {
-	priv, ok := data[FieldPrivateURL].(string)
+	priv, ok := data[FieldPrivateHost].(string)
 	if !ok {
-		return nil, fmt.Errorf("firestore doc %q: privateUrl missing or not string", runnerID)
+		return nil, fmt.Errorf("firestore doc %q: privateHost missing or not string", runnerID)
 	}
-	doc := &runnerDoc{RunnerID: runnerID, PrivateURL: priv}
+	doc := &runnerDoc{RunnerID: runnerID, PrivateHost: priv}
 	v, exists := data[FieldCurrentSessionID]
 	if !exists {
 		return nil, fmt.Errorf("firestore doc %q: currentSessionId field missing", runnerID)

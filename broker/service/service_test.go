@@ -20,7 +20,7 @@ func (e *errorReader) Read(_ []byte) (int, error) {
 
 // mockRepository は store.Repository のモック実装。
 type mockRepository struct {
-	registerFn        func(ctx context.Context, runnerID, privateURL string) error
+	registerFn        func(ctx context.Context, runnerID, privateHost string) error
 	acquireIdleFn     func(ctx context.Context, sessionID string) (*model.Runner, error)
 	listBusyRunnersFn func(ctx context.Context) ([]model.Runner, error)
 	findBySessionIDFn func(ctx context.Context, sessionID string) (*model.Runner, error)
@@ -29,8 +29,8 @@ type mockRepository struct {
 }
 
 // Register はモック Register を呼び出す。
-func (m *mockRepository) Register(ctx context.Context, runnerID, privateURL string) error {
-	return m.registerFn(ctx, runnerID, privateURL)
+func (m *mockRepository) Register(ctx context.Context, runnerID, privateHost string) error {
+	return m.registerFn(ctx, runnerID, privateHost)
 }
 
 // AcquireIdle はモック AcquireIdle を呼び出す。
@@ -60,12 +60,12 @@ func (m *mockRepository) Delete(ctx context.Context, runnerID string) error {
 
 // mockChecker は healthcheck.Checker のモック実装。
 type mockChecker struct {
-	checkFn func(ctx context.Context, privateURL string) error
+	checkFn func(ctx context.Context, privateHost string) error
 }
 
 // Check はモック Check を呼び出す。
-func (m *mockChecker) Check(ctx context.Context, privateURL string) error {
-	return m.checkFn(ctx, privateURL)
+func (m *mockChecker) Check(ctx context.Context, privateHost string) error {
+	return m.checkFn(ctx, privateHost)
 }
 
 // healthyChecker は常に健全を返す checker を注入する Option。
@@ -223,7 +223,7 @@ func TestCreateSession_Success(t *testing.T) {
 			return &model.Runner{
 				RunnerID:         "r1",
 				CurrentSessionID: sessionID,
-				PrivateURL:       "http://10.0.0.1:8080",
+				PrivateHost:       "10.0.0.1",
 			}, nil
 		},
 	}
@@ -251,7 +251,7 @@ func TestCreateSession_StackPrefix(t *testing.T) {
 			if sessionID != "ap-northeast-3_fixed-session" {
 				t.Errorf("sessionID = %q, want %q", sessionID, "ap-northeast-3_fixed-session")
 			}
-			return &model.Runner{RunnerID: "r1", CurrentSessionID: sessionID, PrivateURL: "http://10.0.0.1:8080"}, nil
+			return &model.Runner{RunnerID: "r1", CurrentSessionID: sessionID, PrivateHost: "10.0.0.1"}, nil
 		},
 	}
 	svc := NewBrokerService(repo, "ap-northeast-3", WithSessionFn(func() (string, error) { return "fixed-session", nil }), healthyChecker())
@@ -383,19 +383,19 @@ func TestCloseSession_DeleteError(t *testing.T) {
 func TestRegisterRunner_Success(t *testing.T) {
 	t.Parallel()
 	repo := &mockRepository{
-		registerFn: func(_ context.Context, runnerID, privateURL string) error {
+		registerFn: func(_ context.Context, runnerID, privateHost string) error {
 			if runnerID != "r1" {
 				t.Errorf("runnerID = %q, want %q", runnerID, "r1")
 			}
-			if privateURL != "http://10.0.0.1:8080" {
-				t.Errorf("privateURL = %q, want %q", privateURL, "http://10.0.0.1:8080")
+			if privateHost != "10.0.0.1" {
+				t.Errorf("privateHost = %q, want %q", privateHost, "10.0.0.1")
 			}
 			return nil
 		},
 	}
 	svc := NewBrokerService(repo, "ap-northeast-1", healthyChecker())
 
-	err := svc.RegisterRunner(context.Background(), "r1", "http://10.0.0.1:8080")
+	err := svc.RegisterRunner(context.Background(), "r1", "10.0.0.1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -411,7 +411,7 @@ func TestRegisterRunner_Error(t *testing.T) {
 	}
 	svc := NewBrokerService(repo, "ap-northeast-1", healthyChecker())
 
-	err := svc.RegisterRunner(context.Background(), "r1", "http://10.0.0.1:8080")
+	err := svc.RegisterRunner(context.Background(), "r1", "10.0.0.1")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -495,7 +495,7 @@ func TestResolveSession_ExistingSession(t *testing.T) {
 	t.Parallel()
 	repo := &mockRepository{
 		findBySessionIDFn: func(_ context.Context, _ string) (*model.Runner, error) {
-			return &model.Runner{RunnerID: "r1", PrivateURL: "http://10.0.0.1:8080"}, nil
+			return &model.Runner{RunnerID: "r1", PrivateHost: "10.0.0.1"}, nil
 		},
 	}
 	svc := NewBrokerService(repo, "ap-northeast-1", healthyChecker())
@@ -510,8 +510,8 @@ func TestResolveSession_ExistingSession(t *testing.T) {
 	if result.SessionID != "sess-1" {
 		t.Errorf("SessionID = %q, want %q", result.SessionID, "sess-1")
 	}
-	if result.RunnerURL != "http://10.0.0.1:8080" {
-		t.Errorf("RunnerURL = %q, want %q", result.RunnerURL, "http://10.0.0.1:8080")
+	if result.RunnerHost != "10.0.0.1" {
+		t.Errorf("RunnerHost = %q, want %q", result.RunnerHost, "10.0.0.1")
 	}
 }
 
@@ -526,7 +526,7 @@ func TestResolveSession_NotFound_CreatesNew(t *testing.T) {
 			return &model.Runner{
 				RunnerID:         "r2",
 				CurrentSessionID: sessionID,
-				PrivateURL:       "http://10.0.0.2:8080",
+				PrivateHost:       "10.0.0.2",
 			}, nil
 		},
 	}
@@ -544,8 +544,8 @@ func TestResolveSession_NotFound_CreatesNew(t *testing.T) {
 	if result.SessionID != "ap-northeast-1_new-session" {
 		t.Errorf("SessionID = %q, want %q", result.SessionID, "ap-northeast-1_new-session")
 	}
-	if result.RunnerURL != "http://10.0.0.2:8080" {
-		t.Errorf("RunnerURL = %q, want %q", result.RunnerURL, "http://10.0.0.2:8080")
+	if result.RunnerHost != "10.0.0.2" {
+		t.Errorf("RunnerHost = %q, want %q", result.RunnerHost, "10.0.0.2")
 	}
 }
 
@@ -598,7 +598,7 @@ func TestResolveSession_EmptySessionID(t *testing.T) {
 			return &model.Runner{
 				RunnerID:         "r1",
 				CurrentSessionID: sessionID,
-				PrivateURL:       "http://10.0.0.1:8080",
+				PrivateHost:       "10.0.0.1",
 			}, nil
 		},
 	}
@@ -620,7 +620,7 @@ func TestResolveSession_ExistingHealthy(t *testing.T) {
 	t.Parallel()
 	repo := &mockRepository{
 		findBySessionIDFn: func(_ context.Context, _ string) (*model.Runner, error) {
-			return &model.Runner{RunnerID: "r1", PrivateURL: "http://10.0.0.1:8080"}, nil
+			return &model.Runner{RunnerID: "r1", PrivateHost: "10.0.0.1"}, nil
 		},
 	}
 	checker := &mockChecker{checkFn: func(_ context.Context, _ string) error { return nil }}
@@ -644,13 +644,13 @@ func TestResolveSession_ExistingUnhealthy_Reassigned(t *testing.T) {
 	deletedRunnerIDs := []string{}
 	repo := &mockRepository{
 		findBySessionIDFn: func(_ context.Context, _ string) (*model.Runner, error) {
-			return &model.Runner{RunnerID: "r-dead", PrivateURL: "http://10.0.0.1:8080"}, nil
+			return &model.Runner{RunnerID: "r-dead", PrivateHost: "10.0.0.1"}, nil
 		},
 		acquireIdleFn: func(_ context.Context, sessionID string) (*model.Runner, error) {
 			return &model.Runner{
 				RunnerID:         "r-new",
 				CurrentSessionID: sessionID,
-				PrivateURL:       "http://10.0.0.2:8080",
+				PrivateHost:       "10.0.0.2",
 			}, nil
 		},
 		deleteFn: func(_ context.Context, runnerID string) error {
@@ -659,7 +659,7 @@ func TestResolveSession_ExistingUnhealthy_Reassigned(t *testing.T) {
 		},
 	}
 	checker := &mockChecker{checkFn: func(_ context.Context, url string) error {
-		if url == "http://10.0.0.1:8080" {
+		if url == "10.0.0.1" {
 			return errors.New("unreachable")
 		}
 		return nil
@@ -678,8 +678,8 @@ func TestResolveSession_ExistingUnhealthy_Reassigned(t *testing.T) {
 	if !result.Reassigned {
 		t.Error("expected Reassigned=true")
 	}
-	if result.RunnerURL != "http://10.0.0.2:8080" {
-		t.Errorf("RunnerURL = %q, want %q", result.RunnerURL, "http://10.0.0.2:8080")
+	if result.RunnerHost != "10.0.0.2" {
+		t.Errorf("RunnerHost = %q, want %q", result.RunnerHost, "10.0.0.2")
 	}
 	if len(deletedRunnerIDs) == 0 || deletedRunnerIDs[0] != "r-dead" {
 		t.Errorf("expected dead runner to be deleted, got %v", deletedRunnerIDs)
@@ -698,13 +698,13 @@ func TestCreateSession_RetryOnUnhealthy(t *testing.T) {
 				return &model.Runner{
 					RunnerID:         "r-healthy",
 					CurrentSessionID: sessionID,
-					PrivateURL:       "http://10.0.0.3:8080",
+					PrivateHost:       "10.0.0.3",
 				}, nil
 			}
 			return &model.Runner{
 				RunnerID:         "r-dead-" + string(rune('0'+acquireCount)),
 				CurrentSessionID: sessionID,
-				PrivateURL:       "http://10.0.0.1:8080",
+				PrivateHost:       "10.0.0.1",
 			}, nil
 		},
 		deleteFn: func(_ context.Context, _ string) error {
@@ -713,7 +713,7 @@ func TestCreateSession_RetryOnUnhealthy(t *testing.T) {
 		},
 	}
 	checker := &mockChecker{checkFn: func(_ context.Context, url string) error {
-		if url == "http://10.0.0.1:8080" {
+		if url == "10.0.0.1" {
 			return errors.New("unreachable")
 		}
 		return nil
@@ -750,7 +750,7 @@ func TestCreateSession_AllUnhealthyThenNoIdle(t *testing.T) {
 			return &model.Runner{
 				RunnerID:         "r-dead",
 				CurrentSessionID: sessionID,
-				PrivateURL:       "http://10.0.0.1:8080",
+				PrivateHost:       "10.0.0.1",
 			}, nil
 		},
 		deleteFn: func(_ context.Context, _ string) error { return nil },
@@ -789,7 +789,7 @@ func TestCreateSession_ContextCanceled(t *testing.T) {
 			return &model.Runner{
 				RunnerID:         "r1",
 				CurrentSessionID: sessionID,
-				PrivateURL:       "http://10.0.0.1:8080",
+				PrivateHost:       "10.0.0.1",
 			}, nil
 		},
 		deleteFn: func(_ context.Context, _ string) error {
@@ -820,7 +820,7 @@ func TestCreateSession_DeleteError(t *testing.T) {
 			return &model.Runner{
 				RunnerID:         "r1",
 				CurrentSessionID: sessionID,
-				PrivateURL:       "http://10.0.0.1:8080",
+				PrivateHost:       "10.0.0.1",
 			}, nil
 		},
 		deleteFn: func(_ context.Context, _ string) error {
@@ -845,7 +845,7 @@ func TestResolveSession_ContextCanceled_ExistingRunner(t *testing.T) {
 	t.Parallel()
 	repo := &mockRepository{
 		findBySessionIDFn: func(_ context.Context, _ string) (*model.Runner, error) {
-			return &model.Runner{RunnerID: "r1", PrivateURL: "http://10.0.0.1:8080"}, nil
+			return &model.Runner{RunnerID: "r1", PrivateHost: "10.0.0.1"}, nil
 		},
 		deleteFn: func(_ context.Context, _ string) error {
 			t.Fatal("Delete should not be called on context cancel")
@@ -870,7 +870,7 @@ func TestResolveSession_DeleteError_ExistingRunner(t *testing.T) {
 	suppressLog(t)
 	repo := &mockRepository{
 		findBySessionIDFn: func(_ context.Context, _ string) (*model.Runner, error) {
-			return &model.Runner{RunnerID: "r1", PrivateURL: "http://10.0.0.1:8080"}, nil
+			return &model.Runner{RunnerID: "r1", PrivateHost: "10.0.0.1"}, nil
 		},
 		deleteFn: func(_ context.Context, _ string) error {
 			return errors.New("delete failed")
@@ -888,13 +888,13 @@ func TestResolveSession_DeleteError_ExistingRunner(t *testing.T) {
 }
 
 // TestLookupSession_Existing は hex を stackPrefix と結合して FindBySessionID を呼び、
-// 見つかった runner の PrivateURL を返すことを検証する。
+// 見つかった runner の PrivateHost を返すことを検証する。
 func TestLookupSession_Existing(t *testing.T) {
 	var gotSessionID string
 	repo := &mockRepository{
 		findBySessionIDFn: func(_ context.Context, sessionID string) (*model.Runner, error) {
 			gotSessionID = sessionID
-			return &model.Runner{RunnerID: "r1", PrivateURL: "http://10.0.0.1:3000"}, nil
+			return &model.Runner{RunnerID: "r1", PrivateHost: "10.0.0.1"}, nil
 		},
 	}
 	svc := NewBrokerService(repo, "ap-northeast-1", healthyChecker())
@@ -906,8 +906,8 @@ func TestLookupSession_Existing(t *testing.T) {
 	if gotSessionID != "ap-northeast-1_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" {
 		t.Errorf("FindBySessionID sessionID = %q, want stackPrefix + \"_\" + hex", gotSessionID)
 	}
-	if result.RunnerURL != "http://10.0.0.1:3000" {
-		t.Errorf("RunnerURL = %q, want %q", result.RunnerURL, "http://10.0.0.1:3000")
+	if result.RunnerHost != "10.0.0.1" {
+		t.Errorf("RunnerHost = %q, want %q", result.RunnerHost, "10.0.0.1")
 	}
 }
 
