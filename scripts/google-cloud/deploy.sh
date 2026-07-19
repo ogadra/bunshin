@@ -8,7 +8,7 @@ REGION_DIRS=(asne1 asne2)
 REPOSITORY="bunshin"
 NAMESPACE="bunshin"
 MEMBERSHIPS=(bunshin-asne1 bunshin-asne2)
-MANIFESTS_DIR="${ROOT_DIR}/deploy/gcp"
+MANIFESTS_DIR="${ROOT_DIR}/deploy/google-cloud"
 
 die() {
     echo "Error: $*" >&2
@@ -109,7 +109,6 @@ main() {
     local -a target_services=()
     local service
     local i
-    local region
     local region_dir
     local membership
     local context
@@ -143,19 +142,23 @@ main() {
     export BROKER_GSA_EMAIL="${broker_gsa_email}"
     export DEPLOYER_EMAIL="${deployer_email}"
 
+    # BUNSHIN_STACKS は region 非依存の共通値なのでループの外で 1 回 source する
+    set -a
+    # shellcheck disable=SC1091
+    source "${MANIFESTS_DIR}/stacks.env"
+    set +a
+
     for i in "${!REGIONS[@]}"; do
-        region="${REGIONS[$i]}"
         region_dir="${REGION_DIRS[$i]}"
         membership="${MEMBERSHIPS[$i]}"
         context="connectgateway_${project}_global_${membership}"
 
-        # regions/<region_dir>/region.env の STACK_NAME 等を env に注入し、
+        # regions/<region_dir>/region.env の REGION 等を env に注入し、
         # base + regions/<region_dir> の manifest を envsubst で展開して apply する
         set -a
         # shellcheck disable=SC1090
         source "${MANIFESTS_DIR}/regions/${region_dir}/region.env"
         set +a
-        export IMAGE_REGISTRY="${region}-docker.pkg.dev/${project}/${REPOSITORY}"
 
         echo "[${membership}] fetching Connect Gateway credentials"
         gcloud container fleet memberships get-credentials "${membership}" \
