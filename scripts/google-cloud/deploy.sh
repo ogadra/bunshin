@@ -54,13 +54,13 @@ read_system_output() {
     terraform -chdir="${ROOT_DIR}/terraform/google-cloud" output -json system
 }
 
-# Reads a jq path from `system_json` in the caller's scope.
 # jq -r prints the literal "null" for missing keys, which would render into
 # manifests undetected, so bail out instead of returning it.
 read_system_field() {
-    local path="${1:?}"
+    local json="${1:?}"
+    local path="${2:?}"
     local value
-    value="$(jq -r "${path}" <<<"${system_json}")"
+    value="$(jq -r "${path}" <<<"${json}")"
     [[ "${value}" != "null" ]] || die "terraform output 'system${path}' is null"
     printf '%s' "${value}"
 }
@@ -115,8 +115,9 @@ wait_rollout() {
 }
 
 deploy_front() {
+    local system_json="${1:?}"
     local bucket
-    bucket="$(read_system_field .static_bucket)"
+    bucket="$(read_system_field "${system_json}" .static_bucket)"
 
     echo "[front] building via pnpm"
     pnpm --dir "${ROOT_DIR}/front" build
@@ -169,13 +170,13 @@ main() {
     image_tag="$(git -C "${ROOT_DIR}" rev-parse HEAD)"
 
     system_json="$(read_system_output)"
-    domain_name="$(read_system_field .domain_name)"
-    broker_gsa_email="$(read_system_field .broker_gsa_email)"
+    domain_name="$(read_system_field "${system_json}" .domain_name)"
+    broker_gsa_email="$(read_system_field "${system_json}" .broker_gsa_email)"
 
     echo "Deploying to google-cloud env=${env_name} project=${project} image_tag=${image_tag}"
 
     if [[ "${include_front}" == "true" ]]; then
-        deploy_front
+        deploy_front "${system_json}"
     fi
 
     if [[ ${#container_services[@]} -eq 0 ]]; then
@@ -205,7 +206,7 @@ main() {
         membership="${MEMBERSHIPS[$i]}"
         context="connectgateway_${project}_global_${membership}"
 
-        nginx_resolver="$(read_system_field ".nginx_resolver.${region_dir}")"
+        nginx_resolver="$(read_system_field "${system_json}" ".nginx_resolver.${region_dir}")"
         export NGINX_RESOLVER="${nginx_resolver}"
 
         set -a
