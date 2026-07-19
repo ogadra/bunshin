@@ -159,6 +159,9 @@ check("is_internal_host rejects trailing garbage", not core.is_internal_host("ap
 check("is_internal_host rejects unknown stack in known domain", not core.is_internal_host("ap-southeast-9.internal.example.com"))
 check("is_internal_host rejects nil", not core.is_internal_host(nil))
 check("is_internal_host rejects empty", not core.is_internal_host(""))
+check("is_internal_host rejects leading dot", not core.is_internal_host(".internal.example.com"))
+check("is_internal_host rejects double dot", not core.is_internal_host("ap-northeast-1..internal.example.com"))
+check("is_internal_host rejects stack without domain", not core.is_internal_host("ap-northeast-1."))
 
 -- relay_if_internal: 内部 ALB のときのみヘッダを通し、公開経路では空文字を返す
 check("relay_if_internal returns header when internal", core.relay_if_internal(true, "ap-northeast-3") == "ap-northeast-3")
