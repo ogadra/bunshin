@@ -132,17 +132,15 @@ func discoverRunnerHostnames() ([]string, error) {
 			return nil, fmt.Errorf("GET /resolve: %w", err)
 		}
 		status := resp.StatusCode
-		runnerURL := resp.Header.Get("X-Runner-Url")
+		hostname := resp.Header.Get("X-Runner-Host")
 		resp.Body.Close()
 		if status != http.StatusOK {
 			break // idle runner 枯渇 (503) = 全 runner を取得しきった
 		}
-		if runnerURL == "" {
-			return nil, fmt.Errorf("X-Runner-Url header not found")
+		if hostname == "" {
+			return nil, fmt.Errorf("X-Runner-Host header not found")
 		}
 
-		hostname := strings.TrimPrefix(runnerURL, "http://")
-		hostname = strings.SplitN(hostname, ":", 2)[0]
 		if !seen[hostname] {
 			seen[hostname] = true
 			hostnames = append(hostnames, hostname)
@@ -189,7 +187,7 @@ func deleteFromBroker(url string) error {
 
 // registerRunnerOnBroker は runner を broker に登録する。
 func registerRunnerOnBroker(hostname string) error {
-	body := fmt.Sprintf(`{"runnerId":%q,"privateUrl":"http://%s:3000"}`, hostnameRunnerID(hostname), hostname)
+	body := fmt.Sprintf(`{"runnerId":%q,"privateHost":%q}`, hostnameRunnerID(hostname), hostname)
 	req, err := http.NewRequest(http.MethodPost, brokerBase+"/internal/runners/register", strings.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
