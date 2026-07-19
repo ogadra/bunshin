@@ -30,8 +30,6 @@ resource "google_compute_backend_service" "nginx" {
   security_policy      = google_compute_security_policy.backend.id
   edge_security_policy = google_compute_security_policy.edge.id
 
-  # 実クライアントのIP:portをrunnerまで届ける。CloudFrontのCloudFront-Viewer-Addressと同じ形式で
-  # 揃え、nginxのresolve.luaが両方を単一のX-Bunshin-Client-Addressに正規化する
   custom_request_headers = ["X-Bunshin-Edge-Client-Address: {client_ip_address}:{client_port}"]
 
   health_checks = [google_compute_health_check.nginx.id]
