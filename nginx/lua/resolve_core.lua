@@ -201,8 +201,9 @@ function _M.decide(res, stacks, domain)
 end
 
 -- port-forwardのHost `<hex32>.<stack>.<internal_domain>` を分解する。
--- suffixはinternal_domainと完全一致でなければnil。stackはBUNSHIN_STACKSの
--- allowlistで必ず絞る。nginx server_name段階のregexを通過していても未知stackは落とす。
+-- suffixがinternal_domainと完全一致しなければnil。
+-- stackはBUNSHIN_STACKSのallowlistで絞る。
+-- server_name段階のregexを通過しても未知stackはここで落とす。
 function _M.parse_app_host(host)
     if type(host) ~= "string" or internal_domain_name == "" then
         return nil
@@ -220,9 +221,9 @@ function _M.parse_app_host(host)
     return { hex = hex, stack = stack }
 end
 
--- 所有stackへはDNSで直接着弾する前提のため、他stackのHostは解決せず404に落とす。
--- cross-stack forwardを許すとport-forwardがnginxのserverlessセッション経路になり、
--- fallback / relayと混ざる。
+-- 所有stackへはDNSで直接着弾する前提。
+-- 他stackのHostは解決せず404に落とす。
+-- cross-stack forwardを許すとfallback / relay経路と混ざる。
 function _M.decide_app_arrival(host)
     local parsed = _M.parse_app_host(host)
     if parsed == nil then
@@ -235,7 +236,8 @@ function _M.decide_app_arrival(host)
 end
 
 -- broker /resolve/app の応答からport-forward先 (host:app_port) を組み立てる。
--- 200以外や不正なrunner URLは404に丸め、他stackや不在と同じ結果を返す。
+-- 200以外や不正なrunner URLは404に丸める。
+-- 他stackや不在と同じ結果を返し、session存在を推測させない。
 function _M.decide_app_resolve(status, headers)
     if status ~= HTTP_OK then
         return { exit = HTTP_NOT_FOUND }

@@ -2,9 +2,9 @@
 -- http スキームの host[:port] 形式へ限定し、SSRF / ヘッダーインジェクションを防ぐ。
 local _M = {}
 
--- brokerが返したrunner URLのportを捨ててRUNNER_APP_PORTに差し替えるため、
--- 検証を兼ねてhost部分だけ抽出する。許可形式外はnil。
--- Luaパターンはグループの ? を扱えないため2本で表現する。
+-- brokerが返したrunner URLのportを捨ててRUNNER_APP_PORTに差し替える。
+-- 検証を兼ねてhost部分だけ抽出し、許可形式外はnilを返す。
+-- Luaパターンはグループの ? を扱えないため2本に分ける。
 function _M.host_only(url)
     if type(url) ~= "string" then
         return nil
