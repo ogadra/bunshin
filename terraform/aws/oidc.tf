@@ -84,9 +84,12 @@ resource "aws_iam_role_policy" "deploy_ecr" {
 
 # ECS deploy permissions for ecspresso.
 # RegisterTaskDefinition / DescribeTaskDefinition / DeregisterTaskDefinition do
-# not support resource-level scoping in IAM, so they are Resource="*"; service
-# and task mutations are pinned to the per-service ARNs; iam:PassRole is scoped
-# to the task/execution roles ecspresso registers with new task definitions.
+# not support resource-level scoping in IAM, so they are Resource="*"; the
+# ecs:TagResource on Resource="*" is required because ecs-task-def.json carries
+# tags and RegisterTaskDefinition authorizes TagResource against the not-yet-
+# existing task-definition ARN. Service and task mutations are pinned to the
+# per-service ARNs; iam:PassRole is scoped to the task/execution roles ecspresso
+# registers with new task definitions.
 resource "aws_iam_role_policy" "deploy_ecs" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   for_each = local.ecs_deploy_services
@@ -127,6 +130,7 @@ resource "aws_iam_role_policy" "deploy_ecs" {
           "ecs:RegisterTaskDefinition",
           "ecs:DescribeTaskDefinition",
           "ecs:DeregisterTaskDefinition",
+          "ecs:TagResource",
         ]
         Resource = "*"
       },
