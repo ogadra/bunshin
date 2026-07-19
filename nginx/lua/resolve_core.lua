@@ -91,12 +91,12 @@ function _M.is_internal_host(host)
     if type(host) ~= "string" or internal_domain_name == "" then
         return false
     end
-    for _, stack in ipairs(ordered_stacks) do
-        if host == stack .. "." .. internal_domain_name then
-            return true
-        end
+    local dot = host:find(".", 1, true)
+    if not dot then
+        return false
     end
-    return false
+    return allowed_stacks[host:sub(1, dot - 1)] == true
+        and host:sub(dot + 1) == internal_domain_name
 end
 
 function _M.relay_if_internal(from_internal, value)
