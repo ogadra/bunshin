@@ -14,9 +14,7 @@ locals {
   # ECS services that need deploy roles with ECR push and ECS deploy permissions
   ecs_deploy_services = toset(["nginx", "broker", "runner"])
 
-  # Stack region slug (used in Terraform module and IAM role names) → AWS region string
-  # The single source consumed by both ARN forms in deploy_ecs (service/task ARN via
-  # the AWS region, task-role/execution-role ARN via the slug).
+  # region set for the ecspresso deploy_ecs policy
   stack_regions = {
     apne1 = "ap-northeast-1"
     apne3 = "ap-northeast-3"
