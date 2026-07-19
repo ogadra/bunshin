@@ -74,15 +74,11 @@ build_and_push() {
         "${ROOT_DIR}/${service}"
 }
 
-# envsubst で ${VAR} を展開して kubectl apply に流す。REGION 変数の値を
-# 各 pass で切り替え、base/ の region 非依存 yaml と regions/<REGION_DIR>/ の
-# region 依存 yaml を同一の env で処理する
 apply_manifests() {
-    local region_dir="${1:?}"
-    local context="${2:?}"
+    local context="${1:?}"
     local f
 
-    for f in "${MANIFESTS_DIR}/base/"*.yaml "${MANIFESTS_DIR}/regions/${region_dir}/"*.yaml; do
+    for f in "${MANIFESTS_DIR}/base/"*.yaml; do
         envsubst < "${f}" | kubectl --context="${context}" apply -f -
     done
 }
@@ -154,8 +150,6 @@ main() {
         membership="${MEMBERSHIPS[$i]}"
         context="connectgateway_${project}_global_${membership}"
 
-        # regions/<region_dir>/region.env の REGION 等を env に注入し、
-        # base + regions/<region_dir> の manifest を envsubst で展開して apply する
         set -a
         # shellcheck disable=SC1090
         source "${MANIFESTS_DIR}/regions/${region_dir}/region.env"
@@ -165,7 +159,7 @@ main() {
         gcloud container fleet memberships get-credentials "${membership}" \
             --project="${project}" >/dev/null
 
-        apply_manifests "${region_dir}" "${context}"
+        apply_manifests "${context}"
 
         for service in "${target_services[@]}"; do
             wait_rollout "${context}" "${service}"
