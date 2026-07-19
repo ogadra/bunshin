@@ -1,4 +1,4 @@
--- resolve_core の分岐テスト。
+-- resolve_core の分岐テスト。broker は host-only 契約 (X-Runner-Host) を返す前提。
 package.path = "/usr/local/openresty/nginx/lua/?.lua;" .. package.path
 local core = require("resolve_core")
 
@@ -12,6 +12,9 @@ local function check(name, cond)
     end
 end
 
+-- 事前 configure。RUNNER_PORT=3000 / RUNNER_APP_PORT=5000 で decide の組み立てを検証する。
+core.configure("ap-northeast-1", "example.com", "ap-northeast-1,ap-northeast-3", 3000, 5000)
+
 -- broker 非 2xx はそのステータスを保持して終了 (503/500 透過)
 local r = core.decide({ status = 503, header = {} }, STACKS, "example.com")
 check("503 transparency exit", r.exit == 503)
@@ -20,19 +23,19 @@ check("503 transparency no runner", r.runner_url == nil)
 r = core.decide({ status = 500, header = {} }, STACKS, "example.com")
 check("500 transparency", r.exit == 500)
 
--- 200 + 不正 X-Runner-Url は 500 で遮断
-for _, bad in ipairs({ "http://evil/path", "https://h:3000", "http://h:", "", "//h" }) do
-    r = core.decide({ status = 200, header = { ["X-Runner-Url"] = bad } }, STACKS, "example.com")
+-- 200 + 不正 X-Runner-Host は 500 で遮断
+for _, bad in ipairs({ "runner:3000", "http://runner", "runner/", "runner_01", "user@runner", "" }) do
+    r = core.decide({ status = 200, header = { ["X-Runner-Host"] = bad } }, STACKS, "example.com")
     check("ssrf guard exit " .. bad, r.exit == 500)
     check("ssrf guard log " .. bad, r.log ~= nil)
 end
 
--- 200 + X-Runner-Url ヘッダ欠落 (nil) も 500
+-- 200 + X-Runner-Host ヘッダ欠落 (nil) も 500
 r = core.decide({ status = 200, header = {} }, STACKS, "example.com")
-check("missing X-Runner-Url", r.exit == 500)
+check("missing X-Runner-Host", r.exit == 500)
 
--- 正常: runner へ proxy。exit せず宛先を返す。ヘッダ不在時は set_cookie/reassigned を伝播しない。
-r = core.decide({ status = 200, header = { ["X-Runner-Url"] = "http://runner-1:3000" } }, STACKS, "example.com")
+-- 正常: broker の X-Runner-Host に RUNNER_PORT を貼って runner_url を組む。
+r = core.decide({ status = 200, header = { ["X-Runner-Host"] = "runner-1" } }, STACKS, "example.com")
 check("valid proxy no exit", r.exit == nil)
 check("valid proxy runner", r.runner_url == "http://runner-1:3000")
 check("valid proxy no forward host", r.forward_host == nil)
@@ -41,7 +44,7 @@ check("no reassigned when absent", r.reassigned == nil)
 
 -- Set-Cookie / X-Session-Reassigned の伝播
 r = core.decide({ status = 200, header = {
-    ["X-Runner-Url"] = "http://runner-1:3000",
+    ["X-Runner-Host"] = "runner-1",
     ["Set-Cookie"] = "session_id=abc; Path=/",
     ["X-Session-Reassigned"] = "true",
 } }, STACKS, "example.com")
@@ -50,7 +53,7 @@ check("propagates reassigned", r.reassigned == "true")
 
 -- 複数 Set-Cookie (capture はテーブルで返す) を文字列へ畳む
 r = core.decide({ status = 200, header = {
-    ["X-Runner-Url"] = "http://runner-1:3000",
+    ["X-Runner-Host"] = "runner-1",
     ["Set-Cookie"] = { "a=1", "b=2" },
 } }, STACKS, "example.com")
 check("joins multiple set-cookie", r.set_cookie == "a=1, b=2")
@@ -67,24 +70,29 @@ check("host_of rejects unknown stack", core.host_of("ap-southeast-9", STACKS, "e
 check("host_of rejects injection value", core.host_of("evil.example.com/", STACKS, "example.com") == nil)
 check("host_of rejects nil stack", core.host_of(nil, STACKS, "example.com") == nil)
 
--- configure は STACK_NAME / INTERNAL_DOMAIN / BUNSHIN_STACKS 未設定を許さず起動を失敗させる
-check("configure rejects missing stack", not pcall(core.configure, nil, "example.com", "ap-northeast-1", 5000))
-check("configure rejects empty stack", not pcall(core.configure, "", "example.com", "ap-northeast-1", 5000))
-check("configure rejects missing domain", not pcall(core.configure, "ap-northeast-1", nil, "ap-northeast-1", 5000))
-check("configure rejects missing stacks", not pcall(core.configure, "ap-northeast-1", "example.com", nil, 5000))
-check("configure rejects empty stacks", not pcall(core.configure, "ap-northeast-1", "example.com", "", 5000))
-check("configure rejects own stack outside allowlist", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-3", 5000))
-check("configure rejects missing app_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", nil))
-check("configure rejects non-numeric app_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", "abc"))
-check("configure rejects out-of-range app_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", 70000))
-check("configure rejects zero app_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", 0))
-check("configure rejects fractional app_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", 5000.5))
+-- configure は STACK_NAME / INTERNAL_DOMAIN / BUNSHIN_STACKS / RUNNER_PORT / RUNNER_APP_PORT 未設定を許さず起動を失敗させる
+check("configure rejects missing stack", not pcall(core.configure, nil, "example.com", "ap-northeast-1", 3000, 5000))
+check("configure rejects empty stack", not pcall(core.configure, "", "example.com", "ap-northeast-1", 3000, 5000))
+check("configure rejects missing domain", not pcall(core.configure, "ap-northeast-1", nil, "ap-northeast-1", 3000, 5000))
+check("configure rejects missing stacks", not pcall(core.configure, "ap-northeast-1", "example.com", nil, 3000, 5000))
+check("configure rejects empty stacks", not pcall(core.configure, "ap-northeast-1", "example.com", "", 3000, 5000))
+check("configure rejects own stack outside allowlist", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-3", 3000, 5000))
+check("configure rejects missing runner_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", nil, 5000))
+check("configure rejects non-numeric runner_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", "abc", 5000))
+check("configure rejects out-of-range runner_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", 70000, 5000))
+check("configure rejects zero runner_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", 0, 5000))
+check("configure rejects fractional runner_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", 3000.5, 5000))
+check("configure rejects missing app_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", 3000, nil))
+check("configure rejects non-numeric app_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", 3000, "abc"))
+check("configure rejects out-of-range app_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", 3000, 70000))
+check("configure rejects zero app_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", 3000, 0))
+check("configure rejects fractional app_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", 3000, 5000.5))
 
-core.configure("ap-northeast-1", "example.com", "ap-northeast-1,ap-northeast-2,ap-northeast-3", 5000)
+core.configure("ap-northeast-1", "example.com", "ap-northeast-1,ap-northeast-2,ap-northeast-3", 3000, 5000)
 check("fallback excludes attempted owner", core.fallback_remaining_excluding("ap-northeast-2") == "ap-northeast-3")
-core.configure("ap-northeast-1", "example.com", "ap-northeast-1,ap-northeast-3,ap-northeast-2,ap-northeast-4", 5000)
+core.configure("ap-northeast-1", "example.com", "ap-northeast-1,ap-northeast-3,ap-northeast-2,ap-northeast-4", 3000, 5000)
 check("fallback keeps configured order", core.fallback_remaining_excluding("ap-northeast-2") == "ap-northeast-3,ap-northeast-4")
-core.configure("ap-northeast-1", "example.com", "ap-northeast-1,ap-northeast-3", 5000)
+core.configure("ap-northeast-1", "example.com", "ap-northeast-1,ap-northeast-3", 3000, 5000)
 check("fallback returns nil when no candidate remains", core.fallback_remaining_excluding("ap-northeast-3") == nil)
 
 -- decide_arrival: cookie 無 / 自stack宛 はローカル解決
@@ -155,7 +163,7 @@ check("fallback terminal on empty header exit", r.exit == 503)
 check("fallback terminal on empty header no host", r.forward_host == nil)
 
 -- is_internal_host: <stack>.<internal_domain> の完全一致だけを内部 ALB と認める
-core.configure("ap-northeast-1", "internal.example.com", "ap-northeast-1,ap-northeast-3", 5000)
+core.configure("ap-northeast-1", "internal.example.com", "ap-northeast-1,ap-northeast-3", 3000, 5000)
 check("is_internal_host accepts own stack host", core.is_internal_host("ap-northeast-1.internal.example.com"))
 check("is_internal_host accepts peer stack host", core.is_internal_host("ap-northeast-3.internal.example.com"))
 check("is_internal_host rejects public host", not core.is_internal_host("app.example.com"))
@@ -189,7 +197,7 @@ check("client_address public falls to remote when cloudfront nil",
     core.client_address(false, nil, nil, "10.0.0.1", "12345") == "10.0.0.1:12345")
 
 -- parse_app_host: 32 hex label + 既知stack + internal_domain完全一致だけ通す
-core.configure("ap-northeast-1", "internal.example.com", "ap-northeast-1,ap-northeast-3", 5000)
+core.configure("ap-northeast-1", "internal.example.com", "ap-northeast-1,ap-northeast-3", 3000, 5000)
 local HEX = string.rep("a", 32)
 r = core.parse_app_host(HEX .. ".ap-northeast-1.internal.example.com")
 check("parse_app_host own stack hex", r ~= nil and r.hex == HEX and r.stack == "ap-northeast-1")
@@ -214,23 +222,23 @@ check("app_arrival unknown stack 404", r.exit == 404)
 r = core.decide_app_arrival("app.example.com")
 check("app_arrival non-pf host 404", r.exit == 404)
 
--- decide_app_resolve: 200 + 有効なrunner URLのときだけhost:app_portのupstreamを返す
-r = core.decide_app_resolve(200, { ["X-Runner-Url"] = "http://runner-1:3000" })
+-- decide_app_resolve: 200 + 有効な host のときだけ host:app_port の upstream を返す
+r = core.decide_app_resolve(200, { ["X-Runner-Host"] = "runner-1" })
 check("app_resolve builds upstream with app_port", r.upstream == "http://runner-1:5000")
-r = core.decide_app_resolve(200, { ["X-Runner-Url"] = "http://10.0.0.1" })
-check("app_resolve accepts host without port", r.upstream == "http://10.0.0.1:5000")
+r = core.decide_app_resolve(200, { ["X-Runner-Host"] = "10.0.0.1" })
+check("app_resolve accepts ipv4 host", r.upstream == "http://10.0.0.1:5000")
 r = core.decide_app_resolve(404, {})
 check("app_resolve 404 broker 404", r.exit == 404)
 r = core.decide_app_resolve(500, {})
 check("app_resolve 500 broker 404", r.exit == 404)
 r = core.decide_app_resolve(200, {})
-check("app_resolve missing runner URL 404", r.exit == 404)
-r = core.decide_app_resolve(200, { ["X-Runner-Url"] = "http://evil/path" })
-check("app_resolve invalid URL 404", r.exit == 404)
-r = core.decide_app_resolve(200, { ["X-Runner-Url"] = "https://runner:3000" })
-check("app_resolve https URL 404", r.exit == 404)
-r = core.decide_app_resolve(200, { ["X-Runner-Url"] = { "http://runner-1:3000", "http://runner-2:3000" } })
-check("app_resolve duplicate X-Runner-Url 404", r.exit == 404)
+check("app_resolve missing runner host 404", r.exit == 404)
+r = core.decide_app_resolve(200, { ["X-Runner-Host"] = "runner/path" })
+check("app_resolve invalid host with slash 404", r.exit == 404)
+r = core.decide_app_resolve(200, { ["X-Runner-Host"] = "runner:3000" })
+check("app_resolve host with port 404", r.exit == 404)
+r = core.decide_app_resolve(200, { ["X-Runner-Host"] = { "runner-1", "runner-2" } })
+check("app_resolve duplicate X-Runner-Host 404", r.exit == 404)
 
 if failed > 0 then
     io.stderr:write(string.format("resolve_core: %d check(s) failed\n", failed))

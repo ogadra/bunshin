@@ -1,4 +1,5 @@
 -- /resolve サブリクエスト応答 (res) から、クライアントへの振る舞いを決める純関数。
+-- broker は host-only 契約 (X-Runner-Host) を返し、nginx が用途別 port を貼る。
 local runner_url = require("runner_url")
 
 local _M = {}
@@ -12,6 +13,7 @@ local own_stack_name = ""
 local internal_domain_name = ""
 local allowed_stacks = {}
 local ordered_stacks = {}
+local runner_port_number = 0
 local app_port_number = 0
 
 local function string_header(headers, name, label)
@@ -22,17 +24,23 @@ local function string_header(headers, name, label)
     return value, nil
 end
 
-function _M.configure(stack, domain, stack_names, app_port)
+local function validate_port(v, name)
+    local port = tonumber(v)
+    if port == nil or port <= 0 or port > 65535 or port ~= math.floor(port) then
+        error("resolve_core: " .. name .. " must be a valid TCP port")
+    end
+    return port
+end
+
+function _M.configure(stack, domain, stack_names, runner_port, app_port)
     if stack == nil or stack == "" or domain == nil or domain == "" then
         error("resolve_core: STACK_NAME and INTERNAL_DOMAIN must be set")
     end
     if stack_names == nil or stack_names == "" then
         error("resolve_core: BUNSHIN_STACKS must be set")
     end
-    local port = tonumber(app_port)
-    if port == nil or port <= 0 or port > 65535 or port ~= math.floor(port) then
-        error("resolve_core: RUNNER_APP_PORT must be a valid TCP port")
-    end
+    runner_port_number = validate_port(runner_port, "RUNNER_PORT")
+    app_port_number = validate_port(app_port, "RUNNER_APP_PORT")
     local set = {}
     local list = {}
     for s in stack_names:gmatch("[^,]+") do
@@ -49,7 +57,6 @@ function _M.configure(stack, domain, stack_names, app_port)
     internal_domain_name = domain
     allowed_stacks = set
     ordered_stacks = list
-    app_port_number = port
 end
 
 function _M.own_stack()
@@ -180,11 +187,11 @@ function _M.decide(res, stacks, domain)
         return { exit = res.status }
     end
 
-    local url = res.header["X-Runner-Url"]
-    if not runner_url.is_valid(url) then
+    local host = res.header["X-Runner-Host"]
+    if not runner_url.is_valid(host) then
         return {
             exit = HTTP_INTERNAL_ERROR,
-            log = "resolve: invalid X-Runner-Url from broker: " .. tostring(url),
+            log = "resolve: invalid X-Runner-Host from broker: " .. tostring(host),
         }
     end
 
@@ -194,7 +201,7 @@ function _M.decide(res, stacks, domain)
         set_cookie = table.concat(set_cookie, ", ")
     end
     return {
-        runner_url = url,
+        runner_url = "http://" .. host .. ":" .. tostring(runner_port_number),
         set_cookie = set_cookie,
         reassigned = res.header["X-Session-Reassigned"],
     }
@@ -236,18 +243,14 @@ function _M.decide_app_arrival(host)
 end
 
 -- broker /resolve/app の応答からport-forward先 (host:app_port) を組み立てる。
--- 200以外や不正なrunner URLは404に丸める。
+-- 200以外や不正なhostは404に丸める。
 -- 他stackや不在と同じ結果を返し、session存在を推測させない。
 function _M.decide_app_resolve(status, headers)
     if status ~= HTTP_OK then
         return { exit = HTTP_NOT_FOUND }
     end
-    local url = headers["X-Runner-Url"]
-    if not runner_url.is_valid(url) then
-        return { exit = HTTP_NOT_FOUND }
-    end
-    local host = runner_url.host_only(url)
-    if host == nil then
+    local host = headers["X-Runner-Host"]
+    if not runner_url.is_valid(host) then
         return { exit = HTTP_NOT_FOUND }
     end
     return { upstream = "http://" .. host .. ":" .. tostring(app_port_number) }
