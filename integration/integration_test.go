@@ -115,7 +115,7 @@ func waitForReady(url string) bool {
 	return false
 }
 
-// discoverRunnerHostnames は broker の GET /resolve を idle runner が尽きる (503) まで繰り返し、
+// discoverRunnerHostnames は broker の GET /resolve/session を idle runner が尽きる (503) まで繰り返し、
 // 全 runner のホスト名を決定的に列挙する。
 //
 // 各 resolve は idle runner を 1 台 busy にする。セッションを途中で解放すると AcquireIdle の
@@ -127,9 +127,9 @@ func discoverRunnerHostnames() ([]string, error) {
 	var hostnames []string
 
 	for {
-		resp, err := httpClient.Get(brokerBase + "/resolve")
+		resp, err := httpClient.Get(brokerBase + "/resolve/session")
 		if err != nil {
-			return nil, fmt.Errorf("GET /resolve: %w", err)
+			return nil, fmt.Errorf("GET /resolve/session: %w", err)
 		}
 		status := resp.StatusCode
 		hostname := resp.Header.Get("X-Runner-Host")

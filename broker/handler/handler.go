@@ -17,7 +17,6 @@ import (
 
 var runnerHostRe = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
 
-// hex は capability secret のため、ログに残る query ではなくヘッダで受ける。
 var sessionHexRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 // sessionIDCookie は session 識別用の cookie 名。
@@ -26,8 +25,6 @@ const sessionIDCookie = "session_id"
 const fallbackStackHeader = "X-Fallback-Stack"
 
 const fallbackRemainingHeader = "X-Fallback-Remaining"
-
-const sessionHexHeader = "X-Session-Hex"
 
 const runnerHostHeader = "X-Runner-Host"
 
@@ -69,9 +66,9 @@ func (h *Handler) DeleteSession(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// GetResolve は GET /resolve を処理し session_id cookie からセッションを解決する。
+// GetResolveSession は GET /resolve/session を処理し session_id cookie からセッションを解決する。
 // cookie が無い、またはセッションが見つからない場合は新規作成して Set-Cookie を返す。
-func (h *Handler) GetResolve(c *gin.Context) {
+func (h *Handler) GetResolveSession(c *gin.Context) {
 	sessionID, _ := c.Cookie(sessionIDCookie)
 	result, err := h.svc.ResolveSession(c.Request.Context(), sessionID)
 	if err != nil {
@@ -94,12 +91,13 @@ func (h *Handler) GetResolve(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
-// GetResolveApp は GET /resolve/app を処理し X-Session-Hex から所属 runner を引く。
+// GetResolveApp は GET /resolve/app を処理し Host の先頭 hex ラベルから所属 runner を引く。
 // port-forward 用に session 割り当ては行わず、既存 session の runner host のみ返す。
+// 自 stack / internal_domain 完全一致は nginx で完結しているため、broker は hex ラベルだけ検証する。
 func (h *Handler) GetResolveApp(c *gin.Context) {
-	hex := c.GetHeader(sessionHexHeader)
-	if !sessionHexRe.MatchString(hex) {
-		writeError(c, http.StatusBadRequest, model.CodeInvalidRequest, "X-Session-Hex must be 32 lowercase hex characters")
+	hex, ok := extractSessionHex(c.Request.Host)
+	if !ok {
+		writeError(c, http.StatusBadRequest, model.CodeInvalidRequest, "Host must start with 32 lowercase hex characters followed by a dot")
 		return
 	}
 	result, err := h.svc.LookupSession(c.Request.Context(), hex)
@@ -113,6 +111,17 @@ func (h *Handler) GetResolveApp(c *gin.Context) {
 	}
 	c.Header(runnerHostHeader, result.RunnerHost)
 	c.Status(http.StatusOK)
+}
+
+func extractSessionHex(host string) (string, bool) {
+	label, _, ok := strings.Cut(host, ".")
+	if !ok {
+		return "", false
+	}
+	if !sessionHexRe.MatchString(label) {
+		return "", false
+	}
+	return label, true
 }
 
 // X-Fallback-Stack の有無を転送済み判定に兼用し、専用のマーカーヘッダを増やさない。
