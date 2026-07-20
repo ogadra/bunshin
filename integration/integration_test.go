@@ -5,6 +5,7 @@ package integration
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -479,8 +480,8 @@ func TestForeignSessionForward(t *testing.T) {
 	if got.Path != "/api/execute" {
 		t.Errorf("forwarded path: want /api/execute, got %s", got.Path)
 	}
-	if got.Host != "ap-northeast-3.internal.test" {
-		t.Errorf("forwarded Host: want ap-northeast-3.internal.test, got %s", got.Host)
+	if got.Host != "ap-northeast-3.localhost" {
+		t.Errorf("forwarded Host: want ap-northeast-3.localhost, got %s", got.Host)
 	}
 	if values := got.Header["X-Fallback-Stack"]; len(values) > 0 {
 		t.Errorf("X-Fallback-Stack should be stripped, got %q", values)
@@ -495,7 +496,7 @@ func TestForeignSessionForwardRelaysInternalClientAddress(t *testing.T) {
 	resetForwardTarget(t)
 
 	headers := map[string]string{
-		"Host":                      "ap-northeast-1.internal.test",
+		"Host":                      "ap-northeast-1.localhost",
 		"CloudFront-Viewer-Address": "203.0.113.70:45678",
 		"X-Bunshin-Client-Address":  "198.51.100.70:11111",
 	}
@@ -513,8 +514,8 @@ func TestForeignSessionForwardRelaysInternalClientAddress(t *testing.T) {
 	}
 
 	got := lastForwardedRequest(t)
-	if got.Host != "ap-northeast-3.internal.test" {
-		t.Errorf("forwarded Host: want ap-northeast-3.internal.test, got %s", got.Host)
+	if got.Host != "ap-northeast-3.localhost" {
+		t.Errorf("forwarded Host: want ap-northeast-3.localhost, got %s", got.Host)
 	}
 	assertForwardedClientAddress(t, got, "198.51.100.70:11111")
 }
@@ -558,8 +559,8 @@ func TestForeignSessionOwnerUnavailableRecreatesSession(t *testing.T) {
 	t.Cleanup(func() { resetRunners(t, cookies.SessionID) })
 
 	got := lastForwardedRequest(t)
-	if got.Host != "ap-northeast-3.internal.test" {
-		t.Errorf("forwarded Host: want ap-northeast-3.internal.test, got %s", got.Host)
+	if got.Host != "ap-northeast-3.localhost" {
+		t.Errorf("forwarded Host: want ap-northeast-3.localhost, got %s", got.Host)
 	}
 }
 
@@ -719,8 +720,8 @@ func TestNoIdleRunnerExecuteFallbackForward(t *testing.T) {
 	if got.Path != "/api/execute" {
 		t.Errorf("forwarded path: want /api/execute, got %s", got.Path)
 	}
-	if got.Host != "ap-northeast-3.internal.test" {
-		t.Errorf("forwarded Host: want ap-northeast-3.internal.test, got %s", got.Host)
+	if got.Host != "ap-northeast-3.localhost" {
+		t.Errorf("forwarded Host: want ap-northeast-3.localhost, got %s", got.Host)
 	}
 	if values := got.Header["Content-Type"]; len(values) != 1 || values[0] != "application/json" {
 		t.Errorf("Content-Type = %q, want [application/json]", values)
@@ -796,8 +797,8 @@ func TestNoIdleRunner(t *testing.T) {
 	if got.Path != "/api/shell" {
 		t.Errorf("forwarded path: want /api/shell, got %s", got.Path)
 	}
-	if got.Host != "ap-northeast-3.internal.test" {
-		t.Errorf("forwarded Host: want ap-northeast-3.internal.test, got %s", got.Host)
+	if got.Host != "ap-northeast-3.localhost" {
+		t.Errorf("forwarded Host: want ap-northeast-3.localhost, got %s", got.Host)
 	}
 	if values := got.Header["X-Fallback-Stack"]; len(values) != 1 || values[0] != "ap-northeast-3" {
 		t.Errorf("X-Fallback-Stack = %q, want [ap-northeast-3]", values)
@@ -808,70 +809,220 @@ func TestNoIdleRunner(t *testing.T) {
 	assertForwardedClientAddress(t, got, "203.0.113.50:45678")
 }
 
-// 32 hex label + {stack}.internal.testの形式でしかpf serverにマッチしない。
+const perlHmrStack = "ap-northeast-1"
+
+const perlHmrPortForwardDomain = "localhost"
+
+// 32 hex label + {stack}.{perlHmrPortForwardDomain}の形式でしかpf serverにマッチしない。
 func portForwardHost(hex, stack string) string {
-	return hex + "." + stack + ".internal.test"
+	return hex + "." + stack + "." + perlHmrPortForwardDomain
 }
 
-// busybox httpdはforkしてからbindするため、起動コマンド完了時点では:5000未受付の可能性がある。
-// readiness pollでbind完了を待ってから後続のリクエストを走らせる。
-// pollの終了判定にexitを使うと/api/executeの永続bashセッションごと終了しmarker protocolが壊れるので、
-// break + 末尾の条件式で判定する。
-// httpdのstdout/stderrはセッションのpipeを継承したまま居座るので/dev/nullへ切り離す。
-func startPortForwardApp(t *testing.T, cookies sessionCookies) {
+func sessionHex(t *testing.T, cookies sessionCookies) string {
 	t.Helper()
-	events := executeCommand(t, cookies, "mkdir -p /tmp/pf-www && echo ok > /tmp/pf-www/probe && busybox httpd -p 5000 -h /tmp/pf-www >/dev/null 2>&1")
-	for _, e := range events {
-		if e.ExitCode != nil && *e.ExitCode != 0 {
-			t.Fatalf("busybox httpd start failed: exitCode=%d", *e.ExitCode)
-		}
+	_, hex, ok := strings.Cut(cookies.SessionID, "_")
+	if !ok || hex == "" {
+		t.Fatalf("unexpected SessionID format: %q", cookies.SessionID)
 	}
-	readiness := executeCommand(t, cookies, `ready=0; i=0; while [ $i -lt 100 ]; do busybox wget -q -O /dev/null http://127.0.0.1:5000/probe && { ready=1; break; }; i=$((i+1)); sleep 0.1; done; if [ "$ready" -ne 1 ]; then busybox netstat -tln 2>&1; false; fi`)
-	for _, e := range readiness {
-		if e.ExitCode != nil && *e.ExitCode != 0 {
-			t.Fatalf("busybox httpd did not become ready on :5000 within 10s: exitCode=%d events=%+v", *e.ExitCode, readiness)
-		}
+	return hex
+}
+
+func snapshotHandler(t *testing.T, cookies sessionCookies) {
+	t.Helper()
+	resp := doRequest(t, http.MethodGet, nginxBase+"/api/app/handler", "", cookies.cookieHeader())
+	original, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		t.Fatalf("snapshot GET body: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("snapshot GET status = %d, body = %s", resp.StatusCode, original)
 	}
 	t.Cleanup(func() {
-		executeCommand(t, cookies, "pkill -f 'busybox httpd' 2>/dev/null || true")
+		putHandlerRaw(t, cookies, bytes.NewReader(original), t.Errorf)
 	})
 }
 
-func TestPortForwardOwnStackReachable(t *testing.T) {
-	cookies := setupSession(t)
-	hex := strings.TrimPrefix(cookies.SessionID, "ap-northeast-1_")
-	if hex == cookies.SessionID || len(hex) != 32 {
-		t.Fatalf("session_id = %q must be prefixed with own stack + hex32", cookies.SessionID)
+// cleanupからt.Fatalfを呼ぶと後続cleanupがスキップされるため、fail引数で失敗経路を注入する。
+// 本体ではt.Fatalf、cleanupではt.Errorfを渡す。
+func putHandlerRaw(t *testing.T, cookies sessionCookies, body io.Reader, fail func(format string, args ...any)) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPut, nginxBase+"/api/app/handler", body)
+	if err != nil {
+		fail("PUT /api/app/handler: new request: %v", err)
+		return
 	}
-	startPortForwardApp(t, cookies)
+	req.Header.Set("Cookie", cookies.cookieHeader())
+	req.Header.Set("Content-Type", "text/plain; charset=utf-8")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		fail("PUT /api/app/handler: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		respBody, _ := io.ReadAll(resp.Body)
+		fail("PUT /api/app/handler: status = %d, body = %s", resp.StatusCode, respBody)
+	}
+}
 
-	resp := doRequestWithHeaders(
-		t,
-		http.MethodGet,
-		nginxBase+"/probe",
-		"",
-		"",
-		map[string]string{"Host": portForwardHost(hex, "ap-northeast-1")},
-	)
+func putHandler(t *testing.T, cookies sessionCookies, body string) {
+	t.Helper()
+	putHandlerRaw(t, cookies, strings.NewReader(body), t.Fatalf)
+}
+
+func handlerModuleSource(contentBody string) string {
+	return fmt.Sprintf("package DaiKichijoji;\nuse strict;\nuse warnings;\nsub content { return %q; }\n1;\n", contentBody)
+}
+
+func getPerl(t *testing.T, host string) (int, string) {
+	t.Helper()
+	resp := doRequestWithHeaders(t, http.MethodGet, nginxBase+"/", "", "", map[string]string{"Host": host})
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(body)
+}
+
+// 連続書き込みのmtime衝突はresponse待ちで解消できないため、PUT側で境界跨ぎを保証すること。
+func waitPerlResponse(t *testing.T, host string, wantStatus int, wantBody string) {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	var lastStatus int
+	var lastBody string
+	for time.Now().Before(deadline) {
+		lastStatus, lastBody = getPerl(t, host)
+		if lastStatus == wantStatus && (wantBody == "" || strings.Contains(lastBody, wantBody)) {
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	if wantBody == "" {
+		t.Fatalf("perl did not return status=%d within 30s: last status=%d body=%q", wantStatus, lastStatus, lastBody)
+	}
+	t.Fatalf("perl did not return status=%d body containing %q within 30s: last status=%d body=%q", wantStatus, wantBody, lastStatus, lastBody)
+}
+
+// TestApiSessionHexHeaderは/api応答のX-Session-Hexがsession_id cookieのhex部と
+// 一致する32桁小文字hexであることを検証する。frontはこのヘッダーからpreview URLを組む。
+func TestApiSessionHexHeader(t *testing.T) {
+	cookies := setupSession(t)
+	resp := doRequest(t, http.MethodGet, nginxBase+"/api/app/handler", "", cookies.cookieHeader())
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("GET pf own stack: want 200, got %d", resp.StatusCode)
+		t.Fatalf("GET /api/app/handler: want 200, got %d", resp.StatusCode)
 	}
-	body, err := io.ReadAll(resp.Body)
+	got := resp.Header.Get("X-Session-Hex")
+	_, wantHex, ok := strings.Cut(cookies.SessionID, "_")
+	if !ok {
+		t.Fatalf("unexpected SessionID format: %q", cookies.SessionID)
+	}
+	if got != wantHex {
+		t.Fatalf("X-Session-Hex = %q, want %q", got, wantHex)
+	}
+	if len(got) != 32 {
+		t.Fatalf("X-Session-Hex length = %d, want 32", len(got))
+	}
+	if _, err := hex.DecodeString(got); err != nil {
+		t.Fatalf("X-Session-Hex is not hex: %v", err)
+	}
+}
+
+// TestApiStackNameHeaderは/api応答のX-Stack-Nameにbroker自身のSTACK_NAMEが入ることを検証する。
+// frontはこのヘッダーからpreview URLのsubdomain部を組む。
+func TestApiStackNameHeader(t *testing.T) {
+	cookies := setupSession(t)
+	resp := doRequest(t, http.MethodGet, nginxBase+"/api/app/handler", "", cookies.cookieHeader())
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/app/handler: want 200, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get("X-Stack-Name"); got != perlHmrStack {
+		t.Fatalf("X-Stack-Name = %q, want %q", got, perlHmrStack)
+	}
+}
+
+// TestApiHandlerPutHeadersはPUT /api/app/handlerの応答にもX-Session-HexとX-Stack-Nameが付くことを検証する。
+// frontはPUTレスポンスからpreview URLを再計算するため、GETと同じ契約がPUTでも成立している必要がある。
+func TestApiHandlerPutHeaders(t *testing.T) {
+	cookies := setupSession(t)
+	snapshotHandler(t, cookies)
+
+	req, err := http.NewRequest(http.MethodPut, nginxBase+"/api/app/handler", strings.NewReader(handlerModuleSource("put-header-check")))
 	if err != nil {
-		t.Fatalf("read body: %v", err)
+		t.Fatalf("PUT /api/app/handler: new request: %v", err)
 	}
-	if strings.TrimSpace(string(body)) != "ok" {
-		t.Errorf("body = %q, want %q", string(body), "ok")
+	req.Header.Set("Cookie", cookies.cookieHeader())
+	req.Header.Set("Content-Type", "text/plain; charset=utf-8")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		t.Fatalf("PUT /api/app/handler: %v", err)
 	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("PUT /api/app/handler: status = %d, body = %s", resp.StatusCode, body)
+	}
+
+	got := resp.Header.Get("X-Session-Hex")
+	_, wantHex, ok := strings.Cut(cookies.SessionID, "_")
+	if !ok {
+		t.Fatalf("unexpected SessionID format: %q", cookies.SessionID)
+	}
+	if got != wantHex {
+		t.Fatalf("X-Session-Hex = %q, want %q", got, wantHex)
+	}
+	if len(got) != 32 {
+		t.Fatalf("X-Session-Hex length = %d, want 32", len(got))
+	}
+	if _, err := hex.DecodeString(got); err != nil {
+		t.Fatalf("X-Session-Hex is not hex: %v", err)
+	}
+	if gotStack := resp.Header.Get("X-Stack-Name"); gotStack != perlHmrStack {
+		t.Fatalf("X-Stack-Name = %q, want %q", gotStack, perlHmrStack)
+	}
+}
+
+func TestPerlHmrReachable(t *testing.T) {
+	cookies := setupSession(t)
+	host := portForwardHost(sessionHex(t, cookies), perlHmrStack)
+	waitPerlResponse(t, host, http.StatusOK, "")
+}
+
+func TestPerlHmrPutSwapsHandler(t *testing.T) {
+	cookies := setupSession(t)
+	host := portForwardHost(sessionHex(t, cookies), perlHmrStack)
+	snapshotHandler(t, cookies)
+
+	marker := fmt.Sprintf("hmr-marker-%d", time.Now().UnixNano())
+	putHandler(t, cookies, handlerModuleSource(marker))
+
+	waitPerlResponse(t, host, http.StatusOK, marker)
+}
+
+func TestPerlHmrSyntaxErrorRecovers(t *testing.T) {
+	cookies := setupSession(t)
+	host := portForwardHost(sessionHex(t, cookies), perlHmrStack)
+	snapshotHandler(t, cookies)
+
+	brokenPutAt := time.Now()
+	putHandler(t, cookies, "this is not perl at all !!!\n")
+	waitPerlResponse(t, host, http.StatusInternalServerError, "DaiKichijoji.pm load failed")
+
+	// Module::Refreshはmtime比較でreloadの要否を判定する。
+	// nsec解像度を持たないファイルシステムでは同一秒内の連続書き込みが同じmtimeに丸められる。
+	// この場合、復旧PUTのreloadがsilentにスキップされる。
+	// 復旧PUTが次の秒境界を跨いだmtimeを持つよう待機する。
+	if wait := time.Until(brokenPutAt.Add(1100 * time.Millisecond)); wait > 0 {
+		time.Sleep(wait)
+	}
+
+	putHandler(t, cookies, handlerModuleSource("recovered"))
+	waitPerlResponse(t, host, http.StatusOK, "recovered")
 }
 
 func TestPortForwardForeignStack404(t *testing.T) {
 	cookies := setupSession(t)
-	hex := strings.TrimPrefix(cookies.SessionID, "ap-northeast-1_")
-	if hex == cookies.SessionID {
-		t.Fatalf("session_id = %q must be prefixed with own stack", cookies.SessionID)
-	}
+	hex := sessionHex(t, cookies)
 	resetForwardTarget(t)
 
 	resp := doRequestWithHeaders(
@@ -899,7 +1050,7 @@ func TestPortForwardUnknownSession404(t *testing.T) {
 		nginxBase+"/",
 		"",
 		"",
-		map[string]string{"Host": portForwardHost(strings.Repeat("f", 32), "ap-northeast-1")},
+		map[string]string{"Host": portForwardHost(strings.Repeat("f", 32), perlHmrStack)},
 	)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
@@ -946,7 +1097,7 @@ func TestPortForwardInvalidHexShapeFallsToCatchAll(t *testing.T) {
 				nginxBase+"/",
 				"",
 				"",
-				map[string]string{"Host": portForwardHost(tc.hex, "ap-northeast-1")},
+				map[string]string{"Host": portForwardHost(tc.hex, perlHmrStack)},
 			)
 			defer resp.Body.Close()
 			if resp.StatusCode != http.StatusNotFound {

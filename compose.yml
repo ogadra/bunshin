@@ -1,4 +1,29 @@
 services:
+  front:
+    platform: ${IMAGE_PLATFORM}
+    build:
+      context: front/
+    ports:
+      - "${FRONT_PORT}:5173"
+    env_file:
+      - front/.env.compose.example
+    environment:
+      # top-level STACK_NAMEをfrontに伝播させるとbrokerとのdrift源になるため、
+      # ここではinterpolationしない。
+      VITE_PERL_ORIGIN_TEMPLATE: "http://{hex}.{stack}.${INTERNAL_DOMAIN}/"
+    volumes:
+      # node_modulesは匿名volumeに退避する。
+      # host側の異なるarch向けtreeでbind mountされて上書きされないため。
+      - ./front:/app
+      - /app/node_modules
+    healthcheck:
+      test: ["CMD", "/bin/bash", "-c", "echo > /dev/tcp/localhost/5173"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    depends_on:
+      - nginx
+
   nginx:
     platform: ${IMAGE_PLATFORM}
     build:
@@ -7,15 +32,10 @@ services:
       - "${NGINX_PORT}:8080"
     volumes:
       - forward-target-certs:/etc/ssl/certs:ro
+    env_file:
+      - nginx/.env.example
     environment:
-      STACK_NAME: "${STACK_NAME}"
-      INTERNAL_DOMAIN: "${INTERNAL_DOMAIN}"
-      BUNSHIN_STACKS: "${BUNSHIN_STACKS}"
-      RUNNER_PORT: "${RUNNER_PORT}"
-      RUNNER_APP_PORT: "${RUNNER_APP_PORT}"
-      CLOUD: AWS
-      NGINX_RESOLVER: 127.0.0.11
-      BROKER_HOST: broker
+      INTERNAL_DOMAIN: ${INTERNAL_DOMAIN}
     depends_on:
       forward-cert:
         condition: service_completed_successfully
@@ -28,9 +48,6 @@ services:
       - "${BROKER_PORT}:8080"
     env_file:
       - broker/.env.dynamodb.example
-    environment:
-      BUNSHIN_STACKS: "${BUNSHIN_STACKS}"
-      RUNNER_PORT: "${RUNNER_PORT}"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
       interval: 5s
@@ -74,24 +91,18 @@ services:
       context: runner/
     env_file:
       - runner/.env.example
-    environment:
-      STACK_NAME: "local"
 
   runner-2:
     image: bunshin-runner
     env_file:
       - runner/.env.example
-    environment:
-      STACK_NAME: "local"
     profiles:
       - integration
 
   integration-test:
     image: bunshin-integration
-    environment:
-      NGINX_URL: "http://nginx:8080"
-      BROKER_URL: "http://broker:8080"
-      FORWARD_TARGET_URL: "http://forward-target:8080"
+    env_file:
+      - integration/.env.integration-test.example
     depends_on:
       nginx:
         condition: service_started
@@ -120,9 +131,8 @@ services:
     command: ["go", "run", "./cmd/forward-target"]
     volumes:
       - forward-target-certs:/app/testdata:ro
-    environment:
-      FORWARD_TARGET_CERT_FILE: /app/testdata/forward-target.crt
-      FORWARD_TARGET_KEY_FILE: /app/testdata/forward-target.key
+    env_file:
+      - integration/.env.forward-target.example
     depends_on:
       forward-cert:
         condition: service_completed_successfully
@@ -130,7 +140,7 @@ services:
     networks:
       default:
         aliases:
-          - ap-northeast-3.internal.test
+          - ap-northeast-3.localhost
     profiles:
       - integration
 
@@ -155,9 +165,8 @@ services:
 
   firestore-emulator:
     image: mtlynch/firestore-emulator:20210410@sha256:327f3c8cdc7d3a474e24ba183c14113e1d6883b30d0dee40da0708e532f5c3c3
-    environment:
-      PORT: 8080
-      FIRESTORE_PROJECT_ID: bunshin-firestore-test
+    env_file:
+      - broker/.env.firestore-emulator.example
     healthcheck:
       test: ["CMD", "/bin/bash", "-c", "echo > /dev/tcp/localhost/8080"]
       interval: 5s

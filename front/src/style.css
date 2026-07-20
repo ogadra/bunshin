@@ -6,7 +6,7 @@
 
 body {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   height: 100dvh;
   font-size: 16px;
   background: #1e1e1e;
@@ -17,6 +17,27 @@ body {
 .editor {
   position: relative;
   flex: 1;
+  min-width: 0;
+}
+
+.preview {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  border-left: 1px solid #333;
+  background: #fff;
+}
+
+.error-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  padding: 12px 16px;
+  background: #b00020;
+  color: #fff;
+  font-size: 14px;
 }
 
 /* pre と textarea のフォント・余白が 1px でもずれるとキャレット位置が狂うため、

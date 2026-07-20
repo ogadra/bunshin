@@ -12,14 +12,17 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
 )
 
 func TestMainSuccess(t *testing.T) {
-	t.Setenv("RUNNER_PORT", "3000")
+	t.Setenv("RUNNER_API_PORT", "3000")
 	t.Setenv("STACK_NAME", "local")
+	restoreSupervise := stubAppSupervisor(t)
+	defer restoreSupervise()
 
 	registered := make(chan registerRequest, 1)
 	broker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -92,7 +95,7 @@ func TestMainSuccess(t *testing.T) {
 // TestMainError verifies that main calls fatalf when start returns an error,
 // such as when the configured port is already in use.
 func TestMainError(t *testing.T) {
-	t.Setenv("RUNNER_PORT", "3000")
+	t.Setenv("RUNNER_API_PORT", "3000")
 
 	// Occupy :3000 to make start fail.
 	ln, err := net.Listen("tcp", ":3000")
@@ -118,9 +121,9 @@ func TestMainError(t *testing.T) {
 	}
 }
 
-// TestMainMissingPort verifies that main calls fatalf when RUNNER_PORT is not set.
+// TestMainMissingPort verifies that main calls fatalf when RUNNER_API_PORT is not set.
 func TestMainMissingPort(t *testing.T) {
-	t.Setenv("RUNNER_PORT", "")
+	t.Setenv("RUNNER_API_PORT", "")
 
 	orig := fatalf
 	defer func() { fatalf = orig }()
@@ -135,10 +138,10 @@ func TestMainMissingPort(t *testing.T) {
 	main()
 
 	if !called {
-		t.Fatal("fatalf should have been called when RUNNER_PORT is missing")
+		t.Fatal("fatalf should have been called when RUNNER_API_PORT is missing")
 	}
-	if !strings.Contains(msg, "RUNNER_PORT") {
-		t.Fatalf("fatalf message should mention RUNNER_PORT, got: %s", msg)
+	if !strings.Contains(msg, "RUNNER_API_PORT") {
+		t.Fatalf("fatalf message should mention RUNNER_API_PORT, got: %s", msg)
 	}
 }
 
@@ -155,6 +158,7 @@ func TestRunGracefulShutdown(t *testing.T) {
 	cfg := serverConfig{
 		sm:              NewShellManager(),
 		shutdownTimeout: 10 * time.Second,
+		superviseFn:     func(ctx context.Context) { <-ctx.Done() },
 	}
 
 	errCh := make(chan error, 1)
@@ -190,6 +194,7 @@ func TestRunServeError(t *testing.T) {
 	cfg := serverConfig{
 		sm:              NewShellManager(),
 		shutdownTimeout: 10 * time.Second,
+		superviseFn:     func(ctx context.Context) { <-ctx.Done() },
 	}
 
 	err = run(ln, sigCh, cfg)
@@ -211,6 +216,7 @@ func TestRunCloseAllError(t *testing.T) {
 	cfg := serverConfig{
 		sm:              sm,
 		shutdownTimeout: 10 * time.Second,
+		superviseFn:     func(ctx context.Context) { <-ctx.Done() },
 	}
 
 	sigCh := make(chan os.Signal, 1)
@@ -267,6 +273,7 @@ func TestRunDeregisterOnShutdown(t *testing.T) {
 		shutdownTimeout: 10 * time.Second,
 		brokerURL:       "http://broker:8080",
 		runnerID:        "test-runner",
+		superviseFn:     func(ctx context.Context) { <-ctx.Done() },
 	}
 
 	errCh := make(chan error, 1)
@@ -315,6 +322,7 @@ func TestRunDeregisterFailureNonFatal(t *testing.T) {
 		shutdownTimeout: 10 * time.Second,
 		brokerURL:       "http://broker:8080",
 		runnerID:        "test-runner",
+		superviseFn:     func(ctx context.Context) { <-ctx.Done() },
 	}
 
 	errCh := make(chan error, 1)
@@ -431,6 +439,7 @@ func TestRunShutdownTimeout(t *testing.T) {
 		sm:              sm,
 		shutdownTimeout: 1 * time.Nanosecond,
 		handler:         slow,
+		superviseFn:     func(ctx context.Context) { <-ctx.Done() },
 	}
 
 	sigCh := make(chan os.Signal, 1)
@@ -470,6 +479,8 @@ func TestRunShutdownTimeout(t *testing.T) {
 func TestStartAndShutdown(t *testing.T) {
 	t.Setenv("BROKER_URL", "http://dummy:8080")
 	t.Setenv("STACK_NAME", "local")
+	restoreSupervise := stubAppSupervisor(t)
+	defer restoreSupervise()
 
 	origReg := registerFn
 	defer func() { registerFn = origReg }()
@@ -614,6 +625,8 @@ func TestStartRegisterReceivesBrokerURL(t *testing.T) {
 	defer broker.Close()
 	t.Setenv("BROKER_URL", broker.URL)
 	t.Setenv("STACK_NAME", "local")
+	restoreSupervise := stubAppSupervisor(t)
+	defer restoreSupervise()
 
 	orig := registerFn
 	defer func() { registerFn = orig }()
@@ -651,4 +664,79 @@ func waitForServer(t *testing.T, addr string) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	t.Fatal("server did not start within 5 seconds")
+}
+
+// stubAppSupervisor keeps start()/main() tests from spawning a real perl-app
+// child; the returned func restores the original.
+func stubAppSupervisor(t *testing.T) func() {
+	t.Helper()
+	orig := runAppSupervisorFn
+	runAppSupervisorFn = func(ctx context.Context) { <-ctx.Done() }
+	return func() { runAppSupervisorFn = orig }
+}
+
+func TestRunSuperviseFn(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen error: %v", err)
+	}
+	addr := ln.Addr().String()
+
+	var called atomic.Bool
+	var returned atomic.Bool
+	cfg := serverConfig{
+		sm:              NewShellManager(),
+		shutdownTimeout: 5 * time.Second,
+		superviseFn: func(ctx context.Context) {
+			called.Store(true)
+			<-ctx.Done()
+			returned.Store(true)
+		},
+	}
+	sigCh := make(chan os.Signal, 1)
+	errCh := make(chan error, 1)
+	go func() { errCh <- run(ln, sigCh, cfg) }()
+
+	waitForServer(t, addr)
+	sigCh <- os.Interrupt
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("run returned error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("run did not return within 5 seconds")
+	}
+	if !called.Load() {
+		t.Fatal("superviseFn should have been called")
+	}
+	if !returned.Load() {
+		t.Fatal("superviseFn should have returned after ctx cancel")
+	}
+}
+
+func TestRunSuperviseFnCanceledOnServeErr(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen error: %v", err)
+	}
+	ln.Close()
+
+	var returned atomic.Bool
+	cfg := serverConfig{
+		sm:              NewShellManager(),
+		shutdownTimeout: 5 * time.Second,
+		superviseFn: func(ctx context.Context) {
+			<-ctx.Done()
+			returned.Store(true)
+		},
+	}
+	sigCh := make(chan os.Signal, 1)
+	if err := run(ln, sigCh, cfg); err == nil {
+		t.Fatal("expected error from run")
+	}
+	if !returned.Load() {
+		t.Fatal("superviseFn should have been canceled on serve error")
+	}
 }

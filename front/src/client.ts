@@ -1,5 +1,41 @@
 import { SessionReassignedError } from "./errors/SessionReassignedError";
 
+// session_id cookieはHttpOnlyのため、preview URL用のsession hexは
+// nginxが/api応答に付けるX-Session-Hexヘッダーから得る
+const sessionHexHeader = "X-Session-Hex";
+
+// STACK_NAMEはbroker単一ソースにするため、compose interpolationではなく
+// brokerからのレスポンスに載せたX-Stack-Nameで受け取る
+const stackNameHeader = "X-Stack-Name";
+
+export const getAppHandler = async (): Promise<{
+  source: string;
+  sessionHex: string | null;
+  stackName: string | null;
+}> => {
+  const res = await fetch("/api/app/handler");
+  if (!res.ok) throw new Error(`Failed to get handler: ${res.status}`);
+  return {
+    source: await res.text(),
+    sessionHex: res.headers.get(sessionHexHeader),
+    stackName: res.headers.get(stackNameHeader),
+  };
+};
+
+export const putAppHandler = async (
+  source: string,
+): Promise<{ sessionHex: string | null; stackName: string | null }> => {
+  const res = await fetch("/api/app/handler", {
+    method: "PUT",
+    body: source,
+  });
+  if (!res.ok) throw new Error(`Failed to put handler: ${res.status}`);
+  return {
+    sessionHex: res.headers.get(sessionHexHeader),
+    stackName: res.headers.get(stackNameHeader),
+  };
+};
+
 export const SseEventType = {
   STDOUT: "stdout",
   STDERR: "stderr",

@@ -78,6 +78,20 @@ check("local reassign does not forward", executed == nil)
 check("local reassign sets runner", vars.runner_url == "http://runner-1:3000")
 check("local reassign keeps reassigned signal", vars.session_reassigned == "true")
 check("local reassign propagates session cookie", vars.resolve_set_cookie == "session_id=ap-northeast-1_deadbeef; Path=/")
+check("local reassign leaves session hex unset when absent", vars.session_hex == nil)
+check("local reassign leaves stack name unset when absent", vars.stack_name == nil)
+
+_, _, vars = run({
+    status = 200,
+    header = {
+        ["X-Runner-Host"] = "runner-1",
+        ["Set-Cookie"] = "session_id=ap-northeast-1_deadbeef; Path=/",
+        ["X-Session-Hex"] = "0123456789abcdef0123456789abcdef",
+        ["X-Stack-Name"] = "ap-northeast-1",
+    },
+}, "POST", "/api/execute")
+check("local reassign propagates session hex", vars.session_hex == "0123456789abcdef0123456789abcdef")
+check("local reassign propagates stack name", vars.stack_name == "ap-northeast-1")
 
 if failed > 0 then
     io.stderr:write(string.format("reassign: %d check(s) failed\n", failed))

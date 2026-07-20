@@ -12,7 +12,7 @@ local function check(name, cond)
     end
 end
 
--- 事前configure。RUNNER_PORT=3000 / RUNNER_APP_PORT=5000でdecideの組み立てを検証する。
+-- 事前configure。RUNNER_API_PORT=3000 / RUNNER_APP_PORT=5000でdecideの組み立てを検証する。
 core.configure("ap-northeast-1", "example.com", "ap-northeast-1,ap-northeast-3", 3000, 5000, "AWS")
 
 -- broker 非 2xx はそのステータスを保持して終了 (503/500 透過)
@@ -34,22 +34,28 @@ end
 r = core.decide({ status = 200, header = {} }, STACKS, "example.com")
 check("missing X-Runner-Host", r.exit == 500)
 
--- 正常: brokerのX-Runner-HostにRUNNER_PORTを貼ってrunner_urlを組む。
+-- 正常: brokerのX-Runner-HostにRUNNER_API_PORTを貼ってrunner_urlを組む。
 r = core.decide({ status = 200, header = { ["X-Runner-Host"] = "runner-1" } }, STACKS, "example.com")
 check("valid proxy no exit", r.exit == nil)
 check("valid proxy runner", r.runner_url == "http://runner-1:3000")
 check("valid proxy no forward host", r.forward_host == nil)
 check("no set-cookie when absent", r.set_cookie == nil)
 check("no reassigned when absent", r.reassigned == nil)
+check("no session-hex when absent", r.session_hex == nil)
+check("no stack-name when absent", r.stack_name == nil)
 
--- Set-Cookie / X-Session-Reassigned の伝播
+-- Set-Cookie / X-Session-Reassigned / X-Session-Hex / X-Stack-Nameの伝播
 r = core.decide({ status = 200, header = {
     ["X-Runner-Host"] = "runner-1",
     ["Set-Cookie"] = "session_id=abc; Path=/",
     ["X-Session-Reassigned"] = "true",
+    ["X-Session-Hex"] = "0123456789abcdef0123456789abcdef",
+    ["X-Stack-Name"] = "ap-northeast-1",
 } }, STACKS, "example.com")
 check("propagates set-cookie", r.set_cookie == "session_id=abc; Path=/")
 check("propagates reassigned", r.reassigned == "true")
+check("propagates session-hex", r.session_hex == "0123456789abcdef0123456789abcdef")
+check("propagates stack-name", r.stack_name == "ap-northeast-1")
 
 -- 複数 Set-Cookie (capture はテーブルで返す) を文字列へ畳む
 r = core.decide({ status = 200, header = {
@@ -70,18 +76,18 @@ check("host_of rejects unknown stack", core.host_of("ap-southeast-9", STACKS, "e
 check("host_of rejects injection value", core.host_of("evil.example.com/", STACKS, "example.com") == nil)
 check("host_of rejects nil stack", core.host_of(nil, STACKS, "example.com") == nil)
 
--- configureはSTACK_NAME / INTERNAL_DOMAIN / BUNSHIN_STACKS / RUNNER_PORT / RUNNER_APP_PORT / CLOUD未設定を許さず起動を失敗させる
+-- configureはSTACK_NAME / INTERNAL_DOMAIN / BUNSHIN_STACKS / RUNNER_API_PORT / RUNNER_APP_PORT / CLOUD未設定を許さず起動を失敗させる
 check("configure rejects missing stack", not pcall(core.configure, nil, "example.com", "ap-northeast-1", 3000, 5000, "AWS"))
 check("configure rejects empty stack", not pcall(core.configure, "", "example.com", "ap-northeast-1", 3000, 5000, "AWS"))
 check("configure rejects missing domain", not pcall(core.configure, "ap-northeast-1", nil, "ap-northeast-1", 3000, 5000, "AWS"))
 check("configure rejects missing stacks", not pcall(core.configure, "ap-northeast-1", "example.com", nil, 3000, 5000, "AWS"))
 check("configure rejects empty stacks", not pcall(core.configure, "ap-northeast-1", "example.com", "", 3000, 5000, "AWS"))
 check("configure rejects own stack outside allowlist", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-3", 3000, 5000, "AWS"))
-check("configure rejects missing runner_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", nil, 5000, "AWS"))
-check("configure rejects non-numeric runner_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", "abc", 5000, "AWS"))
-check("configure rejects out-of-range runner_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", 70000, 5000, "AWS"))
-check("configure rejects zero runner_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", 0, 5000, "AWS"))
-check("configure rejects fractional runner_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", 3000.5, 5000, "AWS"))
+check("configure rejects missing api_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", nil, 5000, "AWS"))
+check("configure rejects non-numeric api_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", "abc", 5000, "AWS"))
+check("configure rejects out-of-range api_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", 70000, 5000, "AWS"))
+check("configure rejects zero api_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", 0, 5000, "AWS"))
+check("configure rejects fractional api_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", 3000.5, 5000, "AWS"))
 check("configure rejects missing app_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", 3000, nil, "AWS"))
 check("configure rejects non-numeric app_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", 3000, "abc", "AWS"))
 check("configure rejects out-of-range app_port", not pcall(core.configure, "ap-northeast-1", "example.com", "ap-northeast-1", 3000, 70000, "AWS"))

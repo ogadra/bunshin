@@ -60,6 +60,8 @@ spec:
               value: ${INTERNAL_DOMAIN}
             - name: BUNSHIN_STACKS
               value: ${BUNSHIN_STACKS}
+            - name: RUNNER_API_PORT
+              value: "3000"
             - name: RUNNER_APP_PORT
               value: "5000"
             - name: CLOUD

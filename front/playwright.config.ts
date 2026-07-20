@@ -16,6 +16,9 @@ export default defineConfig({
     // 毎回フルビルドが走るので、ローカルで反復するときは別シェルで pnpm preview を
     // 起動しておけば reuseExistingServer で再利用される
     command: "pnpm build && pnpm preview --port 4273 --strictPort",
+    env: {
+      VITE_PERL_ORIGIN_TEMPLATE: "http://{hex}.{stack}.test/",
+    },
     url: "http://localhost:4273",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

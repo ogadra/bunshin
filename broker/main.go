@@ -67,7 +67,7 @@ func defaultInitHandler() (*handler.Handler, io.Closer, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	runnerPort, err := config.NewRunnerPortFromEnv()
+	runnerAPIPort, err := config.NewRunnerAPIPortFromEnv()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -75,9 +75,9 @@ func defaultInitHandler() (*handler.Handler, io.Closer, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	checker := healthcheck.NewHTTPChecker(&http.Client{Timeout: 3 * time.Second}, runnerPort)
+	checker := healthcheck.NewHTTPChecker(&http.Client{Timeout: 3 * time.Second}, runnerAPIPort)
 	svc := newBrokerService(repo, stack.Self, checker)
-	return handler.NewHandler(svc, stack.Fallbacks), repoCloser(repo), nil
+	return handler.NewHandler(svc, stack.Fallbacks, stack.Self), repoCloser(repo), nil
 }
 
 // repoCloser は Repository が io.Closer を実装しているならそのまま返し、

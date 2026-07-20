@@ -1,5 +1,12 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { createShell, deleteShell, execute, SseEventType } from "./client";
+import {
+  createShell,
+  deleteShell,
+  execute,
+  getAppHandler,
+  putAppHandler,
+  SseEventType,
+} from "./client";
 import { SessionReassignedError } from "./errors/SessionReassignedError";
 
 const mockFetch = vi.fn();
@@ -32,6 +39,71 @@ const sseBody = (lines: string[]) => {
     },
   };
 };
+
+const HEX = "0123456789abcdef0123456789abcdef";
+
+const STACK = "ap-northeast-1";
+
+describe("getAppHandler", () => {
+  test("GET /api/app/handler returns text body, session hex and stack name", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: responseHeaders({ "X-Session-Hex": HEX, "X-Stack-Name": STACK }),
+      text: async () => "sub { };",
+    });
+    await expect(getAppHandler()).resolves.toEqual({
+      source: "sub { };",
+      sessionHex: HEX,
+      stackName: STACK,
+    });
+    expect(mockFetch).toHaveBeenCalledWith("/api/app/handler");
+  });
+
+  test("sessionHex and stackName are null when headers are absent", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: responseHeaders(),
+      text: async () => "sub { };",
+    });
+    await expect(getAppHandler()).resolves.toEqual({
+      source: "sub { };",
+      sessionHex: null,
+      stackName: null,
+    });
+  });
+
+  test("throws on non-ok response", async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 500 });
+    await expect(getAppHandler()).rejects.toThrow("Failed to get handler: 500");
+  });
+});
+
+describe("putAppHandler", () => {
+  test("PUT /api/app/handler with body returns session hex and stack name", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: responseHeaders({ "X-Session-Hex": HEX, "X-Stack-Name": STACK }),
+    });
+    await expect(putAppHandler("sub { return (200, 'text/plain', 'ok'); };")).resolves.toEqual({
+      sessionHex: HEX,
+      stackName: STACK,
+    });
+    expect(mockFetch).toHaveBeenCalledWith("/api/app/handler", {
+      method: "PUT",
+      body: "sub { return (200, 'text/plain', 'ok'); };",
+    });
+  });
+
+  test("sessionHex and stackName are null when headers are absent", async () => {
+    mockFetch.mockResolvedValue({ ok: true, headers: responseHeaders() });
+    await expect(putAppHandler("body")).resolves.toEqual({ sessionHex: null, stackName: null });
+  });
+
+  test("throws on non-ok response", async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 400 });
+    await expect(putAppHandler("body")).rejects.toThrow("Failed to put handler: 400");
+  });
+});
 
 describe("createShell", () => {
   test("POST /api/shell", async () => {

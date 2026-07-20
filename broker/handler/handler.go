@@ -28,18 +28,32 @@ const fallbackRemainingHeader = "X-Fallback-Remaining"
 
 const runnerHostHeader = "X-Runner-Host"
 
+const reassignedHeader = "X-Session-Reassigned"
+
+// sessionHexHeaderはfrontがpreview URLを組むためのsession hexを返すヘッダー名。
+// cookieはHttpOnlyのため、JSから読める経路としてヘッダーで返す。
+const sessionHexHeader = "X-Session-Hex"
+
+// stackNameHeaderはbroker自身のstack名をfrontに伝えるヘッダー名。
+// front / composeのinterpolationで上書きされないようbrokerをsingle sourceとする。
+const stackNameHeader = "X-Stack-Name"
+
 // Handler は broker の HTTP ハンドラー。
 type Handler struct {
 	svc            service.Service
 	fallbackStacks []string
+	stackSelf      string
 }
 
-// NewHandler は Handler を生成する。svc が nil の場合は panic する。
-func NewHandler(svc service.Service, fallbackStacks []string) *Handler {
+// NewHandlerはHandlerを生成する。svcがnil、stackSelfが空文字の場合はpanicする。
+func NewHandler(svc service.Service, fallbackStacks []string, stackSelf string) *Handler {
 	if svc == nil {
 		panic("handler: nil service")
 	}
-	return &Handler{svc: svc, fallbackStacks: fallbackStacks}
+	if stackSelf == "" {
+		panic("handler: empty stackSelf")
+	}
+	return &Handler{svc: svc, fallbackStacks: fallbackStacks, stackSelf: stackSelf}
 }
 
 // registerRequest は POST /internal/runners/register のリクエストボディ。
@@ -47,7 +61,7 @@ type registerRequest struct {
 	// RunnerID は runner の一意識別子。
 	RunnerID string `json:"runnerId" binding:"required"`
 	// PrivateHost は runner の hostname (port を含まない)。
-	// 用途別 port (RUNNER_PORT / RUNNER_APP_PORT) は broker と nginx がそれぞれ知る。
+	// 用途別 port (RUNNER_API_PORT / RUNNER_APP_PORT) は broker と nginx がそれぞれ知る。
 	PrivateHost string `json:"privateHost" binding:"required"`
 }
 
@@ -85,8 +99,10 @@ func (h *Handler) GetResolveSession(c *gin.Context) {
 		c.SetCookie(sessionIDCookie, result.SessionID, 0, "/", "", true, true)
 	}
 	if result.Reassigned {
-		c.Header("X-Session-Reassigned", "true")
+		c.Header(reassignedHeader, "true")
 	}
+	c.Header(sessionHexHeader, result.SessionHex)
+	c.Header(stackNameHeader, h.stackSelf)
 	c.Header(runnerHostHeader, result.RunnerHost)
 	c.Status(http.StatusOK)
 }

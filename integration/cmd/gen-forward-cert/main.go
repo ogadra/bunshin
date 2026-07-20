@@ -44,7 +44,7 @@ func run() error {
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     time.Now().AddDate(1, 0, 0),
 		DNSNames: []string{
-			"ap-northeast-3.internal.test",
+			"ap-northeast-3.localhost",
 			"forward-target",
 		},
 		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1")},

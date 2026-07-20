@@ -64,7 +64,7 @@ spec:
               value: ${GOOGLE_CLOUD_PROJECT}
             - name: FIRESTORE_DATABASE
               value: ${FIRESTORE_DATABASE}
-            - name: RUNNER_PORT
+            - name: RUNNER_API_PORT
               value: "3000"
           resources:
             requests:

@@ -9,6 +9,9 @@ resource "google_compute_backend_bucket" "static" {
   edge_security_policy = google_compute_security_policy.edge.id
 
   cdn_policy {
-    cache_mode = "USE_ORIGIN_HEADERS"
+    cache_mode  = "CACHE_ALL_STATIC"
+    default_ttl = 5
+    max_ttl     = 10
+    client_ttl  = 10
   }
 }
