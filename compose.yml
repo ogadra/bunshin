@@ -1,4 +1,15 @@
 services:
+  front:
+    platform: ${IMAGE_PLATFORM}
+    build:
+      context: front/
+    ports:
+      - "${FRONT_PORT}:5173"
+    environment:
+      VITE_API_TARGET: "http://nginx:8080"
+    depends_on:
+      - nginx
+
   nginx:
     platform: ${IMAGE_PLATFORM}
     build:
