@@ -897,6 +897,31 @@ func waitPerlResponse(t *testing.T, host string, wantStatus int, wantBody string
 	t.Fatalf("perl did not return status=%d body containing %q within 30s: last status=%d body=%q", wantStatus, wantBody, lastStatus, lastBody)
 }
 
+// TestApiSessionHexHeader は /api 応答の X-Session-Hex が session_id cookie の hex 部と
+// 一致する 32 桁小文字 hex であることを検証する。front はこのヘッダーから preview URL を組む。
+func TestApiSessionHexHeader(t *testing.T) {
+	cookies := setupSession(t)
+	resp := doRequest(t, http.MethodGet, nginxBase+"/api/app/handler", "", cookies.cookieHeader())
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/app/handler: want 200, got %d", resp.StatusCode)
+	}
+	got := resp.Header.Get("X-Session-Hex")
+	_, wantHex, ok := strings.Cut(cookies.SessionID, "_")
+	if !ok {
+		t.Fatalf("unexpected SessionID format: %q", cookies.SessionID)
+	}
+	if got != wantHex {
+		t.Fatalf("X-Session-Hex = %q, want %q", got, wantHex)
+	}
+	if len(got) != 32 {
+		t.Fatalf("X-Session-Hex length = %d, want 32", len(got))
+	}
+	if _, err := hex.DecodeString(got); err != nil {
+		t.Fatalf("X-Session-Hex is not hex: %v", err)
+	}
+}
+
 func TestPerlHmrReachable(t *testing.T) {
 	cookies := setupSession(t)
 	host := portForwardHost(t, cookies)
