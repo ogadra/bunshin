@@ -28,6 +28,10 @@ const fallbackRemainingHeader = "X-Fallback-Remaining"
 
 const runnerHostHeader = "X-Runner-Host"
 
+// sessionHexHeader は front が preview URL を組むための session hex を返すヘッダー名。
+// cookie は HttpOnly のため、JS から読める経路としてヘッダーで返す。
+const sessionHexHeader = "X-Session-Hex"
+
 // Handler は broker の HTTP ハンドラー。
 type Handler struct {
 	svc            service.Service
@@ -80,6 +84,11 @@ func (h *Handler) GetResolveSession(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, model.CodeInternalError, "failed to resolve session")
 		return
 	}
+	_, sessionHex, ok := strings.Cut(result.SessionID, "_")
+	if !ok {
+		writeError(c, http.StatusInternalServerError, model.CodeInternalError, "session id missing stack prefix")
+		return
+	}
 	if result.Created {
 		c.SetSameSite(http.SameSiteStrictMode)
 		c.SetCookie(sessionIDCookie, result.SessionID, 0, "/", "", true, true)
@@ -87,6 +96,7 @@ func (h *Handler) GetResolveSession(c *gin.Context) {
 	if result.Reassigned {
 		c.Header("X-Session-Reassigned", "true")
 	}
+	c.Header(sessionHexHeader, sessionHex)
 	c.Header(runnerHostHeader, result.RunnerHost)
 	c.Status(http.StatusOK)
 }
