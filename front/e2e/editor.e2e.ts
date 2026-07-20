@@ -4,6 +4,9 @@ import { samplePerl } from "../src/samplePerl";
 const input = (page: Page) => page.locator(".editor-input");
 const highlight = (page: Page) => page.locator(".editor-highlight");
 
+// nginx が /api 応答に付ける X-Session-Hex を模したテスト用の hex
+const E2E_SESSION_HEX = "0123456789abcdef0123456789abcdef";
+
 // vite preview は SPA fallback で /api/app/handler にも index.html を返してしまうので、
 // GET を明示的にモックしないと initial code が HTML になって Perl のトークン検証が壊れる。
 // PUT/GET と iframe preview 先をまとめて捕まえるヘルパー
@@ -12,14 +15,19 @@ async function stubHandlerApi(page: Page, initialSource: string): Promise<{ puts
   let current = initialSource;
   await page.route("**/api/app/handler", async (route, req) => {
     if (req.method() === "GET") {
-      await route.fulfill({ status: 200, body: current, contentType: "text/plain" });
+      await route.fulfill({
+        status: 200,
+        body: current,
+        contentType: "text/plain",
+        headers: { "X-Session-Hex": E2E_SESSION_HEX },
+      });
       return;
     }
     if (req.method() === "PUT") {
       const body = req.postData() ?? "";
       current = body;
       puts.push(body);
-      await route.fulfill({ status: 204 });
+      await route.fulfill({ status: 204, headers: { "X-Session-Hex": E2E_SESSION_HEX } });
       return;
     }
     await route.continue();
@@ -34,14 +42,7 @@ async function stubHandlerApi(page: Page, initialSource: string): Promise<{ puts
 
 let handlerStub: { puts: string[] };
 
-test.beforeEach(async ({ page, context }) => {
-  await context.addCookies([
-    {
-      name: "session_id",
-      value: "ap-northeast-1_e2edeadbeef",
-      url: "http://localhost:4273",
-    },
-  ]);
+test.beforeEach(async ({ page }) => {
   handlerStub = await stubHandlerApi(page, samplePerl);
   await page.goto("/");
   await highlight(page).locator("span").first().waitFor();
