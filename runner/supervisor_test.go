@@ -12,9 +12,8 @@ import (
 	"time"
 )
 
-// syncBuffer はlog.SetOutput経由の書き込みと外部からのString読み取りを排他する。
-// superviseOnceがgoroutineで書いている最中にpollで読むテストがあり、素のbytes.Buffer
-// では race detector が発火する。
+// superviseOnceがgoroutineでlog.Printfしている最中にpollでbufを読むテストがあり、
+// 素の`bytes.Buffer`ではrace detectorが発火する。それを避けるためWrite/Stringを排他する。
 type syncBuffer struct {
 	mu  sync.Mutex
 	buf bytes.Buffer

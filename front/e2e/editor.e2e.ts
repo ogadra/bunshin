@@ -208,7 +208,7 @@ test.describe("Perl HMR wiring", () => {
       });
     });
     // 新hex/stackで組み立てられるpreview先も200を返すようにしておく。
-    // webServer.envのVITE_PERL_ORIGIN_TEMPLATE=http://{hex}.{stack}.test/ と揃える
+    // webServer.envの`VITE_PERL_ORIGIN_TEMPLATE=http://{hex}.{stack}.test/`と揃える。
     await page.route(`http://${REASSIGNED_HEX}.${REASSIGNED_STACK}.test/**`, async (route) => {
       await route.fulfill({ status: 200, body: "reassigned", contentType: "text/plain" });
     });
