@@ -245,8 +245,8 @@ func TestCreateSession_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.SessionID != "ap-northeast-1_fixed-session" {
-		t.Errorf("SessionID = %q, want %q", result.SessionID, "ap-northeast-1_fixed-session")
+	if result.SessionHex != "fixed-session" {
+		t.Errorf("SessionHex = %q, want %q", result.SessionHex, "fixed-session")
 	}
 	if result.Runner.RunnerID != "r1" {
 		t.Errorf("RunnerID = %q, want %q", result.Runner.RunnerID, "r1")
@@ -270,8 +270,8 @@ func TestCreateSession_StackPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.SessionID != "ap-northeast-3_fixed-session" {
-		t.Errorf("SessionID = %q, want %q", result.SessionID, "ap-northeast-3_fixed-session")
+	if result.SessionHex != "fixed-session" {
+		t.Errorf("SessionHex = %q, want %q", result.SessionHex, "fixed-session")
 	}
 }
 
@@ -510,15 +510,15 @@ func TestResolveSession_ExistingSession(t *testing.T) {
 	}
 	svc := NewBrokerService(repo, "ap-northeast-1", healthyChecker())
 
-	result, err := svc.ResolveSession(context.Background(), "sess-1")
+	result, err := svc.ResolveSession(context.Background(), "ap-northeast-1_sess-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if result.Created {
 		t.Error("expected Created=false for existing session")
 	}
-	if result.SessionID != "sess-1" {
-		t.Errorf("SessionID = %q, want %q", result.SessionID, "sess-1")
+	if result.SessionHex != "sess-1" {
+		t.Errorf("SessionHex = %q, want %q", result.SessionHex, "sess-1")
 	}
 	if result.RunnerHost != "10.0.0.1" {
 		t.Errorf("RunnerHost = %q, want %q", result.RunnerHost, "10.0.0.1")
@@ -551,8 +551,8 @@ func TestResolveSession_NotFound_CreatesNew(t *testing.T) {
 	if !result.Created {
 		t.Error("expected Created=true for new session")
 	}
-	if result.SessionID != "ap-northeast-1_new-session" {
-		t.Errorf("SessionID = %q, want %q", result.SessionID, "ap-northeast-1_new-session")
+	if result.SessionHex != "new-session" {
+		t.Errorf("SessionHex = %q, want %q", result.SessionHex, "new-session")
 	}
 	if result.RunnerHost != "10.0.0.2" {
 		t.Errorf("RunnerHost = %q, want %q", result.RunnerHost, "10.0.0.2")
@@ -636,7 +636,7 @@ func TestResolveSession_ExistingHealthy(t *testing.T) {
 	checker := &mockChecker{checkFn: func(_ context.Context, _ string) error { return nil }}
 	svc := NewBrokerService(repo, "ap-northeast-1", WithChecker(checker))
 
-	result, err := svc.ResolveSession(context.Background(), "sess-1")
+	result, err := svc.ResolveSession(context.Background(), "ap-northeast-1_sess-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -645,6 +645,26 @@ func TestResolveSession_ExistingHealthy(t *testing.T) {
 	}
 	if result.Reassigned {
 		t.Error("expected Reassigned=false")
+	}
+	if result.SessionHex != "sess-1" {
+		t.Errorf("SessionHex = %q, want %q", result.SessionHex, "sess-1")
+	}
+}
+
+// TestResolveSession_StoredIDWithoutPrefix は store から見つかった session ID が
+// prefix を欠く場合にデータ不整合としてエラーを返すことを検証する。
+func TestResolveSession_StoredIDWithoutPrefix(t *testing.T) {
+	t.Parallel()
+	repo := &mockRepository{
+		findBySessionIDFn: func(_ context.Context, _ string) (*model.Runner, error) {
+			return &model.Runner{RunnerID: "r1", PrivateHost: "10.0.0.1"}, nil
+		},
+	}
+	svc := NewBrokerService(repo, "ap-northeast-1", healthyChecker())
+
+	_, err := svc.ResolveSession(context.Background(), "noprefix")
+	if err == nil {
+		t.Fatal("expected error for session id without stack prefix")
 	}
 }
 
