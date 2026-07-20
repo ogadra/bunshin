@@ -98,7 +98,7 @@ resource "google_compute_backend_service" "nginx_pf_asne1" {
   name                  = "bunshin-nginx-pf-asne1"
   protocol              = "HTTP"
   load_balancing_scheme = "EXTERNAL_MANAGED"
-  timeout_sec           = 300
+  timeout_sec           = 30
   enable_cdn            = false
 
   security_policy      = google_compute_security_policy.backend.id
@@ -127,7 +127,7 @@ resource "google_compute_backend_service" "nginx_pf_asne2" {
   name                  = "bunshin-nginx-pf-asne2"
   protocol              = "HTTP"
   load_balancing_scheme = "EXTERNAL_MANAGED"
-  timeout_sec           = 300
+  timeout_sec           = 30
   enable_cdn            = false
 
   security_policy      = google_compute_security_policy.backend.id
@@ -155,7 +155,7 @@ resource "google_compute_target_https_proxy" "external" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   name            = "bunshin-external"
   url_map         = google_compute_url_map.external.id
-  certificate_map = "//certificatemanager.googleapis.com/${google_certificate_manager_certificate_map.apex.id}"
+  certificate_map = "//certificatemanager.googleapis.com/${google_certificate_manager_certificate_map.external.id}"
 }
 
 resource "google_compute_global_address" "external_ipv4" {
