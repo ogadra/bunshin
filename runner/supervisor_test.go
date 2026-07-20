@@ -12,17 +12,37 @@ import (
 	"time"
 )
 
-func captureLog(t *testing.T) *bytes.Buffer {
+// syncBuffer はlog.SetOutput経由の書き込みと外部からのString読み取りを排他する。
+// superviseOnceがgoroutineで書いている最中にpollで読むテストがあり、素のbytes.Buffer
+// では race detector が発火する。
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func captureLog(t *testing.T) *syncBuffer {
 	t.Helper()
-	var buf bytes.Buffer
+	buf := &syncBuffer{}
 	origOut, origFlags := log.Writer(), log.Flags()
-	log.SetOutput(&buf)
+	log.SetOutput(buf)
 	log.SetFlags(0)
 	t.Cleanup(func() {
 		log.SetOutput(origOut)
 		log.SetFlags(origFlags)
 	})
-	return &buf
+	return buf
 }
 
 func TestSuperviseImmediateCancel(t *testing.T) {
@@ -149,12 +169,6 @@ func TestSuperviseOnceCancelSendsSigterm(t *testing.T) {
 
 func TestSuperviseOnceCancelSigkillFallback(t *testing.T) {
 	buf := captureLog(t)
-	var mu sync.Mutex
-	logs := func() string {
-		mu.Lock()
-		defer mu.Unlock()
-		return buf.String()
-	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	shutdownGrace := 100 * time.Millisecond
@@ -212,10 +226,10 @@ func TestSuperviseOnceCancelSigkillFallback(t *testing.T) {
 	}
 	elapsed := time.Since(cancelAt)
 	if elapsed < shutdownGrace {
-		t.Fatalf("superviseOnce returned %v after cancel, before shutdownGrace %v — SIGKILL fallback was not exercised (logs: %s)", elapsed, shutdownGrace, logs())
+		t.Fatalf("superviseOnce returned %v after cancel, before shutdownGrace %v — SIGKILL fallback was not exercised (logs: %s)", elapsed, shutdownGrace, buf.String())
 	}
-	if !strings.Contains(logs(), "SIGKILL") {
-		t.Fatalf("SIGKILL log was not emitted — SIGKILL fallback branch not taken (logs: %s)", logs())
+	if !strings.Contains(buf.String(), "SIGKILL") {
+		t.Fatalf("SIGKILL log was not emitted — SIGKILL fallback branch not taken (logs: %s)", buf.String())
 	}
 }
 

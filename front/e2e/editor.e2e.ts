@@ -207,8 +207,9 @@ test.describe("Perl HMR wiring", () => {
         },
       });
     });
-    // 新hex/stackで組み立てられるpreview先も200を返すようにしておく
-    await page.route(`http://${REASSIGNED_HEX}.${REASSIGNED_STACK}/**`, async (route) => {
+    // 新hex/stackで組み立てられるpreview先も200を返すようにしておく。
+    // webServer.envのVITE_PERL_ORIGIN_TEMPLATE=http://{hex}.{stack}.test/ と揃える
+    await page.route(`http://${REASSIGNED_HEX}.${REASSIGNED_STACK}.test/**`, async (route) => {
       await route.fulfill({ status: 200, body: "reassigned", contentType: "text/plain" });
     });
 
@@ -218,7 +219,7 @@ test.describe("Perl HMR wiring", () => {
 
     await expect
       .poll(() => page.locator("#preview").getAttribute("src"), { timeout: 5000 })
-      .toMatch(new RegExp(`^http://${REASSIGNED_HEX}\\.${REASSIGNED_STACK}/`));
+      .toMatch(new RegExp(`^http://${REASSIGNED_HEX}\\.${REASSIGNED_STACK}\\.test/`));
   });
 
   test("edits arriving during a slow PUT wait for DEBOUNCE_MS of idle before the next PUT starts", async ({
