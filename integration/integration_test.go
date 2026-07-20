@@ -480,8 +480,8 @@ func TestForeignSessionForward(t *testing.T) {
 	if got.Path != "/api/execute" {
 		t.Errorf("forwarded path: want /api/execute, got %s", got.Path)
 	}
-	if got.Host != "ap-northeast-3.internal.test" {
-		t.Errorf("forwarded Host: want ap-northeast-3.internal.test, got %s", got.Host)
+	if got.Host != "ap-northeast-3.localhost" {
+		t.Errorf("forwarded Host: want ap-northeast-3.localhost, got %s", got.Host)
 	}
 	if values := got.Header["X-Fallback-Stack"]; len(values) > 0 {
 		t.Errorf("X-Fallback-Stack should be stripped, got %q", values)
@@ -496,7 +496,7 @@ func TestForeignSessionForwardRelaysInternalClientAddress(t *testing.T) {
 	resetForwardTarget(t)
 
 	headers := map[string]string{
-		"Host":                      "ap-northeast-1.internal.test",
+		"Host":                      "ap-northeast-1.localhost",
 		"CloudFront-Viewer-Address": "203.0.113.70:45678",
 		"X-Bunshin-Client-Address":  "198.51.100.70:11111",
 	}
@@ -514,8 +514,8 @@ func TestForeignSessionForwardRelaysInternalClientAddress(t *testing.T) {
 	}
 
 	got := lastForwardedRequest(t)
-	if got.Host != "ap-northeast-3.internal.test" {
-		t.Errorf("forwarded Host: want ap-northeast-3.internal.test, got %s", got.Host)
+	if got.Host != "ap-northeast-3.localhost" {
+		t.Errorf("forwarded Host: want ap-northeast-3.localhost, got %s", got.Host)
 	}
 	assertForwardedClientAddress(t, got, "198.51.100.70:11111")
 }
@@ -559,8 +559,8 @@ func TestForeignSessionOwnerUnavailableRecreatesSession(t *testing.T) {
 	t.Cleanup(func() { resetRunners(t, cookies.SessionID) })
 
 	got := lastForwardedRequest(t)
-	if got.Host != "ap-northeast-3.internal.test" {
-		t.Errorf("forwarded Host: want ap-northeast-3.internal.test, got %s", got.Host)
+	if got.Host != "ap-northeast-3.localhost" {
+		t.Errorf("forwarded Host: want ap-northeast-3.localhost, got %s", got.Host)
 	}
 }
 
@@ -720,8 +720,8 @@ func TestNoIdleRunnerExecuteFallbackForward(t *testing.T) {
 	if got.Path != "/api/execute" {
 		t.Errorf("forwarded path: want /api/execute, got %s", got.Path)
 	}
-	if got.Host != "ap-northeast-3.internal.test" {
-		t.Errorf("forwarded Host: want ap-northeast-3.internal.test, got %s", got.Host)
+	if got.Host != "ap-northeast-3.localhost" {
+		t.Errorf("forwarded Host: want ap-northeast-3.localhost, got %s", got.Host)
 	}
 	if values := got.Header["Content-Type"]; len(values) != 1 || values[0] != "application/json" {
 		t.Errorf("Content-Type = %q, want [application/json]", values)
@@ -797,8 +797,8 @@ func TestNoIdleRunner(t *testing.T) {
 	if got.Path != "/api/shell" {
 		t.Errorf("forwarded path: want /api/shell, got %s", got.Path)
 	}
-	if got.Host != "ap-northeast-3.internal.test" {
-		t.Errorf("forwarded Host: want ap-northeast-3.internal.test, got %s", got.Host)
+	if got.Host != "ap-northeast-3.localhost" {
+		t.Errorf("forwarded Host: want ap-northeast-3.localhost, got %s", got.Host)
 	}
 	if values := got.Header["X-Fallback-Stack"]; len(values) != 1 || values[0] != "ap-northeast-3" {
 		t.Errorf("X-Fallback-Stack = %q, want [ap-northeast-3]", values)
@@ -811,7 +811,7 @@ func TestNoIdleRunner(t *testing.T) {
 
 const perlHmrStack = "ap-northeast-1"
 
-const perlHmrPortForwardDomain = "internal.test"
+const perlHmrPortForwardDomain = "localhost"
 
 func portForwardHost(t *testing.T, cookies sessionCookies) string {
 	t.Helper()

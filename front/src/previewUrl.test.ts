@@ -3,8 +3,8 @@ import { previewUrl } from "./previewUrl";
 
 describe("previewUrl", () => {
   test("substitutes {hex} in the template", () => {
-    expect(previewUrl("http://{hex}.ap-northeast-1.internal.test/", "deadbeef")).toBe(
-      "http://deadbeef.ap-northeast-1.internal.test/",
+    expect(previewUrl("http://{hex}.ap-northeast-1.localhost/", "deadbeef")).toBe(
+      "http://deadbeef.ap-northeast-1.localhost/",
     );
   });
 

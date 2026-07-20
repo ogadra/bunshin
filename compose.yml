@@ -130,7 +130,7 @@ services:
     networks:
       default:
         aliases:
-          - ap-northeast-3.internal.test
+          - ap-northeast-3.localhost
     profiles:
       - integration
 
