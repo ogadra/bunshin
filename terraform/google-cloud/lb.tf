@@ -30,6 +30,8 @@ resource "google_compute_backend_service" "nginx" {
   security_policy      = google_compute_security_policy.backend.id
   edge_security_policy = google_compute_security_policy.edge.id
 
+  custom_request_headers = ["X-Bunshin-Edge-Client-Address: {client_ip_address}:{client_port}"]
+
   health_checks = [google_compute_health_check.nginx.id]
 
   log_config {
