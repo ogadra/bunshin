@@ -7,19 +7,26 @@ const highlight = (page: Page) => page.locator(".editor-highlight");
 // nginx が /api 応答に付ける X-Session-Hex を模したテスト用の hex
 const E2E_SESSION_HEX = "0123456789abcdef0123456789abcdef";
 
+// broker が /api 応答に付ける X-Stack-Name を模したテスト用の stack
+const E2E_STACK_NAME = "preview";
+
 // vite preview は SPA fallback で /api/app/handler にも index.html を返してしまうので、
 // GET を明示的にモックしないと initial code が HTML になって Perl のトークン検証が壊れる。
 // PUT/GET と iframe preview 先をまとめて捕まえるヘルパー
 async function stubHandlerApi(page: Page, initialSource: string): Promise<{ puts: string[] }> {
   const puts: string[] = [];
   let current = initialSource;
+  const apiHeaders = {
+    "X-Session-Hex": E2E_SESSION_HEX,
+    "X-Stack-Name": E2E_STACK_NAME,
+  };
   await page.route("**/api/app/handler", async (route, req) => {
     if (req.method() === "GET") {
       await route.fulfill({
         status: 200,
         body: current,
         contentType: "text/plain",
-        headers: { "X-Session-Hex": E2E_SESSION_HEX },
+        headers: apiHeaders,
       });
       return;
     }
@@ -27,7 +34,7 @@ async function stubHandlerApi(page: Page, initialSource: string): Promise<{ puts
       const body = req.postData() ?? "";
       current = body;
       puts.push(body);
-      await route.fulfill({ status: 204, headers: { "X-Session-Hex": E2E_SESSION_HEX } });
+      await route.fulfill({ status: 204, headers: apiHeaders });
       return;
     }
     await route.continue();
