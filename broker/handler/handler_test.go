@@ -138,16 +138,16 @@ func TestGetResolveSession_ExistingSession(t *testing.T) {
 	t.Parallel()
 	h := NewHandler(&mockService{
 		resolveSessionFn: func(_ context.Context, sessionID string) (*service.ResolveResult, error) {
-			if sessionID != "sess-abc" {
-				t.Errorf("sessionID = %q, want %q", sessionID, "sess-abc")
+			if sessionID != "ap-northeast-1_sess-abc" {
+				t.Errorf("sessionID = %q, want %q", sessionID, "ap-northeast-1_sess-abc")
 			}
-			return &service.ResolveResult{SessionID: "sess-abc", RunnerHost: "10.0.0.1", Created: false}, nil
+			return &service.ResolveResult{SessionHex: "sess-abc", RunnerHost: "10.0.0.1", Created: false}, nil
 		},
 	}, []string{})
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve/session", nil)
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: "sess-abc"})
+	req.AddCookie(&http.Cookie{Name: "session_id", Value: "ap-northeast-1_sess-abc"})
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -172,7 +172,7 @@ func TestGetResolveSession_MissingCookie_CreatesSession(t *testing.T) {
 			if sessionID != "" {
 				t.Errorf("sessionID = %q, want empty", sessionID)
 			}
-			return &service.ResolveResult{SessionID: "ap-northeast-1_new-sess", RunnerHost: "10.0.0.2", Created: true}, nil
+			return &service.ResolveResult{SessionID: "ap-northeast-1_new-sess", SessionHex: "new-sess", RunnerHost: "10.0.0.2", Created: true}, nil
 		},
 	}, []string{})
 	r := newTestRouter(h)
@@ -217,6 +217,9 @@ func TestGetResolveSession_NoIdleRunner(t *testing.T) {
 	}
 	if got := rec.Header().Get("X-Fallback-Stack"); got != "" {
 		t.Errorf("X-Fallback-Stack = %q, want empty when no fallback configured", got)
+	}
+	if got := rec.Header().Get("X-Session-Hex"); got != "" {
+		t.Errorf("X-Session-Hex = %q, want empty on error", got)
 	}
 }
 
@@ -316,6 +319,9 @@ func TestGetResolveSession_InternalError(t *testing.T) {
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+	if got := rec.Header().Get("X-Session-Hex"); got != "" {
+		t.Errorf("X-Session-Hex = %q, want empty on error", got)
 	}
 }
 
@@ -563,7 +569,7 @@ func TestGetResolveSession_CookieSecure(t *testing.T) {
 	t.Parallel()
 	h := NewHandler(&mockService{
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
-			return &service.ResolveResult{SessionID: "new-sess", RunnerHost: "10.0.0.1", Created: true}, nil
+			return &service.ResolveResult{SessionID: "ap-northeast-1_new-sess", SessionHex: "new-sess", RunnerHost: "10.0.0.1", Created: true}, nil
 		},
 	}, []string{})
 	r := newTestRouter(h)
@@ -589,13 +595,66 @@ func TestGetResolveSession_CookieSecure(t *testing.T) {
 	t.Error("session_id cookie not found")
 }
 
+// TestGetResolveSession_SessionHexHeader は新規・既存どちらのセッションでも
+// X-Session-Hex ヘッダーに service が返した hex がそのまま設定されることを検証する。
+func TestGetResolveSession_SessionHexHeader(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		result  *service.ResolveResult
+		wantHex string
+	}{
+		{
+			name: "created session",
+			result: &service.ResolveResult{
+				SessionHex: "0123456789abcdef0123456789abcdef",
+				RunnerHost: "10.0.0.1",
+				Created:    true,
+			},
+			wantHex: "0123456789abcdef0123456789abcdef",
+		},
+		{
+			name: "existing session",
+			result: &service.ResolveResult{
+				SessionHex: "fedcba9876543210fedcba9876543210",
+				RunnerHost: "10.0.0.2",
+				Created:    false,
+			},
+			wantHex: "fedcba9876543210fedcba9876543210",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			h := NewHandler(&mockService{
+				resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
+					return tt.result, nil
+				},
+			}, []string{})
+			r := newTestRouter(h)
+
+			req := httptest.NewRequest(http.MethodGet, "/resolve/session", nil)
+			rec := httptest.NewRecorder()
+			r.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+			}
+			if got := rec.Header().Get("X-Session-Hex"); got != tt.wantHex {
+				t.Errorf("X-Session-Hex = %q, want %q", got, tt.wantHex)
+			}
+		})
+	}
+}
+
 // TestGetResolveSession_Reassigned はセッション再割当て時に X-Session-Reassigned ヘッダーが設定されることを検証する。
 func TestGetResolveSession_Reassigned(t *testing.T) {
 	t.Parallel()
 	h := NewHandler(&mockService{
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return &service.ResolveResult{
-				SessionID:  "new-sess",
+				SessionID:  "ap-northeast-1_new-sess",
+				SessionHex: "new-sess",
 				RunnerHost: "10.0.0.2",
 				Created:    true,
 				Reassigned: true,
@@ -618,6 +677,9 @@ func TestGetResolveSession_Reassigned(t *testing.T) {
 	if got := rec.Header().Get("X-Runner-Host"); got != "10.0.0.2" {
 		t.Errorf("X-Runner-Host = %q, want %q", got, "10.0.0.2")
 	}
+	if got := rec.Header().Get("X-Session-Hex"); got != "new-sess" {
+		t.Errorf("X-Session-Hex = %q, want %q", got, "new-sess")
+	}
 }
 
 // TestGetResolveSession_NotReassigned はセッション再割当てなしの場合に X-Session-Reassigned ヘッダーが設定されないことを検証する。
@@ -626,7 +688,7 @@ func TestGetResolveSession_NotReassigned(t *testing.T) {
 	h := NewHandler(&mockService{
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return &service.ResolveResult{
-				SessionID:  "sess-1",
+				SessionHex: "sess-1",
 				RunnerHost: "10.0.0.1",
 				Created:    false,
 				Reassigned: false,
@@ -636,7 +698,7 @@ func TestGetResolveSession_NotReassigned(t *testing.T) {
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve/session", nil)
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: "sess-1"})
+	req.AddCookie(&http.Cookie{Name: "session_id", Value: "ap-northeast-1_sess-1"})
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
