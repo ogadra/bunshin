@@ -4,22 +4,36 @@ import { SessionReassignedError } from "./errors/SessionReassignedError";
 // nginx が /api 応答に付ける X-Session-Hex ヘッダーから得る
 const sessionHexHeader = "X-Session-Hex";
 
+// STACK_NAME は broker 単一ソースにするため、compose interpolation ではなく
+// broker からのレスポンスに載せた X-Stack-Name で受け取る
+const stackNameHeader = "X-Stack-Name";
+
 export const getAppHandler = async (): Promise<{
   source: string;
   sessionHex: string | null;
+  stackName: string | null;
 }> => {
   const res = await fetch("/api/app/handler");
   if (!res.ok) throw new Error(`Failed to get handler: ${res.status}`);
-  return { source: await res.text(), sessionHex: res.headers.get(sessionHexHeader) };
+  return {
+    source: await res.text(),
+    sessionHex: res.headers.get(sessionHexHeader),
+    stackName: res.headers.get(stackNameHeader),
+  };
 };
 
-export const putAppHandler = async (source: string): Promise<{ sessionHex: string | null }> => {
+export const putAppHandler = async (
+  source: string,
+): Promise<{ sessionHex: string | null; stackName: string | null }> => {
   const res = await fetch("/api/app/handler", {
     method: "PUT",
     body: source,
   });
   if (!res.ok) throw new Error(`Failed to put handler: ${res.status}`);
-  return { sessionHex: res.headers.get(sessionHexHeader) };
+  return {
+    sessionHex: res.headers.get(sessionHexHeader),
+    stackName: res.headers.get(stackNameHeader),
+  };
 };
 
 export const SseEventType = {

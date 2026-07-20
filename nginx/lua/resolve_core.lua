@@ -205,6 +205,7 @@ function _M.decide(res, stacks, domain)
         set_cookie = set_cookie,
         reassigned = res.header["X-Session-Reassigned"],
         session_hex = res.header["X-Session-Hex"],
+        stack_name = res.header["X-Stack-Name"],
     }
 end
 

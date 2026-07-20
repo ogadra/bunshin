@@ -8,7 +8,10 @@ services:
     env_file:
       - front/.env.compose.example
     environment:
-      VITE_PERL_ORIGIN_TEMPLATE: "http://{hex}.${STACK_NAME}.${INTERNAL_DOMAIN}/"
+      # {stack} は broker が X-Stack-Name で返す値で置換する。
+      # top-level STACK_NAME を front に伝播させると broker との drift 源になるため、
+      # ここでは interpolation しない。
+      VITE_PERL_ORIGIN_TEMPLATE: "http://{hex}.{stack}.${INTERNAL_DOMAIN}/"
     volumes:
       # node_modulesは匿名volumeに退避する。
       # host側の異なるarch向けtreeでbind mountされて上書きされないため。
@@ -33,7 +36,6 @@ services:
     env_file:
       - nginx/.env.example
     environment:
-      STACK_NAME: ${STACK_NAME}
       INTERNAL_DOMAIN: ${INTERNAL_DOMAIN}
     depends_on:
       forward-cert:

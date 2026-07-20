@@ -922,6 +922,20 @@ func TestApiSessionHexHeader(t *testing.T) {
 	}
 }
 
+// TestApiStackNameHeader は /api 応答の X-Stack-Name に broker 自身の STACK_NAME が入ることを検証する。
+// front はこのヘッダーから preview URL の subdomain 部を組む。
+func TestApiStackNameHeader(t *testing.T) {
+	cookies := setupSession(t)
+	resp := doRequest(t, http.MethodGet, nginxBase+"/api/app/handler", "", cookies.cookieHeader())
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/app/handler: want 200, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get("X-Stack-Name"); got != perlHmrStack {
+		t.Fatalf("X-Stack-Name = %q, want %q", got, perlHmrStack)
+	}
+}
+
 func TestPerlHmrReachable(t *testing.T) {
 	cookies := setupSession(t)
 	host := portForwardHost(t, cookies)
