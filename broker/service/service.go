@@ -145,7 +145,7 @@ func (s *BrokerService) ResolveSession(ctx context.Context, sessionID string) (*
 		runner, err := s.repo.FindBySessionID(ctx, sessionID)
 		if err == nil {
 			if checkErr := s.checker.Check(ctx, runner.PrivateHost); checkErr == nil {
-				// store 上の session ID は createSession が必ず prefix 付きで発行するため、
+				// store上のsession IDはcreateSessionが必ずprefix付きで発行するため、
 				// 見つかったのに分解できない場合はデータ不整合として扱う
 				_, sessionHex, ok := splitNamespacedSessionID(sessionID)
 				if !ok {

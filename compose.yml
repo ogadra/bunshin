@@ -8,8 +8,8 @@ services:
     env_file:
       - front/.env.compose.example
     environment:
-      # top-level STACK_NAME を front に伝播させると broker との drift 源になるため、
-      # ここでは interpolation しない。
+      # top-level STACK_NAMEをfrontに伝播させるとbrokerとのdrift源になるため、
+      # ここではinterpolationしない。
       VITE_PERL_ORIGIN_TEMPLATE: "http://{hex}.{stack}.${INTERNAL_DOMAIN}/"
     volumes:
       # node_modulesは匿名volumeに退避する。

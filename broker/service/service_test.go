@@ -667,8 +667,8 @@ func TestResolveSession_ExistingHealthy(t *testing.T) {
 	}
 }
 
-// TestResolveSession_StoredIDWithoutPrefix は store から見つかった session ID が
-// prefix を欠く場合にデータ不整合としてエラーを返すことを検証する。
+// TestResolveSession_StoredIDWithoutPrefixはstoreから見つかったsession IDが
+// prefixを欠く場合にデータ不整合としてエラーを返すことを検証する。
 func TestResolveSession_StoredIDWithoutPrefix(t *testing.T) {
 	t.Parallel()
 	repo := &mockRepository{

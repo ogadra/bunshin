@@ -154,11 +154,11 @@ func TestGetResolveSession_ExistingSession(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
-	if got := rec.Header().Get("X-Runner-Host"); got != "10.0.0.1" {
-		t.Errorf("X-Runner-Host = %q, want %q", got, "10.0.0.1")
+	if got := rec.Header().Get(runnerHostHeader); got != "10.0.0.1" {
+		t.Errorf("%s = %q, want %q", runnerHostHeader, got, "10.0.0.1")
 	}
-	if got := rec.Header().Get("X-Stack-Name"); got != "ap-northeast-1" {
-		t.Errorf("X-Stack-Name = %q, want %q", got, "ap-northeast-1")
+	if got := rec.Header().Get(stackNameHeader); got != "ap-northeast-1" {
+		t.Errorf("%s = %q, want %q", stackNameHeader, got, "ap-northeast-1")
 	}
 	for _, c := range rec.Result().Cookies() {
 		if c.Name == "session_id" {
@@ -187,8 +187,8 @@ func TestGetResolveSession_MissingCookie_CreatesSession(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
-	if got := rec.Header().Get("X-Runner-Host"); got != "10.0.0.2" {
-		t.Errorf("X-Runner-Host = %q, want %q", got, "10.0.0.2")
+	if got := rec.Header().Get(runnerHostHeader); got != "10.0.0.2" {
+		t.Errorf("%s = %q, want %q", runnerHostHeader, got, "10.0.0.2")
 	}
 	found := false
 	for _, c := range rec.Result().Cookies() {
@@ -218,14 +218,14 @@ func TestGetResolveSession_NoIdleRunner(t *testing.T) {
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
 	}
-	if got := rec.Header().Get("X-Fallback-Stack"); got != "" {
-		t.Errorf("X-Fallback-Stack = %q, want empty when no fallback configured", got)
+	if got := rec.Header().Get(fallbackStackHeader); got != "" {
+		t.Errorf("%s = %q, want empty when no fallback configured", fallbackStackHeader, got)
 	}
-	if got := rec.Header().Get("X-Session-Hex"); got != "" {
-		t.Errorf("X-Session-Hex = %q, want empty on error", got)
+	if got := rec.Header().Get(sessionHexHeader); got != "" {
+		t.Errorf("%s = %q, want empty on error", sessionHexHeader, got)
 	}
-	if got := rec.Header().Get("X-Stack-Name"); got != "" {
-		t.Errorf("X-Stack-Name = %q, want empty on error", got)
+	if got := rec.Header().Get(stackNameHeader); got != "" {
+		t.Errorf("%s = %q, want empty on error", stackNameHeader, got)
 	}
 }
 
@@ -258,11 +258,11 @@ func TestGetResolveSession_FallbackOrigin(t *testing.T) {
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
 	}
-	if got := rec.Header().Get("X-Fallback-Stack"); got != "ap-northeast-3" {
-		t.Errorf("X-Fallback-Stack = %q, want %q", got, "ap-northeast-3")
+	if got := rec.Header().Get(fallbackStackHeader); got != "ap-northeast-3" {
+		t.Errorf("%s = %q, want %q", fallbackStackHeader, got, "ap-northeast-3")
 	}
-	if got := rec.Header().Get("X-Fallback-Remaining"); got != "ap-northeast-2" {
-		t.Errorf("X-Fallback-Remaining = %q, want %q", got, "ap-northeast-2")
+	if got := rec.Header().Get(fallbackRemainingHeader); got != "ap-northeast-2" {
+		t.Errorf("%s = %q, want %q", fallbackRemainingHeader, got, "ap-northeast-2")
 	}
 }
 
@@ -270,14 +270,14 @@ func TestGetResolveSession_FallbackOrigin(t *testing.T) {
 func TestGetResolveSession_FallbackForwarded(t *testing.T) {
 	t.Parallel()
 	rec := noIdleResolve([]string{}, map[string]string{
-		"X-Fallback-Stack":     "ap-northeast-3",
-		"X-Fallback-Remaining": "ap-northeast-2",
+		fallbackStackHeader:     "ap-northeast-3",
+		fallbackRemainingHeader: "ap-northeast-2",
 	})
-	if got := rec.Header().Get("X-Fallback-Stack"); got != "ap-northeast-2" {
-		t.Errorf("X-Fallback-Stack = %q, want %q", got, "ap-northeast-2")
+	if got := rec.Header().Get(fallbackStackHeader); got != "ap-northeast-2" {
+		t.Errorf("%s = %q, want %q", fallbackStackHeader, got, "ap-northeast-2")
 	}
-	if got := rec.Header().Get("X-Fallback-Remaining"); got != "" {
-		t.Errorf("X-Fallback-Remaining = %q, want empty", got)
+	if got := rec.Header().Get(fallbackRemainingHeader); got != "" {
+		t.Errorf("%s = %q, want empty", fallbackRemainingHeader, got)
 	}
 }
 
@@ -285,26 +285,26 @@ func TestGetResolveSession_FallbackForwarded(t *testing.T) {
 func TestGetResolveSession_FallbackForwardedKeepsTail(t *testing.T) {
 	t.Parallel()
 	rec := noIdleResolve([]string{}, map[string]string{
-		"X-Fallback-Stack":     "ap-northeast-3",
-		"X-Fallback-Remaining": "ap-northeast-2,us-east-1",
+		fallbackStackHeader:     "ap-northeast-3",
+		fallbackRemainingHeader: "ap-northeast-2,us-east-1",
 	})
-	if got := rec.Header().Get("X-Fallback-Stack"); got != "ap-northeast-2" {
-		t.Errorf("X-Fallback-Stack = %q, want %q", got, "ap-northeast-2")
+	if got := rec.Header().Get(fallbackStackHeader); got != "ap-northeast-2" {
+		t.Errorf("%s = %q, want %q", fallbackStackHeader, got, "ap-northeast-2")
 	}
-	if got := rec.Header().Get("X-Fallback-Remaining"); got != "us-east-1" {
-		t.Errorf("X-Fallback-Remaining = %q, want %q", got, "us-east-1")
+	if got := rec.Header().Get(fallbackRemainingHeader); got != "us-east-1" {
+		t.Errorf("%s = %q, want %q", fallbackRemainingHeader, got, "us-east-1")
 	}
 }
 
 // TestGetResolveSession_FallbackLastStack は転送済みで残りが無い(最後の stack)場合に forward を出さないことを検証する。
 func TestGetResolveSession_FallbackLastStack(t *testing.T) {
 	t.Parallel()
-	rec := noIdleResolve([]string{}, map[string]string{"X-Fallback-Stack": "ap-northeast-2"})
+	rec := noIdleResolve([]string{}, map[string]string{fallbackStackHeader: "ap-northeast-2"})
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
 	}
-	if got := rec.Header().Get("X-Fallback-Stack"); got != "" {
-		t.Errorf("X-Fallback-Stack = %q, want empty for last stack", got)
+	if got := rec.Header().Get(fallbackStackHeader); got != "" {
+		t.Errorf("%s = %q, want empty for last stack", fallbackStackHeader, got)
 	}
 }
 
@@ -326,11 +326,11 @@ func TestGetResolveSession_InternalError(t *testing.T) {
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
 	}
-	if got := rec.Header().Get("X-Session-Hex"); got != "" {
-		t.Errorf("X-Session-Hex = %q, want empty on error", got)
+	if got := rec.Header().Get(sessionHexHeader); got != "" {
+		t.Errorf("%s = %q, want empty on error", sessionHexHeader, got)
 	}
-	if got := rec.Header().Get("X-Stack-Name"); got != "" {
-		t.Errorf("X-Stack-Name = %q, want empty on error", got)
+	if got := rec.Header().Get(stackNameHeader); got != "" {
+		t.Errorf("%s = %q, want empty on error", stackNameHeader, got)
 	}
 }
 
@@ -505,7 +505,7 @@ func TestNewHandler_NilPanics(t *testing.T) {
 	NewHandler(nil, []string{}, "ap-northeast-1")
 }
 
-// TestNewHandler_EmptyStackPanics は NewHandler に空 stackSelf を渡すと panic することを検証する。
+// TestNewHandler_EmptyStackPanicsはNewHandlerに空stackSelfを渡すとpanicすることを検証する。
 func TestNewHandler_EmptyStackPanics(t *testing.T) {
 	t.Parallel()
 	defer func() {
@@ -618,8 +618,8 @@ func TestGetResolveSession_CookieSecure(t *testing.T) {
 	t.Error("session_id cookie not found")
 }
 
-// TestGetResolveSession_SessionHexHeader は新規・既存どちらのセッションでも
-// X-Session-Hex ヘッダーに service が返した hex がそのまま設定されることを検証する。
+// TestGetResolveSession_SessionHexHeaderは新規・既存どちらのセッションでも
+// X-Session-Hexヘッダーにserviceが返したhexがそのまま設定されることを検証する。
 func TestGetResolveSession_SessionHexHeader(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -663,11 +663,11 @@ func TestGetResolveSession_SessionHexHeader(t *testing.T) {
 			if rec.Code != http.StatusOK {
 				t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
 			}
-			if got := rec.Header().Get("X-Session-Hex"); got != tt.wantHex {
-				t.Errorf("X-Session-Hex = %q, want %q", got, tt.wantHex)
+			if got := rec.Header().Get(sessionHexHeader); got != tt.wantHex {
+				t.Errorf("%s = %q, want %q", sessionHexHeader, got, tt.wantHex)
 			}
-			if got := rec.Header().Get("X-Stack-Name"); got != "ap-northeast-1" {
-				t.Errorf("X-Stack-Name = %q, want %q", got, "ap-northeast-1")
+			if got := rec.Header().Get(stackNameHeader); got != "ap-northeast-1" {
+				t.Errorf("%s = %q, want %q", stackNameHeader, got, "ap-northeast-1")
 			}
 		})
 	}
@@ -697,14 +697,14 @@ func TestGetResolveSession_Reassigned(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
-	if got := rec.Header().Get("X-Session-Reassigned"); got != "true" {
-		t.Errorf("X-Session-Reassigned = %q, want %q", got, "true")
+	if got := rec.Header().Get(reassignedHeader); got != "true" {
+		t.Errorf("%s = %q, want %q", reassignedHeader, got, "true")
 	}
-	if got := rec.Header().Get("X-Runner-Host"); got != "10.0.0.2" {
-		t.Errorf("X-Runner-Host = %q, want %q", got, "10.0.0.2")
+	if got := rec.Header().Get(runnerHostHeader); got != "10.0.0.2" {
+		t.Errorf("%s = %q, want %q", runnerHostHeader, got, "10.0.0.2")
 	}
-	if got := rec.Header().Get("X-Session-Hex"); got != "new-sess" {
-		t.Errorf("X-Session-Hex = %q, want %q", got, "new-sess")
+	if got := rec.Header().Get(sessionHexHeader); got != "new-sess" {
+		t.Errorf("%s = %q, want %q", sessionHexHeader, got, "new-sess")
 	}
 }
 
@@ -728,11 +728,11 @@ func TestGetResolveSession_NotReassigned(t *testing.T) {
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
-	if got := rec.Header().Get("X-Session-Reassigned"); got != "" {
-		t.Errorf("X-Session-Reassigned = %q, want empty", got)
+	if got := rec.Header().Get(reassignedHeader); got != "" {
+		t.Errorf("%s = %q, want empty", reassignedHeader, got)
 	}
-	if got := rec.Header().Get("X-Runner-Host"); got != "10.0.0.1" {
-		t.Errorf("X-Runner-Host = %q, want %q", got, "10.0.0.1")
+	if got := rec.Header().Get(runnerHostHeader); got != "10.0.0.1" {
+		t.Errorf("%s = %q, want %q", runnerHostHeader, got, "10.0.0.1")
 	}
 }
 
@@ -883,8 +883,8 @@ func TestGetResolveApp_Existing(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
-	if got := rec.Header().Get("X-Runner-Host"); got != "10.0.0.1" {
-		t.Errorf("X-Runner-Host = %q, want %q", got, "10.0.0.1")
+	if got := rec.Header().Get(runnerHostHeader); got != "10.0.0.1" {
+		t.Errorf("%s = %q, want %q", runnerHostHeader, got, "10.0.0.1")
 	}
 	for _, c := range rec.Result().Cookies() {
 		if c.Name == "session_id" {
@@ -912,8 +912,8 @@ func TestGetResolveApp_NotFound(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), `"code":"SESSION_NOT_FOUND"`) {
 		t.Errorf("body = %q, want SESSION_NOT_FOUND", rec.Body.String())
 	}
-	if got := rec.Header().Get("X-Runner-Host"); got != "" {
-		t.Errorf("X-Runner-Host = %q, want empty", got)
+	if got := rec.Header().Get(runnerHostHeader); got != "" {
+		t.Errorf("%s = %q, want empty", runnerHostHeader, got)
 	}
 }
 

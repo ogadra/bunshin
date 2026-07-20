@@ -44,7 +44,7 @@ check("no reassigned when absent", r.reassigned == nil)
 check("no session-hex when absent", r.session_hex == nil)
 check("no stack-name when absent", r.stack_name == nil)
 
--- Set-Cookie / X-Session-Reassigned / X-Session-Hex / X-Stack-Name の伝播
+-- Set-Cookie / X-Session-Reassigned / X-Session-Hex / X-Stack-Nameの伝播
 r = core.decide({ status = 200, header = {
     ["X-Runner-Host"] = "runner-1",
     ["Set-Cookie"] = "session_id=abc; Path=/",

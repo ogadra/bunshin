@@ -28,12 +28,14 @@ const fallbackRemainingHeader = "X-Fallback-Remaining"
 
 const runnerHostHeader = "X-Runner-Host"
 
-// sessionHexHeader は front が preview URL を組むための session hex を返すヘッダー名。
-// cookie は HttpOnly のため、JS から読める経路としてヘッダーで返す。
+const reassignedHeader = "X-Session-Reassigned"
+
+// sessionHexHeaderはfrontがpreview URLを組むためのsession hexを返すヘッダー名。
+// cookieはHttpOnlyのため、JSから読める経路としてヘッダーで返す。
 const sessionHexHeader = "X-Session-Hex"
 
-// stackNameHeader は broker 自身の stack 名を front に伝えるヘッダー名。
-// front / compose の interpolation で上書きされないよう broker を single source とする。
+// stackNameHeaderはbroker自身のstack名をfrontに伝えるヘッダー名。
+// front / composeのinterpolationで上書きされないようbrokerをsingle sourceとする。
 const stackNameHeader = "X-Stack-Name"
 
 // Handler は broker の HTTP ハンドラー。
@@ -43,7 +45,7 @@ type Handler struct {
 	stackSelf      string
 }
 
-// NewHandler は Handler を生成する。svc が nil、stackSelf が空文字の場合は panic する。
+// NewHandlerはHandlerを生成する。svcがnil、stackSelfが空文字の場合はpanicする。
 func NewHandler(svc service.Service, fallbackStacks []string, stackSelf string) *Handler {
 	if svc == nil {
 		panic("handler: nil service")
@@ -97,7 +99,7 @@ func (h *Handler) GetResolveSession(c *gin.Context) {
 		c.SetCookie(sessionIDCookie, result.SessionID, 0, "/", "", true, true)
 	}
 	if result.Reassigned {
-		c.Header("X-Session-Reassigned", "true")
+		c.Header(reassignedHeader, "true")
 	}
 	c.Header(sessionHexHeader, result.SessionHex)
 	c.Header(stackNameHeader, h.stackSelf)

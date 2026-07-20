@@ -31,7 +31,7 @@ let previewStack = initialStack;
 const editor = createPerlEditor(editorEl, initialCode);
 
 const reloadPreview = (): void => {
-  // 同じ URL を代入しても reload しないブラウザがあるため cache-buster を付ける
+  // 同じURLを代入してもreloadしないブラウザがあるためcache-busterを付ける
   const base = previewUrl(PERL_ORIGIN_TEMPLATE, previewHex, previewStack);
   iframe.src = `${base}?_=${String(performance.now())}`;
 };
@@ -50,7 +50,7 @@ startHandlerSync({
   initialCode,
   putHandler: async (source: string): Promise<void> => {
     const { sessionHex, stackName } = await putAppHandler(source);
-    // セッション再割当てで hex や所属 stack が変わったら、次の reload から新しい preview 先を指す
+    // セッション再割当てでhexや所属stackが変わったら、次のreloadから新しいpreview先を指す
     if (sessionHex !== null) previewHex = sessionHex;
     if (stackName !== null) previewStack = stackName;
   },

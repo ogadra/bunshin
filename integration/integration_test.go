@@ -813,7 +813,7 @@ const perlHmrStack = "ap-northeast-1"
 
 const perlHmrPortForwardDomain = "localhost"
 
-// 32 hex label + {stack}.{perlHmrPortForwardDomain} の形式でしか pf server にマッチしない。
+// 32 hex label + {stack}.{perlHmrPortForwardDomain}の形式でしかpf serverにマッチしない。
 func portForwardHost(hex, stack string) string {
 	return hex + "." + stack + "." + perlHmrPortForwardDomain
 }
@@ -843,8 +843,8 @@ func snapshotHandler(t *testing.T, cookies sessionCookies) {
 	})
 }
 
-// cleanup から t.Fatalf を呼ぶと後続 cleanup がスキップされるため、fail 引数で失敗経路を注入する。
-// 本体では t.Fatalf、cleanup では t.Errorf を渡す。
+// cleanupからt.Fatalfを呼ぶと後続cleanupがスキップされるため、fail引数で失敗経路を注入する。
+// 本体ではt.Fatalf、cleanupではt.Errorfを渡す。
 func putHandlerRaw(t *testing.T, cookies sessionCookies, body io.Reader, fail func(format string, args ...any)) {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodPut, nginxBase+"/api/app/handler", body)
@@ -883,7 +883,7 @@ func getPerl(t *testing.T, host string) (int, string) {
 	return resp.StatusCode, string(body)
 }
 
-// 連続書き込みの mtime 衝突は response 待ちで解消できないため、PUT 側で境界跨ぎを保証すること。
+// 連続書き込みのmtime衝突はresponse待ちで解消できないため、PUT側で境界跨ぎを保証すること。
 func waitPerlResponse(t *testing.T, host string, wantStatus int, wantBody string) {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
@@ -902,8 +902,8 @@ func waitPerlResponse(t *testing.T, host string, wantStatus int, wantBody string
 	t.Fatalf("perl did not return status=%d body containing %q within 30s: last status=%d body=%q", wantStatus, wantBody, lastStatus, lastBody)
 }
 
-// TestApiSessionHexHeader は /api 応答の X-Session-Hex が session_id cookie の hex 部と
-// 一致する 32 桁小文字 hex であることを検証する。front はこのヘッダーから preview URL を組む。
+// TestApiSessionHexHeaderは/api応答のX-Session-Hexがsession_id cookieのhex部と
+// 一致する32桁小文字hexであることを検証する。frontはこのヘッダーからpreview URLを組む。
 func TestApiSessionHexHeader(t *testing.T) {
 	cookies := setupSession(t)
 	resp := doRequest(t, http.MethodGet, nginxBase+"/api/app/handler", "", cookies.cookieHeader())
@@ -927,8 +927,8 @@ func TestApiSessionHexHeader(t *testing.T) {
 	}
 }
 
-// TestApiStackNameHeader は /api 応答の X-Stack-Name に broker 自身の STACK_NAME が入ることを検証する。
-// front はこのヘッダーから preview URL の subdomain 部を組む。
+// TestApiStackNameHeaderは/api応答のX-Stack-Nameにbroker自身のSTACK_NAMEが入ることを検証する。
+// frontはこのヘッダーからpreview URLのsubdomain部を組む。
 func TestApiStackNameHeader(t *testing.T) {
 	cookies := setupSession(t)
 	resp := doRequest(t, http.MethodGet, nginxBase+"/api/app/handler", "", cookies.cookieHeader())
@@ -938,6 +938,48 @@ func TestApiStackNameHeader(t *testing.T) {
 	}
 	if got := resp.Header.Get("X-Stack-Name"); got != perlHmrStack {
 		t.Fatalf("X-Stack-Name = %q, want %q", got, perlHmrStack)
+	}
+}
+
+// TestApiHandlerPutHeadersはPUT /api/app/handlerの応答にも
+// X-Session-HexとX-Stack-Nameが付くことを検証する。frontはPUTレスポンスから
+// preview URLを再計算するため、GETと同じ契約がPUTでも成立している必要がある。
+func TestApiHandlerPutHeaders(t *testing.T) {
+	cookies := setupSession(t)
+	snapshotHandler(t, cookies)
+
+	req, err := http.NewRequest(http.MethodPut, nginxBase+"/api/app/handler", strings.NewReader(handlerModuleSource("put-header-check")))
+	if err != nil {
+		t.Fatalf("PUT /api/app/handler: new request: %v", err)
+	}
+	req.Header.Set("Cookie", cookies.cookieHeader())
+	req.Header.Set("Content-Type", "text/plain; charset=utf-8")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		t.Fatalf("PUT /api/app/handler: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("PUT /api/app/handler: status = %d, body = %s", resp.StatusCode, body)
+	}
+
+	got := resp.Header.Get("X-Session-Hex")
+	_, wantHex, ok := strings.Cut(cookies.SessionID, "_")
+	if !ok {
+		t.Fatalf("unexpected SessionID format: %q", cookies.SessionID)
+	}
+	if got != wantHex {
+		t.Fatalf("X-Session-Hex = %q, want %q", got, wantHex)
+	}
+	if len(got) != 32 {
+		t.Fatalf("X-Session-Hex length = %d, want 32", len(got))
+	}
+	if _, err := hex.DecodeString(got); err != nil {
+		t.Fatalf("X-Session-Hex is not hex: %v", err)
+	}
+	if gotStack := resp.Header.Get("X-Stack-Name"); gotStack != perlHmrStack {
+		t.Fatalf("X-Stack-Name = %q, want %q", gotStack, perlHmrStack)
 	}
 }
 
@@ -967,10 +1009,10 @@ func TestPerlHmrSyntaxErrorRecovers(t *testing.T) {
 	putHandler(t, cookies, "this is not perl at all !!!\n")
 	waitPerlResponse(t, host, http.StatusInternalServerError, "DaiKichijoji.pm load failed")
 
-	// Module::Refresh は mtime 比較で reload の要否を判定する。
-	// nsec 解像度を持たないファイルシステムでは同一秒内の連続書き込みが同じ mtime に丸められる。
-	// この場合、復旧 PUT の reload が silent にスキップされる。
-	// 復旧 PUT が次の秒境界を跨いだ mtime を持つよう待機する。
+	// Module::Refreshはmtime比較でreloadの要否を判定する。
+	// nsec解像度を持たないファイルシステムでは同一秒内の連続書き込みが同じmtimeに丸められる。
+	// この場合、復旧PUTのreloadがsilentにスキップされる。
+	// 復旧PUTが次の秒境界を跨いだmtimeを持つよう待機する。
 	if wait := time.Until(brokenPutAt.Add(1100 * time.Millisecond)); wait > 0 {
 		time.Sleep(wait)
 	}

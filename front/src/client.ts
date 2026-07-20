@@ -1,11 +1,11 @@
 import { SessionReassignedError } from "./errors/SessionReassignedError";
 
-// session_id cookie は HttpOnly のため、preview URL 用の session hex は
-// nginx が /api 応答に付ける X-Session-Hex ヘッダーから得る
+// session_id cookieはHttpOnlyのため、preview URL用のsession hexは
+// nginxが/api応答に付けるX-Session-Hexヘッダーから得る
 const sessionHexHeader = "X-Session-Hex";
 
-// STACK_NAME は broker 単一ソースにするため、compose interpolation ではなく
-// broker からのレスポンスに載せた X-Stack-Name で受け取る
+// STACK_NAMEはbroker単一ソースにするため、compose interpolationではなく
+// brokerからのレスポンスに載せたX-Stack-Nameで受け取る
 const stackNameHeader = "X-Stack-Name";
 
 export const getAppHandler = async (): Promise<{

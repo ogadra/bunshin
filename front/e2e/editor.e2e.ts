@@ -4,15 +4,15 @@ import { samplePerl } from "../src/samplePerl";
 const input = (page: Page) => page.locator(".editor-input");
 const highlight = (page: Page) => page.locator(".editor-highlight");
 
-// nginx が /api 応答に付ける X-Session-Hex を模したテスト用の hex
+// nginxが/api応答に付けるX-Session-Hexを模したテスト用のhex
 const E2E_SESSION_HEX = "0123456789abcdef0123456789abcdef";
 
-// broker が /api 応答に付ける X-Stack-Name を模したテスト用の stack
+// brokerが/api応答に付けるX-Stack-Nameを模したテスト用のstack
 const E2E_STACK_NAME = "preview";
 
-// vite preview は SPA fallback で /api/app/handler にも index.html を返してしまうので、
-// GET を明示的にモックしないと initial code が HTML になって Perl のトークン検証が壊れる。
-// PUT/GET と iframe preview 先をまとめて捕まえるヘルパー
+// vite previewはSPA fallbackで/api/app/handlerにもindex.htmlを返してしまうので、
+// GETを明示的にモックしないとinitial codeがHTMLになってPerlのトークン検証が壊れる。
+// PUT/GETとiframe preview先をまとめて捕まえるヘルパー
 async function stubHandlerApi(page: Page, initialSource: string): Promise<{ puts: string[] }> {
   const puts: string[] = [];
   let current = initialSource;
@@ -39,8 +39,8 @@ async function stubHandlerApi(page: Page, initialSource: string): Promise<{ puts
     }
     await route.continue();
   });
-  // preview 先ドメインは preview サーバーからは到達不能なので、任意の 200 を返して DevTools の
-  // net::ERR ノイズと視覚的な壊れ表示を抑える。webServer.env の VITE_PERL_ORIGIN_TEMPLATE と揃える
+  // preview先ドメインはpreviewサーバーからは到達不能なので、任意の200を返してDevToolsの
+  // net::ERRノイズと視覚的な壊れ表示を抑える。webServer.envのVITE_PERL_ORIGIN_TEMPLATEと揃える
   await page.route("http://*.preview.test/**", async (route) => {
     await route.fulfill({ status: 200, body: current, contentType: "text/plain" });
   });
@@ -188,6 +188,39 @@ test.describe("Perl HMR wiring", () => {
       .not.toBe(initialSrc);
   });
 
+  test("PUT response's new X-Session-Hex / X-Stack-Name switches subsequent iframe preview URL", async ({
+    page,
+  }) => {
+    const REASSIGNED_HEX = "fedcba9876543210fedcba9876543210";
+    const REASSIGNED_STACK = "reassigned-stack";
+    // beforeEachのPUT stubを、再割当てで別hex/stackが返る挙動に上書きする。GETはfallthroughで元stub。
+    await page.route("**/api/app/handler", async (route, req) => {
+      if (req.method() !== "PUT") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 204,
+        headers: {
+          "X-Session-Hex": REASSIGNED_HEX,
+          "X-Stack-Name": REASSIGNED_STACK,
+        },
+      });
+    });
+    // 新hex/stackで組み立てられるpreview先も200を返すようにしておく
+    await page.route(`http://${REASSIGNED_HEX}.${REASSIGNED_STACK}/**`, async (route) => {
+      await route.fulfill({ status: 200, body: "reassigned", contentType: "text/plain" });
+    });
+
+    await input(page).click();
+    await page.keyboard.press("ControlOrMeta+End");
+    await page.keyboard.type("\n# trigger PUT", { delay: 20 });
+
+    await expect
+      .poll(() => page.locator("#preview").getAttribute("src"), { timeout: 5000 })
+      .toMatch(new RegExp(`^http://${REASSIGNED_HEX}\\.${REASSIGNED_STACK}/`));
+  });
+
   test("edits arriving during a slow PUT wait for DEBOUNCE_MS of idle before the next PUT starts", async ({
     page,
   }) => {
@@ -196,7 +229,7 @@ test.describe("Perl HMR wiring", () => {
     const startTimes: number[] = [];
     const completeTimes: number[] = [];
     const putPayloads: string[] = [];
-    // beforeEach の PUT stub を意図的な遅延つきに上書きし、GET は元の stub に fallback で委譲する
+    // beforeEachのPUT stubを意図的な遅延つきに上書きし、GETは元のstubにfallbackで委譲する
     await page.route("**/api/app/handler", async (route, req) => {
       if (req.method() !== "PUT") {
         await route.fallback();
@@ -217,11 +250,11 @@ test.describe("Perl HMR wiring", () => {
     await expect.poll(() => startTimes.length, { timeout: 8000 }).toBe(2);
     await expect.poll(() => completeTimes.length, { timeout: 5000 }).toBe(2);
 
-    // idle 契約: 1st PUT 完了直後に unsent 変更が残っていても、DEBOUNCE_MS 経つまで 2nd PUT を出さない
+    // idle契約: 1st PUT完了直後にunsent変更が残っていても、DEBOUNCE_MS経つまで2nd PUTを出さない
     const gapMs = startTimes[1] - completeTimes[0];
     expect(gapMs).toBeGreaterThanOrEqual(800);
 
-    // 収束契約: 2nd PUT は最新スナップショットを送信し、以降は追加 PUT を出さない
+    // 収束契約: 2nd PUTは最新スナップショットを送信し、以降は追加PUTを出さない
     expect(putPayloads.at(-1)).toContain("# second");
     await page.waitForTimeout(DEBOUNCE_MS * 2 + 200);
     expect(startTimes).toHaveLength(2);
