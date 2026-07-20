@@ -36,18 +36,14 @@ const sessionHexHeader = "X-Session-Hex"
 type Handler struct {
 	svc            service.Service
 	fallbackStacks []string
-	stackPrefix    string
 }
 
-// NewHandler は Handler を生成する。svc が nil または stackPrefix が空の場合は panic する。
-func NewHandler(svc service.Service, fallbackStacks []string, stackPrefix string) *Handler {
+// NewHandler は Handler を生成する。svc が nil の場合は panic する。
+func NewHandler(svc service.Service, fallbackStacks []string) *Handler {
 	if svc == nil {
 		panic("handler: nil service")
 	}
-	if stackPrefix == "" {
-		panic("handler: empty stackPrefix")
-	}
-	return &Handler{svc: svc, fallbackStacks: fallbackStacks, stackPrefix: stackPrefix}
+	return &Handler{svc: svc, fallbackStacks: fallbackStacks}
 }
 
 // registerRequest は POST /internal/runners/register のリクエストボディ。
@@ -90,8 +86,7 @@ func (h *Handler) GetResolveSession(c *gin.Context) {
 	}
 	if result.Created {
 		c.SetSameSite(http.SameSiteStrictMode)
-		cookieValue := service.NamespacedSessionID(h.stackPrefix, result.SessionHex)
-		c.SetCookie(sessionIDCookie, cookieValue, 0, "/", "", true, true)
+		c.SetCookie(sessionIDCookie, result.SessionID, 0, "/", "", true, true)
 	}
 	if result.Reassigned {
 		c.Header("X-Session-Reassigned", "true")

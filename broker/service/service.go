@@ -32,6 +32,7 @@ type Service interface {
 }
 
 type ResolveResult struct {
+	SessionID  string
 	SessionHex string
 	RunnerHost string
 	Created    bool
@@ -43,6 +44,7 @@ type LookupResult struct {
 }
 
 type CreateSessionResult struct {
+	SessionID  string
 	SessionHex string
 	Runner     *model.Runner
 }
@@ -96,14 +98,14 @@ func defaultSessionFn() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// NamespacedSessionID は stack prefix と session hex から cookie に載せる session ID を組み立てる。
-// 分解・組み立ての形式知識をこの関数に集約する。
-func NamespacedSessionID(stackPrefix, sessionHex string) string {
-	return stackPrefix + "_" + sessionHex
-}
+const sessionIDSeparator = "_"
 
 func (s *BrokerService) namespacedSessionID(sessionHex string) string {
-	return NamespacedSessionID(s.stackPrefix, sessionHex)
+	return s.stackPrefix + sessionIDSeparator + sessionHex
+}
+
+func splitNamespacedSessionID(sessionID string) (stackPrefix, sessionHex string, ok bool) {
+	return strings.Cut(sessionID, sessionIDSeparator)
 }
 
 func (s *BrokerService) createSession(ctx context.Context) (*CreateSessionResult, error) {
@@ -118,7 +120,7 @@ func (s *BrokerService) createSession(ctx context.Context) (*CreateSessionResult
 			return nil, err
 		}
 		if checkErr := s.checker.Check(ctx, runner.PrivateHost); checkErr == nil {
-			return &CreateSessionResult{SessionHex: sessionHex, Runner: runner}, nil
+			return &CreateSessionResult{SessionID: sessionID, SessionHex: sessionHex, Runner: runner}, nil
 		} else if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
@@ -145,11 +147,11 @@ func (s *BrokerService) ResolveSession(ctx context.Context, sessionID string) (*
 			if checkErr := s.checker.Check(ctx, runner.PrivateHost); checkErr == nil {
 				// store 上の session ID は createSession が必ず prefix 付きで発行するため、
 				// 見つかったのに分解できない場合はデータ不整合として扱う
-				_, sessionHex, ok := strings.Cut(sessionID, "_")
+				_, sessionHex, ok := splitNamespacedSessionID(sessionID)
 				if !ok {
 					return nil, fmt.Errorf("resolve session: stored session id missing stack prefix: %q", sessionID)
 				}
-				return &ResolveResult{SessionHex: sessionHex, RunnerHost: runner.PrivateHost, Created: false}, nil
+				return &ResolveResult{SessionID: sessionID, SessionHex: sessionHex, RunnerHost: runner.PrivateHost, Created: false}, nil
 			} else if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}
@@ -167,6 +169,7 @@ func (s *BrokerService) ResolveSession(ctx context.Context, sessionID string) (*
 		return nil, err
 	}
 	return &ResolveResult{
+		SessionID:  result.SessionID,
 		SessionHex: result.SessionHex,
 		RunnerHost: result.Runner.PrivateHost,
 		Created:    true,

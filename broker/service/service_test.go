@@ -4,6 +4,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/ogadra/bunshin/broker/model"
@@ -245,6 +246,9 @@ func TestCreateSession_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	if result.SessionID != "ap-northeast-1_fixed-session" {
+		t.Errorf("SessionID = %q, want %q", result.SessionID, "ap-northeast-1_fixed-session")
+	}
 	if result.SessionHex != "fixed-session" {
 		t.Errorf("SessionHex = %q, want %q", result.SessionHex, "fixed-session")
 	}
@@ -269,6 +273,9 @@ func TestCreateSession_StackPrefix(t *testing.T) {
 	result, err := svc.createSession(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.SessionID != "ap-northeast-3_fixed-session" {
+		t.Errorf("SessionID = %q, want %q", result.SessionID, "ap-northeast-3_fixed-session")
 	}
 	if result.SessionHex != "fixed-session" {
 		t.Errorf("SessionHex = %q, want %q", result.SessionHex, "fixed-session")
@@ -517,6 +524,9 @@ func TestResolveSession_ExistingSession(t *testing.T) {
 	if result.Created {
 		t.Error("expected Created=false for existing session")
 	}
+	if result.SessionID != "ap-northeast-1_sess-1" {
+		t.Errorf("SessionID = %q, want %q", result.SessionID, "ap-northeast-1_sess-1")
+	}
 	if result.SessionHex != "sess-1" {
 		t.Errorf("SessionHex = %q, want %q", result.SessionHex, "sess-1")
 	}
@@ -550,6 +560,9 @@ func TestResolveSession_NotFound_CreatesNew(t *testing.T) {
 	}
 	if !result.Created {
 		t.Error("expected Created=true for new session")
+	}
+	if result.SessionID != "ap-northeast-1_new-session" {
+		t.Errorf("SessionID = %q, want %q", result.SessionID, "ap-northeast-1_new-session")
 	}
 	if result.SessionHex != "new-session" {
 		t.Errorf("SessionHex = %q, want %q", result.SessionHex, "new-session")
@@ -646,6 +659,9 @@ func TestResolveSession_ExistingHealthy(t *testing.T) {
 	if result.Reassigned {
 		t.Error("expected Reassigned=false")
 	}
+	if result.SessionID != "ap-northeast-1_sess-1" {
+		t.Errorf("SessionID = %q, want %q", result.SessionID, "ap-northeast-1_sess-1")
+	}
 	if result.SessionHex != "sess-1" {
 		t.Errorf("SessionHex = %q, want %q", result.SessionHex, "sess-1")
 	}
@@ -665,6 +681,9 @@ func TestResolveSession_StoredIDWithoutPrefix(t *testing.T) {
 	_, err := svc.ResolveSession(context.Background(), "noprefix")
 	if err == nil {
 		t.Fatal("expected error for session id without stack prefix")
+	}
+	if !strings.Contains(err.Error(), "missing stack prefix") {
+		t.Errorf("err = %v, want to contain %q", err, "missing stack prefix")
 	}
 }
 
