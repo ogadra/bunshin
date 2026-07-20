@@ -17,7 +17,7 @@ export default defineConfig({
     // 起動しておけば reuseExistingServer で再利用される
     command: "pnpm build && pnpm preview --port 4273 --strictPort",
     env: {
-      VITE_PERL_ORIGIN_TEMPLATE: "http://{hex}.preview.test/",
+      VITE_PERL_ORIGIN_TEMPLATE: "http://{hex}.{stack}.test/",
     },
     url: "http://localhost:4273",
     reuseExistingServer: !process.env.CI,

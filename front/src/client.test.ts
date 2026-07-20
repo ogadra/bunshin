@@ -42,24 +42,34 @@ const sseBody = (lines: string[]) => {
 
 const HEX = "0123456789abcdef0123456789abcdef";
 
+const STACK = "ap-northeast-1";
+
 describe("getAppHandler", () => {
-  test("GET /api/app/handler returns text body and session hex", async () => {
+  test("GET /api/app/handler returns text body, session hex and stack name", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
-      headers: responseHeaders({ "X-Session-Hex": HEX }),
+      headers: responseHeaders({ "X-Session-Hex": HEX, "X-Stack-Name": STACK }),
       text: async () => "sub { };",
     });
-    await expect(getAppHandler()).resolves.toEqual({ source: "sub { };", sessionHex: HEX });
+    await expect(getAppHandler()).resolves.toEqual({
+      source: "sub { };",
+      sessionHex: HEX,
+      stackName: STACK,
+    });
     expect(mockFetch).toHaveBeenCalledWith("/api/app/handler");
   });
 
-  test("sessionHex is null when the header is absent", async () => {
+  test("sessionHex and stackName are null when headers are absent", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       headers: responseHeaders(),
       text: async () => "sub { };",
     });
-    await expect(getAppHandler()).resolves.toEqual({ source: "sub { };", sessionHex: null });
+    await expect(getAppHandler()).resolves.toEqual({
+      source: "sub { };",
+      sessionHex: null,
+      stackName: null,
+    });
   });
 
   test("throws on non-ok response", async () => {
@@ -69,10 +79,14 @@ describe("getAppHandler", () => {
 });
 
 describe("putAppHandler", () => {
-  test("PUT /api/app/handler with body returns session hex", async () => {
-    mockFetch.mockResolvedValue({ ok: true, headers: responseHeaders({ "X-Session-Hex": HEX }) });
+  test("PUT /api/app/handler with body returns session hex and stack name", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: responseHeaders({ "X-Session-Hex": HEX, "X-Stack-Name": STACK }),
+    });
     await expect(putAppHandler("sub { return (200, 'text/plain', 'ok'); };")).resolves.toEqual({
       sessionHex: HEX,
+      stackName: STACK,
     });
     expect(mockFetch).toHaveBeenCalledWith("/api/app/handler", {
       method: "PUT",
@@ -80,9 +94,9 @@ describe("putAppHandler", () => {
     });
   });
 
-  test("sessionHex is null when the header is absent", async () => {
+  test("sessionHex and stackName are null when headers are absent", async () => {
     mockFetch.mockResolvedValue({ ok: true, headers: responseHeaders() });
-    await expect(putAppHandler("body")).resolves.toEqual({ sessionHex: null });
+    await expect(putAppHandler("body")).resolves.toEqual({ sessionHex: null, stackName: null });
   });
 
   test("throws on non-ok response", async () => {

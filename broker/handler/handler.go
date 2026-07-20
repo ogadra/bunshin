@@ -32,18 +32,26 @@ const runnerHostHeader = "X-Runner-Host"
 // cookie は HttpOnly のため、JS から読める経路としてヘッダーで返す。
 const sessionHexHeader = "X-Session-Hex"
 
+// stackNameHeader は broker 自身の stack 名を front に伝えるヘッダー名。
+// front / compose の interpolation で上書きされないよう broker を single source とする。
+const stackNameHeader = "X-Stack-Name"
+
 // Handler は broker の HTTP ハンドラー。
 type Handler struct {
 	svc            service.Service
 	fallbackStacks []string
+	stackSelf      string
 }
 
-// NewHandler は Handler を生成する。svc が nil の場合は panic する。
-func NewHandler(svc service.Service, fallbackStacks []string) *Handler {
+// NewHandler は Handler を生成する。svc が nil、stackSelf が空文字の場合は panic する。
+func NewHandler(svc service.Service, fallbackStacks []string, stackSelf string) *Handler {
 	if svc == nil {
 		panic("handler: nil service")
 	}
-	return &Handler{svc: svc, fallbackStacks: fallbackStacks}
+	if stackSelf == "" {
+		panic("handler: empty stackSelf")
+	}
+	return &Handler{svc: svc, fallbackStacks: fallbackStacks, stackSelf: stackSelf}
 }
 
 // registerRequest は POST /internal/runners/register のリクエストボディ。
@@ -92,6 +100,7 @@ func (h *Handler) GetResolveSession(c *gin.Context) {
 		c.Header("X-Session-Reassigned", "true")
 	}
 	c.Header(sessionHexHeader, result.SessionHex)
+	c.Header(stackNameHeader, h.stackSelf)
 	c.Header(runnerHostHeader, result.RunnerHost)
 	c.Status(http.StatusOK)
 }

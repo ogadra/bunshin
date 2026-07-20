@@ -50,6 +50,9 @@ end
 if action.session_hex then
     ngx.var.session_hex = action.session_hex
 end
+if action.stack_name then
+    ngx.var.stack_name = action.stack_name
+end
 ngx.var.runner_url = action.runner_url
 mark_reassigned()
 

@@ -14,17 +14,25 @@ if (!PERL_ORIGIN_TEMPLATE) {
 const editorEl = document.getElementById("editor") as HTMLElement;
 const iframe = document.getElementById("preview") as HTMLIFrameElement;
 
-const { source: initialCode, sessionHex: initialHex } = await getAppHandler();
+const {
+  source: initialCode,
+  sessionHex: initialHex,
+  stackName: initialStack,
+} = await getAppHandler();
 if (initialHex === null) {
   throw new Error("X-Session-Hex header is missing on /api/app/handler response");
 }
+if (initialStack === null) {
+  throw new Error("X-Stack-Name header is missing on /api/app/handler response");
+}
 let previewHex = initialHex;
+let previewStack = initialStack;
 
 const editor = createPerlEditor(editorEl, initialCode);
 
 const reloadPreview = (): void => {
   // 同じ URL を代入しても reload しないブラウザがあるため cache-buster を付ける
-  const base = previewUrl(PERL_ORIGIN_TEMPLATE, previewHex);
+  const base = previewUrl(PERL_ORIGIN_TEMPLATE, previewHex, previewStack);
   iframe.src = `${base}?_=${String(performance.now())}`;
 };
 
@@ -41,9 +49,10 @@ startHandlerSync({
   editor,
   initialCode,
   putHandler: async (source: string): Promise<void> => {
-    const { sessionHex } = await putAppHandler(source);
-    // セッション再割当てで hex が変わったら、次の reload から新しい preview 先を指す
+    const { sessionHex, stackName } = await putAppHandler(source);
+    // セッション再割当てで hex や所属 stack が変わったら、次の reload から新しい preview 先を指す
     if (sessionHex !== null) previewHex = sessionHex;
+    if (stackName !== null) previewStack = stackName;
   },
   reloadPreview,
   debounceMs: DEBOUNCE_MS,

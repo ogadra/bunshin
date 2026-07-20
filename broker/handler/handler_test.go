@@ -83,7 +83,7 @@ func TestDeleteSession_Success(t *testing.T) {
 			}
 			return nil
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodDelete, "/sessions/sess-abc", nil)
@@ -102,7 +102,7 @@ func TestDeleteSession_NotFound(t *testing.T) {
 		closeSessionFn: func(_ context.Context, _ string) error {
 			return store.ErrNotFound
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodDelete, "/sessions/sess-missing", nil)
@@ -121,7 +121,7 @@ func TestDeleteSession_InternalError(t *testing.T) {
 		closeSessionFn: func(_ context.Context, _ string) error {
 			return errors.New("unexpected")
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodDelete, "/sessions/sess-abc", nil)
@@ -143,7 +143,7 @@ func TestGetResolveSession_ExistingSession(t *testing.T) {
 			}
 			return &service.ResolveResult{SessionHex: "sess-abc", RunnerHost: "10.0.0.1", Created: false}, nil
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve/session", nil)
@@ -156,6 +156,9 @@ func TestGetResolveSession_ExistingSession(t *testing.T) {
 	}
 	if got := rec.Header().Get("X-Runner-Host"); got != "10.0.0.1" {
 		t.Errorf("X-Runner-Host = %q, want %q", got, "10.0.0.1")
+	}
+	if got := rec.Header().Get("X-Stack-Name"); got != "ap-northeast-1" {
+		t.Errorf("X-Stack-Name = %q, want %q", got, "ap-northeast-1")
 	}
 	for _, c := range rec.Result().Cookies() {
 		if c.Name == "session_id" {
@@ -174,7 +177,7 @@ func TestGetResolveSession_MissingCookie_CreatesSession(t *testing.T) {
 			}
 			return &service.ResolveResult{SessionID: "ap-northeast-1_new-sess", SessionHex: "new-sess", RunnerHost: "10.0.0.2", Created: true}, nil
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve/session", nil)
@@ -205,7 +208,7 @@ func TestGetResolveSession_NoIdleRunner(t *testing.T) {
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return nil, store.ErrNoIdleRunner
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve/session", nil)
@@ -221,6 +224,9 @@ func TestGetResolveSession_NoIdleRunner(t *testing.T) {
 	if got := rec.Header().Get("X-Session-Hex"); got != "" {
 		t.Errorf("X-Session-Hex = %q, want empty on error", got)
 	}
+	if got := rec.Header().Get("X-Stack-Name"); got != "" {
+		t.Errorf("X-Stack-Name = %q, want empty on error", got)
+	}
 }
 
 func noIdleResolve(fallback []string, reqHeaders map[string]string) *httptest.ResponseRecorder {
@@ -232,7 +238,7 @@ func noIdleResolveWithCookie(fallback []string, reqHeaders map[string]string, se
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return nil, store.ErrNoIdleRunner
 		},
-	}, fallback)
+	}, fallback, "ap-northeast-1")
 	req := httptest.NewRequest(http.MethodGet, "/resolve/session", nil)
 	for k, v := range reqHeaders {
 		req.Header.Set(k, v)
@@ -309,7 +315,7 @@ func TestGetResolveSession_InternalError(t *testing.T) {
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return nil, errors.New("unexpected")
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve/session", nil)
@@ -322,6 +328,9 @@ func TestGetResolveSession_InternalError(t *testing.T) {
 	}
 	if got := rec.Header().Get("X-Session-Hex"); got != "" {
 		t.Errorf("X-Session-Hex = %q, want empty on error", got)
+	}
+	if got := rec.Header().Get("X-Stack-Name"); got != "" {
+		t.Errorf("X-Stack-Name = %q, want empty on error", got)
 	}
 }
 
@@ -338,7 +347,7 @@ func TestPostRegister_Success(t *testing.T) {
 			}
 			return nil
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
 	body := strings.NewReader(`{"runnerId":"r1","privateHost":"10.0.0.1"}`)
@@ -355,7 +364,7 @@ func TestPostRegister_Success(t *testing.T) {
 // TestPostRegister_InvalidBody はリクエストボディが不正な場合に 400 を返すことを検証する。
 func TestPostRegister_InvalidBody(t *testing.T) {
 	t.Parallel()
-	h := NewHandler(&mockService{}, []string{})
+	h := NewHandler(&mockService{}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
 	body := strings.NewReader(`{}`)
@@ -376,7 +385,7 @@ func TestPostRegister_InternalError(t *testing.T) {
 		registerRunnerFn: func(_ context.Context, _, _ string) error {
 			return errors.New("unexpected")
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
 	body := strings.NewReader(`{"runnerId":"r1","privateHost":"10.0.0.1"}`)
@@ -397,7 +406,7 @@ func TestPostRegister_Conflict(t *testing.T) {
 		registerRunnerFn: func(_ context.Context, _, _ string) error {
 			return store.ErrConflict
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
 	body := strings.NewReader(`{"runnerId":"r1","privateHost":"10.0.0.1"}`)
@@ -421,7 +430,7 @@ func TestDeleteRunner_Success(t *testing.T) {
 			}
 			return nil
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodDelete, "/internal/runners/r1", nil)
@@ -440,7 +449,7 @@ func TestDeleteRunner_InternalError(t *testing.T) {
 		deregisterRunnerFn: func(_ context.Context, _ string) error {
 			return errors.New("unexpected")
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodDelete, "/internal/runners/r1", nil)
@@ -459,7 +468,7 @@ func TestWriteError_IncludesRequestID(t *testing.T) {
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return nil, errors.New("unexpected")
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve/session", nil)
@@ -476,9 +485,12 @@ func TestWriteError_IncludesRequestID(t *testing.T) {
 func TestNewHandler(t *testing.T) {
 	t.Parallel()
 	svc := &mockService{}
-	h := NewHandler(svc, []string{})
+	h := NewHandler(svc, []string{}, "ap-northeast-1")
 	if h.svc != svc {
 		t.Error("svc mismatch")
+	}
+	if h.stackSelf != "ap-northeast-1" {
+		t.Errorf("stackSelf = %q, want %q", h.stackSelf, "ap-northeast-1")
 	}
 }
 
@@ -490,7 +502,18 @@ func TestNewHandler_NilPanics(t *testing.T) {
 			t.Fatal("expected panic for nil service")
 		}
 	}()
-	NewHandler(nil, []string{})
+	NewHandler(nil, []string{}, "ap-northeast-1")
+}
+
+// TestNewHandler_EmptyStackPanics は NewHandler に空 stackSelf を渡すと panic することを検証する。
+func TestNewHandler_EmptyStackPanics(t *testing.T) {
+	t.Parallel()
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic for empty stackSelf")
+		}
+	}()
+	NewHandler(&mockService{}, []string{}, "")
 }
 
 // TestPostRegister_InvalidHost は host label 形式ではない privateHost に対して 400 を返すことを検証する。
@@ -514,7 +537,7 @@ func TestPostRegister_InvalidHost(t *testing.T) {
 					t.Fatal("service should not be called for invalid host")
 					return nil
 				},
-			}, []string{})
+			}, []string{}, "ap-northeast-1")
 			r := newTestRouter(h)
 
 			body := strings.NewReader(`{"runnerId":"r1","privateHost":"` + tt.host + `"}`)
@@ -571,7 +594,7 @@ func TestGetResolveSession_CookieSecure(t *testing.T) {
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return &service.ResolveResult{SessionID: "ap-northeast-1_new-sess", SessionHex: "new-sess", RunnerHost: "10.0.0.1", Created: true}, nil
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve/session", nil)
@@ -630,7 +653,7 @@ func TestGetResolveSession_SessionHexHeader(t *testing.T) {
 				resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 					return tt.result, nil
 				},
-			}, []string{})
+			}, []string{}, "ap-northeast-1")
 			r := newTestRouter(h)
 
 			req := httptest.NewRequest(http.MethodGet, "/resolve/session", nil)
@@ -642,6 +665,9 @@ func TestGetResolveSession_SessionHexHeader(t *testing.T) {
 			}
 			if got := rec.Header().Get("X-Session-Hex"); got != tt.wantHex {
 				t.Errorf("X-Session-Hex = %q, want %q", got, tt.wantHex)
+			}
+			if got := rec.Header().Get("X-Stack-Name"); got != "ap-northeast-1" {
+				t.Errorf("X-Stack-Name = %q, want %q", got, "ap-northeast-1")
 			}
 		})
 	}
@@ -660,7 +686,7 @@ func TestGetResolveSession_Reassigned(t *testing.T) {
 				Reassigned: true,
 			}, nil
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve/session", nil)
@@ -694,7 +720,7 @@ func TestGetResolveSession_NotReassigned(t *testing.T) {
 				Reassigned: false,
 			}, nil
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/resolve/session", nil)
@@ -774,7 +800,7 @@ func TestGetListBusyRunners_Success(t *testing.T) {
 				{RunnerID: "r2", State: model.StateBusy, CurrentSessionID: "sess-2"},
 			}, nil
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	rec := httptest.NewRecorder()
 	newTestRouter(h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runners/busy", nil))
 
@@ -810,7 +836,7 @@ func TestGetListBusyRunners_Empty(t *testing.T) {
 		listBusyRunnersFn: func(context.Context) ([]model.Runner, error) {
 			return nil, nil
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	rec := httptest.NewRecorder()
 	newTestRouter(h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runners/busy", nil))
 
@@ -829,7 +855,7 @@ func TestGetListBusyRunners_ServiceError(t *testing.T) {
 		listBusyRunnersFn: func(context.Context) ([]model.Runner, error) {
 			return nil, errors.New("boom")
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	rec := httptest.NewRecorder()
 	newTestRouter(h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runners/busy", nil))
 
@@ -848,7 +874,7 @@ func TestGetResolveApp_Existing(t *testing.T) {
 			}
 			return &service.LookupResult{RunnerHost: "10.0.0.1"}, nil
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	req := httptest.NewRequest(http.MethodGet, "/resolve/app", nil)
 	req.Host = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.ap-northeast-1.internal.example.com"
 	rec := httptest.NewRecorder()
@@ -874,7 +900,7 @@ func TestGetResolveApp_NotFound(t *testing.T) {
 		lookupSessionFn: func(context.Context, string) (*service.LookupResult, error) {
 			return nil, store.ErrNotFound
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	req := httptest.NewRequest(http.MethodGet, "/resolve/app", nil)
 	req.Host = "00112233445566778899aabbccddeeff.ap-northeast-1.internal.example.com"
 	rec := httptest.NewRecorder()
@@ -914,7 +940,7 @@ func TestGetResolveApp_InvalidHost(t *testing.T) {
 					t.Error("LookupSession must not be called for invalid host")
 					return nil, nil
 				},
-			}, []string{})
+			}, []string{}, "ap-northeast-1")
 			req := httptest.NewRequest(http.MethodGet, "/resolve/app", nil)
 			req.Host = tc.host
 			rec := httptest.NewRecorder()
@@ -937,7 +963,7 @@ func TestGetResolveApp_ServiceError(t *testing.T) {
 		lookupSessionFn: func(context.Context, string) (*service.LookupResult, error) {
 			return nil, errors.New("boom")
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	req := httptest.NewRequest(http.MethodGet, "/resolve/app", nil)
 	req.Host = "00112233445566778899aabbccddeeff.ap-northeast-1.internal.example.com"
 	rec := httptest.NewRecorder()

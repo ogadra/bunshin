@@ -42,17 +42,20 @@ check("valid proxy no forward host", r.forward_host == nil)
 check("no set-cookie when absent", r.set_cookie == nil)
 check("no reassigned when absent", r.reassigned == nil)
 check("no session-hex when absent", r.session_hex == nil)
+check("no stack-name when absent", r.stack_name == nil)
 
--- Set-Cookie / X-Session-Reassigned / X-Session-Hex の伝播
+-- Set-Cookie / X-Session-Reassigned / X-Session-Hex / X-Stack-Name の伝播
 r = core.decide({ status = 200, header = {
     ["X-Runner-Host"] = "runner-1",
     ["Set-Cookie"] = "session_id=abc; Path=/",
     ["X-Session-Reassigned"] = "true",
     ["X-Session-Hex"] = "0123456789abcdef0123456789abcdef",
+    ["X-Stack-Name"] = "ap-northeast-1",
 } }, STACKS, "example.com")
 check("propagates set-cookie", r.set_cookie == "session_id=abc; Path=/")
 check("propagates reassigned", r.reassigned == "true")
 check("propagates session-hex", r.session_hex == "0123456789abcdef0123456789abcdef")
+check("propagates stack-name", r.stack_name == "ap-northeast-1")
 
 -- 複数 Set-Cookie (capture はテーブルで返す) を文字列へ畳む
 r = core.decide({ status = 200, header = {
