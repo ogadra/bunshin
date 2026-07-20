@@ -40,28 +40,31 @@ const reloadPreview = (): void => {
 
 reloadPreview();
 
-const flush = async (): Promise<void> => {
-  if (inFlight) return;
-  inFlight = true;
-  try {
-    // in-flight 中に届いた最新値まで追いつく。同じ内容を無駄に PUT しないよう lastSent と比較する
-    while (editor.value !== lastSent) {
-      const snapshot = editor.value;
-      await putAppHandler(snapshot);
-      lastSent = snapshot;
-      reloadPreview();
-    }
-  } catch (err: unknown) {
-    console.error("PUT /api/app/handler failed", err);
-  } finally {
-    inFlight = false;
-  }
-};
-
-editor.onChange(() => {
+const scheduleFlush = (): void => {
   if (debounceTimer !== null) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
     debounceTimer = null;
     void flush();
   }, DEBOUNCE_MS);
-});
+};
+
+const flush = async (): Promise<void> => {
+  if (inFlight) return;
+  const snapshot = editor.value;
+  if (snapshot === lastSent) return;
+  inFlight = true;
+  try {
+    await putAppHandler(snapshot);
+    lastSent = snapshot;
+    reloadPreview();
+  } catch (err: unknown) {
+    console.error("PUT /api/app/handler failed", err);
+  } finally {
+    inFlight = false;
+    // PUT 中に debounce timer が inFlight で drop されると、次の onChange が来ない限り誰も拾わない。
+    // timer 未セットのときだけここから張り直す
+    if (editor.value !== lastSent && debounceTimer === null) scheduleFlush();
+  }
+};
+
+editor.onChange(scheduleFlush);

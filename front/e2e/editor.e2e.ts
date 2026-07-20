@@ -195,4 +195,35 @@ test.describe("Perl HMR wiring", () => {
       .poll(() => page.locator("#preview").getAttribute("src"), { timeout: 5000 })
       .not.toBe(initialSrc);
   });
+
+  test("edits arriving during a slow PUT wait for DEBOUNCE_MS of idle before the next PUT starts", async ({
+    page,
+  }) => {
+    const PUT_LATENCY_MS = 2000;
+    const startTimes: number[] = [];
+    const completeTimes: number[] = [];
+    // beforeEach の PUT stub を意図的な遅延つきに上書きし、GET は元の stub に fallback で委譲する
+    await page.route("**/api/app/handler", async (route, req) => {
+      if (req.method() !== "PUT") {
+        await route.fallback();
+        return;
+      }
+      startTimes.push(Date.now());
+      await new Promise((r) => setTimeout(r, PUT_LATENCY_MS));
+      completeTimes.push(Date.now());
+      await route.fulfill({ status: 204 });
+    });
+
+    await input(page).click();
+    await page.keyboard.press("ControlOrMeta+End");
+    await page.keyboard.type("\n# first", { delay: 5 });
+    await expect.poll(() => startTimes.length, { timeout: 3000 }).toBe(1);
+    await page.keyboard.type("\n# second", { delay: 5 });
+    await expect.poll(() => startTimes.length, { timeout: 8000 }).toBe(2);
+
+    // idle 契約: 1st PUT 完了直後に unsent 変更が残っていても、DEBOUNCE_MS 経つまで 2nd PUT を出さない。
+    // 旧実装 (in-flight 完了後の while ループ即 PUT) では gap ≈ 0 になる
+    const gapMs = startTimes[1] - completeTimes[0];
+    expect(gapMs).toBeGreaterThanOrEqual(800);
+  });
 });
