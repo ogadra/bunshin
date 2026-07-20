@@ -47,6 +47,9 @@ else
     ngx.log(ngx.ERR, "reassign: broker did not return session cookie")
     return ngx.exit(500)
 end
+if action.session_hex then
+    ngx.var.session_hex = action.session_hex
+end
 ngx.var.runner_url = action.runner_url
 mark_reassigned()
 
