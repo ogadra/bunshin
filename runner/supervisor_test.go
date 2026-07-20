@@ -8,9 +8,18 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
+
+// testCmdはsuperviseOnceが期待するSysProcAttr{Setpgid: true}を持つexec.Cmdを返す。
+// テスト側で忘れると、supervise側のsyscall.Kill(-pid, ...)がテストランナー自体のプロセスグループに届く恐れがある。
+func testCmd(name string, args ...string) *exec.Cmd {
+	c := exec.Command(name, args...)
+	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	return c
+}
 
 // superviseOnceがgoroutineでlog.Printfしている最中にpollでbufを読むテストがあり、
 // 素の`bytes.Buffer`ではrace detectorが発火する。それを避けるためWrite/Stringを排他する。
@@ -51,7 +60,7 @@ func TestSuperviseImmediateCancel(t *testing.T) {
 	var attempts int32
 	factory := func() *exec.Cmd {
 		atomic.AddInt32(&attempts, 1)
-		return exec.Command("true")
+		return testCmd("true")
 	}
 	supervise(ctx, "test", factory, 1*time.Millisecond, 50*time.Millisecond)
 	if got := atomic.LoadInt32(&attempts); got != 0 {
@@ -68,7 +77,7 @@ func TestSuperviseStartError(t *testing.T) {
 		if atomic.AddInt32(&attempts, 1) >= 3 {
 			cancel()
 		}
-		return exec.Command("/nonexistent-supervisor-binary")
+		return testCmd("/nonexistent-supervisor-binary")
 	}
 	supervise(ctx, "test", factory, 1*time.Millisecond, 50*time.Millisecond)
 	if got := atomic.LoadInt32(&attempts); got < 3 {
@@ -85,7 +94,7 @@ func TestSuperviseRestartsAfterExit(t *testing.T) {
 		if atomic.AddInt32(&attempts, 1) >= 3 {
 			cancel()
 		}
-		return exec.Command("sh", "-c", "exit 0")
+		return testCmd("sh", "-c", "exit 0")
 	}
 	supervise(ctx, "test", factory, 1*time.Millisecond, 50*time.Millisecond)
 	if got := atomic.LoadInt32(&attempts); got < 3 {
@@ -105,7 +114,7 @@ func TestSuperviseCancelDuringRestartSleep(t *testing.T) {
 				cancel()
 			}()
 		}
-		return exec.Command("sh", "-c", "exit 0")
+		return testCmd("sh", "-c", "exit 0")
 	}
 	supervise(ctx, "test", factory, time.Hour, 50*time.Millisecond)
 	if got := atomic.LoadInt32(&attempts); got != 1 {
@@ -115,7 +124,7 @@ func TestSuperviseCancelDuringRestartSleep(t *testing.T) {
 
 func TestSuperviseOnceStartError(t *testing.T) {
 	buf := captureLog(t)
-	factory := func() *exec.Cmd { return exec.Command("/nonexistent-superviseonce") }
+	factory := func() *exec.Cmd { return testCmd("/nonexistent-superviseonce") }
 	superviseOnce(context.Background(), "test", factory, 50*time.Millisecond)
 	if !strings.Contains(buf.String(), "start:") {
 		t.Fatalf("log = %q, want substring 'start:'", buf.String())
@@ -124,7 +133,7 @@ func TestSuperviseOnceStartError(t *testing.T) {
 
 func TestSuperviseOnceNormalExit(t *testing.T) {
 	buf := captureLog(t)
-	factory := func() *exec.Cmd { return exec.Command("sh", "-c", "exit 0") }
+	factory := func() *exec.Cmd { return testCmd("sh", "-c", "exit 0") }
 	superviseOnce(context.Background(), "test", factory, 50*time.Millisecond)
 	logs := buf.String()
 	if !strings.Contains(logs, "started") {
@@ -138,7 +147,7 @@ func TestSuperviseOnceNormalExit(t *testing.T) {
 func TestSuperviseOnceCancelSendsSigterm(t *testing.T) {
 	buf := captureLog(t)
 	ctx, cancel := context.WithCancel(context.Background())
-	factory := func() *exec.Cmd { return exec.Command("sh", "-c", "sleep 30") }
+	factory := func() *exec.Cmd { return testCmd("sh", "-c", "sleep 30") }
 
 	done := make(chan struct{})
 	go func() {
@@ -172,7 +181,7 @@ func TestSuperviseOnceCancelSigkillFallback(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	shutdownGrace := 100 * time.Millisecond
 	factory := func() *exec.Cmd {
-		return exec.Command("bash", "-c", `trap "" TERM; echo READY; sleep 30`)
+		return testCmd("bash", "-c", `trap "" TERM; echo READY; sleep 30`)
 	}
 
 	origFactory := factory
@@ -250,6 +259,11 @@ func TestPerlAppFactory(t *testing.T) {
 	cmd := perlAppFactory()
 	if len(cmd.Args) != 2 || cmd.Args[0] != "perl" || cmd.Args[1] != "/app/server.pl" {
 		t.Errorf("factory args = %v, want [perl /app/server.pl]", cmd.Args)
+	}
+	// supervise側はforked child connectionハンドラごと止めるためsyscall.Kill(-pid, sig)を使う。
+	// 独立プロセスグループ (pgid == pid) を作らないと、signalが親テストプロセスのグループに届く恐れがある。
+	if cmd.SysProcAttr == nil || !cmd.SysProcAttr.Setpgid {
+		t.Errorf("perlAppFactory must set SysProcAttr.Setpgid=true, got %+v", cmd.SysProcAttr)
 	}
 }
 

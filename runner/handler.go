@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -124,12 +125,17 @@ func handlePutAppHandler() gin.HandlerFunc {
 	}
 }
 
-// writeHandlerAtomically writes data to a sibling ".tmp" file and renames it
-// over the target so a concurrent server.pl re-load never observes a partial
-// file. Rename is atomic on POSIX.
+// writeHandlerTmpCounterは並行PUTがそれぞれ独立したtmp pathを持てるよう単調に増える。
+// PIDと組み合わせて十分ユニークになり、fixed nameによるwriter競合を防ぐ。
+var writeHandlerTmpCounter atomic.Uint64
+
+// writeHandlerAtomically writes data to a unique sibling temp file and renames
+// it over the target so a concurrent server.pl re-load never observes a partial
+// file. Rename is atomic on POSIX. gin per-request goroutinesは同じhandlerを並行実行するため
+// 固定tmp名では書き込みが交錯して破損したファイルがrenameで確定される。counter + PIDでunique化する。
 func writeHandlerAtomically(path string, data []byte) error {
 	dir, base := filepath.Dir(path), filepath.Base(path)
-	tmp := filepath.Join(dir, "."+base+".tmp")
+	tmp := filepath.Join(dir, fmt.Sprintf(".%s.%d.%d.tmp", base, os.Getpid(), writeHandlerTmpCounter.Add(1)))
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return err
 	}

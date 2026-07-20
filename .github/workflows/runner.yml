@@ -49,7 +49,9 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Install Perl deps
-        run: sudo apt-get install -y libmodule-refresh-perl libhtml-parser-perl
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libmodule-refresh-perl libhtml-parser-perl
       - name: Syntax check the app files
         run: |
           perl -Irunner/app -c runner/app/Bunshin/HTTP.pm
@@ -57,7 +59,7 @@ jobs:
           perl -Irunner/app -c runner/app/Bunshin/ContentRunner.pm
           perl -Irunner/app -c runner/app/Bunshin/App.pm
           perl -Irunner/app -c runner/app/server.pl
-          perl -c runner/app/DaiKichijoji.pm
+          perl -Irunner/app -c runner/app/DaiKichijoji.pm
       - name: Run Perl tests
         run: prove -Irunner/app -v -r runner/app/t/
 

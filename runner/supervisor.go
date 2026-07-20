@@ -27,13 +27,17 @@ func supervise(ctx context.Context, name string, factory func() *exec.Cmd, resta
 	}
 }
 
+// superviseOnceはfactoryが返すexec.CmdがSysProcAttr{Setpgid: true}を持つことを前提にする。
+// perl親がaccept per connectionでforkする子ハンドラをまとめて止めるため、cmd.Process.Signalではなく
+// syscall.Kill(-pid, sig)でプロセスグループ全体へsignalを送る (pgid == pidは独立グループ化の効果)。
 func superviseOnce(ctx context.Context, name string, factory func() *exec.Cmd, shutdownGrace time.Duration) {
 	cmd := factory()
 	if err := cmd.Start(); err != nil {
 		log.Printf("supervisor: %s start: %v", name, err)
 		return
 	}
-	log.Printf("supervisor: %s started pid=%d", name, cmd.Process.Pid)
+	pid := cmd.Process.Pid
+	log.Printf("supervisor: %s started pid=%d", name, pid)
 
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
@@ -42,13 +46,13 @@ func superviseOnce(ctx context.Context, name string, factory func() *exec.Cmd, s
 	case err := <-done:
 		log.Printf("supervisor: %s exited: %v", name, err)
 	case <-ctx.Done():
-		log.Printf("supervisor: %s sending SIGTERM", name)
-		_ = cmd.Process.Signal(syscall.SIGTERM)
+		log.Printf("supervisor: %s sending SIGTERM to pgid=%d", name, pid)
+		_ = syscall.Kill(-pid, syscall.SIGTERM)
 		select {
 		case <-done:
 		case <-time.After(shutdownGrace):
-			log.Printf("supervisor: %s SIGTERM timed out after %s, sending SIGKILL", name, shutdownGrace)
-			_ = cmd.Process.Kill()
+			log.Printf("supervisor: %s SIGTERM timed out after %s, sending SIGKILL to pgid=%d", name, shutdownGrace, pid)
+			_ = syscall.Kill(-pid, syscall.SIGKILL)
 			<-done
 		}
 	}
@@ -69,6 +73,9 @@ func perlAppFactory() *exec.Cmd {
 	c := exec.Command("perl", "/app/server.pl")
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
+	// superviseOnceがsyscall.Kill(-pid, ...)でforked child connectionハンドラも巻き取れるよう
+	// 独立プロセスグループにする (pgid == pid)。
+	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	return c
 }
 

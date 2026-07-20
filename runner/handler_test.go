@@ -1023,9 +1023,13 @@ func TestPutAppHandlerRenameError(t *testing.T) {
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
 	}
-	// tmp cleanup: the ".DaiKichijoji.pm.tmp" sibling should not linger.
-	if _, err := os.Stat(filepath.Join(dir, ".DaiKichijoji.pm.tmp")); err == nil {
-		t.Error("tmp file should be cleaned up after rename failure")
+	// tmp cleanup: os.CreateTempが作った".DaiKichijoji.pm.*.tmp"はrename失敗時に削除される。
+	matches, err := filepath.Glob(filepath.Join(dir, ".DaiKichijoji.pm.*.tmp"))
+	if err != nil {
+		t.Fatalf("Glob: %v", err)
+	}
+	if len(matches) > 0 {
+		t.Errorf("tmp files should be cleaned up after rename failure, found: %v", matches)
 	}
 }
 

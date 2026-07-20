@@ -81,7 +81,7 @@ check("local reassign propagates session cookie", vars.resolve_set_cookie == "se
 check("local reassign leaves session hex unset when absent", vars.session_hex == nil)
 check("local reassign leaves stack name unset when absent", vars.stack_name == nil)
 
-_, executed, vars = run({
+_, _, vars = run({
     status = 200,
     header = {
         ["X-Runner-Host"] = "runner-1",

@@ -1,6 +1,7 @@
 package Bunshin::Server;
 use strict;
 use warnings;
+use Errno ();
 use IO::Socket::INET;
 use POSIX ();
 use Socket qw(SOMAXCONN);
@@ -24,7 +25,15 @@ sub run {
 
     warn "server.pl listening on $listen_addr:$listen_port\n";
 
-    while (my $conn = $server->accept) {
+    while (1) {
+        my $conn = $server->accept;
+        if (!$conn) {
+            # SIG{CHLD}='IGNORE'でreapされる子終了はEINTRとしてacceptに伝わる。
+            # クライアント側の中断はECONNABORTED、非ブロッキング化した場合はEAGAIN/EWOULDBLOCK。
+            # いずれも一時的なのでループを畳まず次のacceptに戻る。
+            next if $!{EINTR} || $!{ECONNABORTED} || $!{EAGAIN} || $!{EWOULDBLOCK};
+            die "accept failed: $!\n";
+        }
         my $pid = fork;
         if (!defined $pid) {
             warn "fork failed: $!\n";

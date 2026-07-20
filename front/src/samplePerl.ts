@@ -5,7 +5,7 @@ use warnings;
 =pod
 
 Edit sub content to change the page rendered in the preview iframe.
-The HTML shell around the returned string lives in BunshinServer.pm.
+The HTML shell around the returned string lives in Bunshin/App.pm.
 
 =cut
 
