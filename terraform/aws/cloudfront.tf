@@ -6,8 +6,8 @@ data "aws_cloudfront_response_headers_policy" "security_headers" {
   name = "Managed-SecurityHeadersPolicy"
 }
 
-# port-forward の 32 hex label を含む Host をそのまま origin (= nginx) へ渡すため、
-# CloudFront 側で書き換えない Managed-AllViewer を使う。
+# port-forwardの32 hex labelを含むHostをそのままorigin (= nginx)へ渡すため、
+# CloudFront側で書き換えないManaged-AllViewerを使う。
 data "aws_cloudfront_origin_request_policy" "all_viewer" {
   name = "Managed-AllViewer"
 }
@@ -145,9 +145,9 @@ resource "aws_cloudfront_distribution" "main" {
   })
 }
 
-# port-forward の distribution は stack ごとに 1 本ずつ持ち、Host をそのまま
-# origin (nginx) へ通す。origin port は Global Accelerator の stack 固定 listener
-# (#264 で 8443 / 9443) を叩き、GA の port_override で ALB:443 へ落ちる。
+# port-forwardのdistributionはstackごとに1本ずつ持ち、Hostをそのまま
+# origin (nginx)へ通す。origin portはstackごとに固定 (apne1=8443, apne3=9443)、
+# GAのport_overrideでALB:443へ落とす。
 # trivy:ignore:AVD-AWS-0010 -- CloudFront access logs are not required for the initial deployment
 resource "aws_cloudfront_distribution" "port_forward_apne1" {
   # checkov:skip=CKV_AWS_86:CloudFront access logs are not required for the initial deployment
