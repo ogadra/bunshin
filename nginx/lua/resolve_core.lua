@@ -204,6 +204,7 @@ function _M.decide(res, stacks, domain)
         runner_url = "http://" .. host .. ":" .. tostring(runner_port_number),
         set_cookie = set_cookie,
         reassigned = res.header["X-Session-Reassigned"],
+        session_hex = res.header["X-Session-Hex"],
     }
 end
 
