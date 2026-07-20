@@ -1,5 +1,19 @@
 import { SessionReassignedError } from "./errors/SessionReassignedError";
 
+export const getAppHandler = async (): Promise<string> => {
+  const res = await fetch("/api/app/handler");
+  if (!res.ok) throw new Error(`Failed to get handler: ${res.status}`);
+  return res.text();
+};
+
+export const putAppHandler = async (source: string): Promise<void> => {
+  const res = await fetch("/api/app/handler", {
+    method: "PUT",
+    body: source,
+  });
+  if (!res.ok) throw new Error(`Failed to put handler: ${res.status}`);
+};
+
 export const SseEventType = {
   STDOUT: "stdout",
   STDERR: "stderr",
