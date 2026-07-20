@@ -2,12 +2,13 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
-SERVICES=(broker nginx runner)
+SERVICES=(broker nginx runner front)
 REGIONS=(asia-northeast1 asia-northeast2)
+REGION_DIRS=(asne1 asne2)
 REPOSITORY="bunshin"
 NAMESPACE="bunshin"
 MEMBERSHIPS=(bunshin-asne1 bunshin-asne2)
-MODULES=(asne1 asne2)
+MANIFESTS_DIR="${ROOT_DIR}/deploy/google-cloud"
 
 die() {
     echo "Error: $*" >&2
@@ -27,12 +28,41 @@ contains_service() {
     return 1
 }
 
+is_static_only() {
+    local service="${1:?}"
+
+    [[ "${service}" == "front" ]]
+}
+
 resolve_project() {
     local project
     project="$(gcloud config get-value project 2>/dev/null)"
     [[ -n "${project}" && "${project}" != "(unset)" ]] \
         || die "gcloud project is not set (run 'gcloud config set project <id>')"
     echo "${project}"
+}
+
+resolve_deployer_email() {
+    local email
+    email="$(gcloud config get-value account 2>/dev/null)"
+    [[ -n "${email}" && "${email}" != "(unset)" ]] \
+        || die "gcloud account is not set (run 'gcloud auth login')"
+    echo "${email}"
+}
+
+read_system_output() {
+    terraform -chdir="${ROOT_DIR}/terraform/google-cloud" output -json system
+}
+
+# jq -r prints the literal "null" for missing keys, which would render into
+# manifests undetected, so bail out instead of returning it.
+read_system_field() {
+    local json="${1:?}"
+    local path="${2:?}"
+    local value
+    value="$(jq -r "${path}" <<<"${json}")"
+    [[ "${value}" != "null" ]] || die "terraform output 'system${path}' is null"
+    printf '%s' "${value}"
 }
 
 configure_docker_auth() {
@@ -60,67 +90,43 @@ build_and_push() {
         "${ROOT_DIR}/${service}"
 }
 
-build_and_push_all() {
-    local project="${1:?}"
-    local image_tag="${2:?}"
-    shift 2
-    local service
+apply_manifests() {
+    local context="${1:?}"
+    local defined_envs='$BROKER_GSA_EMAIL,$BROKER_KSA_NAME,$BROKER_REPLICAS,$BUNSHIN_STACKS,$DEPLOYER_EMAIL,$FIRESTORE_DATABASE,$GOOGLE_CLOUD_PROJECT,$IMAGE_TAG,$INTERNAL_DOMAIN,$INTERNAL_LB_NAME,$NGINX_NEG_NAME,$NGINX_REPLICAS,$NGINX_RESOLVER,$REGION,$REPOSITORY,$RUNNER_REPLICAS'
+    local f
 
-    for service in "$@"; do
-        build_and_push "${service}" "${project}" "${image_tag}"
+    kubectl --context="${context}" apply -f "${MANIFESTS_DIR}/base/namespace.yaml"
+
+    for f in "${MANIFESTS_DIR}/base/"*.yaml; do
+        [[ "${f}" == */namespace.yaml ]] && continue
+        envsubst "${defined_envs}" < "${f}" | kubectl --context="${context}" apply -f -
     done
-}
-
-apply_image_tag() {
-    local env_name="${1:?}"
-    local image_tag="${2:?}"
-    shift 2
-    local targets=()
-    local module
-    local service
-
-    # `just deploy` が infra全体の drift を巻き込まないよう、image_tag が刺さる Deployment だけを target
-    for module in "${MODULES[@]}"; do
-        for service in "$@"; do
-            targets+=(-target "module.${module}.kubernetes_deployment_v1.${service}")
-        done
-    done
-
-    echo "Applying image_tag=${image_tag} to ${#targets[@]} Deployment target(s)"
-    terraform -chdir="${ROOT_DIR}/terraform/google-cloud" apply \
-        -var-file="environments/${env_name}.tfvars" \
-        -var "image_tag=${image_tag}" \
-        "${targets[@]}" \
-        -auto-approve
 }
 
 wait_rollout() {
-    local project="${1:?}"
-    local membership="${2:?}"
-    local service="${3:?}"
-    local context="connectgateway_${project}_global_${membership}"
+    local context="${1:?}"
+    local service="${2:?}"
 
-    echo "[${membership}] waiting for ${service} rollout"
+    echo "[${context##*_}] waiting for ${service} rollout"
     kubectl --context="${context}" \
         -n "${NAMESPACE}" \
         rollout status "deployment/${service}" \
         --timeout=5m
 }
 
-wait_rollouts_all() {
-    local project="${1:?}"
-    shift
-    local membership
-    local service
+deploy_front() {
+    local system_json="${1:?}"
+    local bucket
+    bucket="$(read_system_field "${system_json}" .static_bucket)"
 
-    for membership in "${MEMBERSHIPS[@]}"; do
-        echo "[${membership}] fetching Connect Gateway credentials"
-        gcloud container fleet memberships get-credentials "${membership}" \
-            --project="${project}" >/dev/null
-        for service in "$@"; do
-            wait_rollout "${project}" "${membership}" "${service}"
-        done
-    done
+    echo "[front] building via pnpm"
+    pnpm --dir "${ROOT_DIR}/front" build
+
+    echo "[front] syncing to gs://${bucket}/"
+    gcloud storage rsync -r \
+        --delete-unmatched-destination-objects \
+        "${ROOT_DIR}/front/dist/" \
+        "gs://${bucket}/"
 }
 
 main() {
@@ -128,8 +134,23 @@ main() {
     shift
     local project
     local image_tag
+    local deployer_email
+    local system_json
+    local domain_name
+    local broker_gsa_email
     local -a target_services=()
+    local -a container_services=()
+    local include_front=false
     local service
+    local i
+    local region_dir
+    local membership
+    local context
+    local nginx_resolver
+    local svc
+    local svc_upper
+    local replicas_var
+    local replicas_value
 
     if [[ $# -eq 0 ]]; then
         target_services=("${SERVICES[@]}")
@@ -140,15 +161,85 @@ main() {
         done
     fi
 
+    for service in "${target_services[@]}"; do
+        if is_static_only "${service}"; then
+            include_front=true
+        else
+            container_services+=("${service}")
+        fi
+    done
+
+    # shellcheck disable=SC1091
+    source "${ROOT_DIR}/deploy/google-cloud/environments/${env_name}.env"
+
     project="$(resolve_project)"
+    deployer_email="$(resolve_deployer_email)"
     image_tag="$(git -C "${ROOT_DIR}" rev-parse HEAD)"
+
+    system_json="$(read_system_output)"
+    domain_name="$(read_system_field "${system_json}" .domain_name)"
+    broker_gsa_email="$(read_system_field "${system_json}" .broker_gsa_email)"
 
     echo "Deploying to google-cloud env=${env_name} project=${project} image_tag=${image_tag}"
 
+    if [[ "${include_front}" == "true" ]]; then
+        deploy_front "${system_json}"
+    fi
+
+    if [[ ${#container_services[@]} -eq 0 ]]; then
+        return 0
+    fi
+
     configure_docker_auth
-    build_and_push_all "${project}" "${image_tag}" "${target_services[@]}"
-    apply_image_tag "${env_name}" "${image_tag}" "${target_services[@]}"
-    wait_rollouts_all "${project}" "${target_services[@]}"
+    for service in "${container_services[@]}"; do
+        build_and_push "${service}" "${project}" "${image_tag}"
+    done
+
+    export IMAGE_TAG="${image_tag}"
+    export INTERNAL_DOMAIN="${domain_name}"
+    export GOOGLE_CLOUD_PROJECT="${project}"
+    export BROKER_GSA_EMAIL="${broker_gsa_email}"
+    export DEPLOYER_EMAIL="${deployer_email}"
+    export REPOSITORY
+
+    # BUNSHIN_STACKS は region 非依存の共通値なのでループの外で 1 回 source する
+    set -a
+    # shellcheck disable=SC1091
+    source "${MANIFESTS_DIR}/stacks.env"
+    set +a
+
+    for i in "${!REGION_DIRS[@]}"; do
+        region_dir="${REGION_DIRS[$i]}"
+        membership="${MEMBERSHIPS[$i]}"
+        context="connectgateway_${project}_global_${membership}"
+
+        nginx_resolver="$(read_system_field "${system_json}" ".nginx_resolver.${region_dir}")"
+        export NGINX_RESOLVER="${nginx_resolver}"
+
+        set -a
+        # shellcheck disable=SC1090
+        source "${MANIFESTS_DIR}/regions/${region_dir}/region.env"
+        set +a
+
+        for svc in broker nginx runner; do
+            svc_upper="${svc^^}"
+            replicas_var="${svc_upper}_REPLICAS_${region_dir^^}"
+            replicas_value="${!replicas_var:-}"
+            [[ -n "${replicas_value}" ]] \
+                || die "${replicas_var} must be set (e.g. ${replicas_var}=1)"
+            export "${svc_upper}_REPLICAS=${replicas_value}"
+        done
+
+        echo "[${membership}] fetching Connect Gateway credentials"
+        gcloud container fleet memberships get-credentials "${membership}" \
+            --project="${project}" >/dev/null
+
+        apply_manifests "${context}"
+
+        for service in "${container_services[@]}"; do
+            wait_rollout "${context}" "${service}"
+        done
+    done
 }
 
 main "$@"

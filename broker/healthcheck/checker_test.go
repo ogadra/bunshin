@@ -6,10 +6,25 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 )
+
+// splitHostPort は httptest.NewServer の URL から host と port を分離する。
+func splitHostPort(t *testing.T, u string) (string, int) {
+	t.Helper()
+	host, portStr, err := net.SplitHostPort(strings.TrimPrefix(u, "http://"))
+	if err != nil {
+		t.Fatalf("split host port: %v", err)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		t.Fatalf("parse port: %v", err)
+	}
+	return host, port
+}
 
 // TestHTTPChecker_ImplementsChecker は HTTPChecker が Checker インターフェースを満たすことを検証する。
 func TestHTTPChecker_ImplementsChecker(t *testing.T) {
@@ -17,15 +32,46 @@ func TestHTTPChecker_ImplementsChecker(t *testing.T) {
 	var _ Checker = (*HTTPChecker)(nil)
 }
 
-// TestNewHTTPChecker はコンストラクタが非 nil を返すことを検証する。
+// TestNewHTTPChecker はコンストラクタが渡した client と port を保持することを検証する。
 func TestNewHTTPChecker(t *testing.T) {
 	t.Parallel()
-	c := NewHTTPChecker(http.DefaultClient)
+	c := NewHTTPChecker(http.DefaultClient, 3000)
 	if c == nil {
 		t.Fatal("expected non-nil checker")
 	}
 	if c.client != http.DefaultClient {
 		t.Error("client mismatch")
+	}
+	if c.port != 3000 {
+		t.Errorf("port = %d, want 3000", c.port)
+	}
+}
+
+// TestNewHTTPChecker_NilClient は client=nil を渡すと panic することを検証する (fallback しない)。
+func TestNewHTTPChecker_NilClient(t *testing.T) {
+	t.Parallel()
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic for nil client")
+		}
+	}()
+	NewHTTPChecker(nil, 3000)
+}
+
+// TestNewHTTPChecker_InvalidPort は range 外の port が panic することを検証する。
+func TestNewHTTPChecker_InvalidPort(t *testing.T) {
+	t.Parallel()
+	for _, port := range []int{-1, 0, 65536, 100000} {
+		port := port
+		t.Run(strconv.Itoa(port), func(t *testing.T) {
+			t.Parallel()
+			defer func() {
+				if r := recover(); r == nil {
+					t.Errorf("expected panic for port %d", port)
+				}
+			}()
+			NewHTTPChecker(http.DefaultClient, port)
+		})
 	}
 }
 
@@ -43,8 +89,9 @@ func TestHTTPChecker_Check_Healthy(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	checker := NewHTTPChecker(srv.Client())
-	err := checker.Check(context.Background(), srv.URL)
+	host, port := splitHostPort(t, srv.URL)
+	checker := NewHTTPChecker(srv.Client(), port)
+	err := checker.Check(context.Background(), host)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -58,8 +105,9 @@ func TestHTTPChecker_Check_Unhealthy(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	checker := NewHTTPChecker(srv.Client())
-	err := checker.Check(context.Background(), srv.URL)
+	host, port := splitHostPort(t, srv.URL)
+	checker := NewHTTPChecker(srv.Client(), port)
+	err := checker.Check(context.Background(), host)
 	if err == nil {
 		t.Fatal("expected error for unhealthy runner")
 	}
@@ -68,19 +116,26 @@ func TestHTTPChecker_Check_Unhealthy(t *testing.T) {
 	}
 }
 
-// TestHTTPChecker_Check_Unreachable は runner に接続できない場合にエラーを返すことを検証する。
+// TestHTTPChecker_Check_Unreachable は listening していない port に接続できない場合にエラーを返すことを検証する。
 func TestHTTPChecker_Check_Unreachable(t *testing.T) {
 	t.Parallel()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen failed: %v", err)
 	}
-	addr := ln.Addr().String()
+	host, portStr, err := net.SplitHostPort(ln.Addr().String())
+	if err != nil {
+		t.Fatalf("split addr: %v", err)
+	}
 	_ = ln.Close()
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		t.Fatalf("parse port: %v", err)
+	}
 
 	client := &http.Client{Timeout: 1 * time.Second}
-	checker := NewHTTPChecker(client)
-	err = checker.Check(context.Background(), "http://"+addr)
+	checker := NewHTTPChecker(client, port)
+	err = checker.Check(context.Background(), host)
 	if err == nil {
 		t.Fatal("expected error for unreachable runner")
 	}
@@ -89,28 +144,14 @@ func TestHTTPChecker_Check_Unreachable(t *testing.T) {
 	}
 }
 
-// TestNewHTTPChecker_NilClient は nil を渡した場合に http.DefaultClient にフォールバックすることを検証する。
-func TestNewHTTPChecker_NilClient(t *testing.T) {
+// TestHTTPChecker_Check_InvalidHost は http.NewRequest が URL parse で fail する host を受けたときにエラーを返すことを検証する。
+// register 側は validateRunnerHost で拒否されるが、Store が破損した場合の防御として。
+func TestHTTPChecker_Check_InvalidHost(t *testing.T) {
 	t.Parallel()
-	c := NewHTTPChecker(nil)
-	if c == nil {
-		t.Fatal("expected non-nil checker")
-	}
-	if c.client == nil {
-		t.Fatal("expected non-nil client, got nil")
-	}
-	if c.client != http.DefaultClient {
-		t.Error("expected http.DefaultClient as fallback")
-	}
-}
-
-// TestHTTPChecker_Check_InvalidURL は不正な URL の場合にエラーを返すことを検証する。
-func TestHTTPChecker_Check_InvalidURL(t *testing.T) {
-	t.Parallel()
-	checker := NewHTTPChecker(http.DefaultClient)
-	err := checker.Check(context.Background(), "://invalid")
+	checker := NewHTTPChecker(http.DefaultClient, 3000)
+	err := checker.Check(context.Background(), "runner%zz")
 	if err == nil {
-		t.Fatal("expected error for invalid URL")
+		t.Fatal("expected error for invalid host")
 	}
 	if !strings.Contains(err.Error(), "create request") {
 		t.Errorf("error = %q, want to contain %q", err.Error(), "create request")
@@ -129,8 +170,9 @@ func TestHTTPChecker_Check_ContextCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	checker := NewHTTPChecker(srv.Client())
-	err := checker.Check(ctx, srv.URL)
+	host, port := splitHostPort(t, srv.URL)
+	checker := NewHTTPChecker(srv.Client(), port)
+	err := checker.Check(ctx, host)
 	if err == nil {
 		t.Fatal("expected error for canceled context")
 	}

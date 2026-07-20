@@ -1,0 +1,11 @@
+region: ap-northeast-3
+cluster: bunshin
+service: bunshin-runner
+service_definition: ecs-service-def.json
+task_definition: ecs-task-def.json
+timeout: 15m0s
+plugins:
+  - name: tfstate
+    config:
+      url: s3://{{ must_env `TF_BACKEND_BUCKET` }}/bunshin/aws/{{ must_env `ENV` }}.tfstate
+      profile: prd

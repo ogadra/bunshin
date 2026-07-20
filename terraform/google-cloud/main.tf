@@ -2,8 +2,10 @@ resource "google_project_service" "apis" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   for_each = toset([
     "artifactregistry.googleapis.com",
+    "certificatemanager.googleapis.com",
     "cloudresourcemanager.googleapis.com",
     "compute.googleapis.com",
+    "connectgateway.googleapis.com",
     "container.googleapis.com",
     "dns.googleapis.com",
     "firestore.googleapis.com",
@@ -24,16 +26,11 @@ module "asne1" {
   source = "./asne1"
 
   broker_service_account_id = google_service_account.broker.name
-  bunshin_stacks            = local.bunshin_stacks
-  deployer_email            = data.google_client_openid_userinfo.me.email
-  desired_counts            = local.desired_counts
   domain_name               = var.domain_name
-  image_tag                 = var.image_tag
   peer_vpc_network          = module.asne2.network_self_link
 
   providers = {
-    google     = google.asne1
-    kubernetes = kubernetes.asne1
+    google = google.asne1
   }
 
   depends_on = [google_project_service.apis]
@@ -43,16 +40,11 @@ module "asne2" {
   source = "./asne2"
 
   broker_service_account_id = google_service_account.broker.name
-  bunshin_stacks            = local.bunshin_stacks
-  deployer_email            = data.google_client_openid_userinfo.me.email
-  desired_counts            = local.desired_counts
   domain_name               = var.domain_name
-  image_tag                 = var.image_tag
   peer_vpc_network          = module.asne1.network_self_link
 
   providers = {
-    google     = google.asne2
-    kubernetes = kubernetes.asne2
+    google = google.asne2
   }
 
   depends_on = [google_project_service.apis]

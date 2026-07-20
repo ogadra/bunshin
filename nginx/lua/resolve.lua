@@ -1,8 +1,27 @@
--- broker /resolve をサブリクエストで呼び、session_id cookie からセッションを解決する。
+-- broker /resolve/session をサブリクエストで呼び、session_id cookie からセッションを解決する。
 -- brokerの実ステータスをそのままクライアントへ返す。
 local core = require("resolve_core")
 
-local fallback_stack = ngx.var.relay_fallback_stack
+-- Hostが<stack>.<internal_domain>完全一致のときだけX-Fallback-* / X-Bunshin-Client-Address
+-- を信頼する。公開経路からregexにマッチするHostを作られても詐称できないよう完全一致で閉じる。
+local from_internal = core.is_internal_host(ngx.var.host)
+local relay_fallback_stack = core.relay_if_internal(from_internal, ngx.var.http_x_fallback_stack)
+local relay_fallback_remaining = core.relay_if_internal(from_internal, ngx.var.http_x_fallback_remaining)
+ngx.var.relay_fallback_stack = relay_fallback_stack
+ngx.var.relay_fallback_remaining = relay_fallback_remaining
+ngx.var.bunshin_client_address = core.client_address(
+    from_internal,
+    ngx.var.http_x_bunshin_client_address,
+    ngx.var.http_cloudfront_viewer_address,
+    ngx.var.remote_addr,
+    ngx.var.remote_port
+)
+-- /_resolveサブリクエストは独立した変数スコープを持ち、ngx.var書き戻しが届かない。
+-- 親のリクエストヘッダに焼き直してsubrequest側で継承させる。
+ngx.req.set_header("X-Fallback-Stack", relay_fallback_stack)
+ngx.req.set_header("X-Fallback-Remaining", relay_fallback_remaining)
+
+local fallback_stack = relay_fallback_stack
 local arrival = core.decide_arrival(
     ngx.var.cookie_session_id,
     core.own_stack(),

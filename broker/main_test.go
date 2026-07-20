@@ -39,6 +39,7 @@ func setDynamoEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("STACK_NAME", "ap-northeast-1")
 	t.Setenv("BUNSHIN_STACKS", "ap-northeast-1,ap-northeast-3")
+	t.Setenv("RUNNER_PORT", "3000")
 	t.Setenv("BUNSHIN_STORE", "dynamodb")
 	t.Setenv("DYNAMODB_ENDPOINT", "http://localhost:18000")
 	t.Setenv("AWS_REGION", "ap-northeast-1")
@@ -273,6 +274,9 @@ func (fakeNoIdleService) CloseSession(context.Context, string) error { return ni
 func (fakeNoIdleService) ResolveSession(context.Context, string) (*service.ResolveResult, error) {
 	return nil, store.ErrNoIdleRunner
 }
+func (fakeNoIdleService) LookupSession(context.Context, string) (*service.LookupResult, error) {
+	return nil, store.ErrNotFound
+}
 func (fakeNoIdleService) RegisterRunner(context.Context, string, string) error { return nil }
 func (fakeNoIdleService) DeregisterRunner(context.Context, string) error       { return nil }
 func (fakeNoIdleService) ListBusyRunners(context.Context) ([]model.Runner, error) {
@@ -301,7 +305,7 @@ func TestDefaultInitHandler_FallbackSignal(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = closer.Close() })
 
-	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
+	req := httptest.NewRequest(http.MethodGet, "/resolve/session", nil)
 	rec := httptest.NewRecorder()
 	newRouter(h).ServeHTTP(rec, req)
 
@@ -329,10 +333,26 @@ func TestDefaultInitHandler_StackError(t *testing.T) {
 	}
 }
 
+// TestDefaultInitHandler_RunnerPortError は RUNNER_PORT 未設定の場合に defaultInitHandler がエラーを伝播することを検証する。
+func TestDefaultInitHandler_RunnerPortError(t *testing.T) {
+	t.Setenv("STACK_NAME", "ap-northeast-1")
+	t.Setenv("BUNSHIN_STACKS", "ap-northeast-1")
+	t.Setenv("RUNNER_PORT", "")
+
+	_, _, err := defaultInitHandler()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "RUNNER_PORT") {
+		t.Errorf("error = %q, want to propagate runner port error", err.Error())
+	}
+}
+
 // TestDefaultInitHandler_RepositoryError は config.NewRepositoryFromEnv がエラーを返す場合に defaultInitHandler が伝播することを検証する。
 func TestDefaultInitHandler_RepositoryError(t *testing.T) {
 	t.Setenv("STACK_NAME", "ap-northeast-1")
 	t.Setenv("BUNSHIN_STACKS", "ap-northeast-1")
+	t.Setenv("RUNNER_PORT", "3000")
 	t.Setenv("BUNSHIN_STORE", "")
 
 	_, _, err := defaultInitHandler()
@@ -360,7 +380,8 @@ func TestNewRouter_WithHandler(t *testing.T) {
 	expected := map[string]string{
 		"GET /health":                        "",
 		"DELETE /sessions/:sessionId":        "",
-		"GET /resolve":                       "",
+		"GET /resolve/session":               "",
+		"GET /resolve/app":                   "",
 		"POST /internal/runners/register":    "",
 		"DELETE /internal/runners/:runnerId": "",
 	}

@@ -60,7 +60,7 @@ resource "aws_lb" "api_ingress" {
   internal           = true
   load_balancer_type = "application"
   security_groups    = [aws_security_group.api_ingress_alb.id]
-  subnets            = local.ecs_subnet_ids
+  subnets            = aws_subnet.apne3_private[*].id
 
   tags = merge(local.common_tags, {
     Service = "api-ingress-alb"
@@ -76,7 +76,7 @@ resource "aws_lb" "internal" {
   internal           = true
   load_balancer_type = "application"
   security_groups    = [aws_security_group.internal_alb.id]
-  subnets            = local.ecs_subnet_ids
+  subnets            = aws_subnet.apne3_private[*].id
 
   tags = merge(local.common_tags, {
     Service = "internal-alb"

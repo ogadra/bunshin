@@ -1,4 +1,5 @@
 resource "aws_security_group" "broker" {
+  # checkov:skip=CKV2_AWS_5:attached at deploy time by ecspresso via networkConfiguration
   name_prefix = "bunshin-broker-"
   description = "Security group for broker ECS tasks"
   vpc_id      = aws_vpc.apne1.id
@@ -159,6 +160,7 @@ resource "aws_security_group_rule" "internal_alb_egress_nginx" {
 }
 
 resource "aws_security_group" "nginx" {
+  # checkov:skip=CKV2_AWS_5:attached at deploy time by ecspresso via networkConfiguration
   name_prefix = "bunshin-nginx-"
   description = "Security group for nginx ECS tasks"
   vpc_id      = aws_vpc.apne1.id
@@ -195,6 +197,17 @@ resource "aws_security_group_rule" "nginx_egress_runner" {
   description              = "HTTP to runner"
 }
 
+resource "aws_security_group_rule" "nginx_egress_runner_app" {
+  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  type                     = "egress"
+  from_port                = local.runner_app_port
+  to_port                  = local.runner_app_port
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.runner.id
+  security_group_id        = aws_security_group.nginx.id
+  description              = "HTTP to runner port-forward app"
+}
+
 resource "aws_security_group_rule" "nginx_ingress_api_ingress_alb" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   type                     = "ingress"
@@ -218,6 +231,7 @@ resource "aws_security_group_rule" "nginx_ingress_internal_alb" {
 }
 
 resource "aws_security_group" "runner" {
+  # checkov:skip=CKV2_AWS_5:attached at deploy time by ecspresso via networkConfiguration
   name_prefix = "bunshin-runner-"
   description = "Security group for runner ECS tasks"
   vpc_id      = aws_vpc.apne1.id
@@ -252,6 +266,17 @@ resource "aws_security_group_rule" "runner_ingress_nginx" {
   source_security_group_id = aws_security_group.nginx.id
   security_group_id        = aws_security_group.runner.id
   description              = "HTTP from nginx"
+}
+
+resource "aws_security_group_rule" "runner_ingress_nginx_app" {
+  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  type                     = "ingress"
+  from_port                = local.runner_app_port
+  to_port                  = local.runner_app_port
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.nginx.id
+  security_group_id        = aws_security_group.runner.id
+  description              = "HTTP from nginx for port-forward app"
 }
 
 resource "aws_security_group_rule" "runner_egress_broker" {

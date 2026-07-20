@@ -24,16 +24,21 @@ var (
 type Service interface {
 	CloseSession(ctx context.Context, sessionID string) error
 	ResolveSession(ctx context.Context, sessionID string) (*ResolveResult, error)
-	RegisterRunner(ctx context.Context, runnerID, privateURL string) error
+	LookupSession(ctx context.Context, sessionHex string) (*LookupResult, error)
+	RegisterRunner(ctx context.Context, runnerID, privateHost string) error
 	DeregisterRunner(ctx context.Context, runnerID string) error
 	ListBusyRunners(ctx context.Context) ([]model.Runner, error)
 }
 
 type ResolveResult struct {
 	SessionID  string
-	RunnerURL  string
+	RunnerHost string
 	Created    bool
 	Reassigned bool
+}
+
+type LookupResult struct {
+	RunnerHost string
 }
 
 type CreateSessionResult struct {
@@ -90,18 +95,22 @@ func defaultSessionFn() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+func (s *BrokerService) namespacedSessionID(sessionHex string) string {
+	return s.stackPrefix + "_" + sessionHex
+}
+
 func (s *BrokerService) createSession(ctx context.Context) (*CreateSessionResult, error) {
 	sessionID, err := s.sessionFn()
 	if err != nil {
 		return nil, err
 	}
-	sessionID = s.stackPrefix + "_" + sessionID
+	sessionID = s.namespacedSessionID(sessionID)
 	for {
 		runner, err := s.repo.AcquireIdle(ctx, sessionID)
 		if err != nil {
 			return nil, err
 		}
-		if checkErr := s.checker.Check(ctx, runner.PrivateURL); checkErr == nil {
+		if checkErr := s.checker.Check(ctx, runner.PrivateHost); checkErr == nil {
 			return &CreateSessionResult{SessionID: sessionID, Runner: runner}, nil
 		} else if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -126,8 +135,8 @@ func (s *BrokerService) ResolveSession(ctx context.Context, sessionID string) (*
 	if sessionID != "" {
 		runner, err := s.repo.FindBySessionID(ctx, sessionID)
 		if err == nil {
-			if checkErr := s.checker.Check(ctx, runner.PrivateURL); checkErr == nil {
-				return &ResolveResult{SessionID: sessionID, RunnerURL: runner.PrivateURL, Created: false}, nil
+			if checkErr := s.checker.Check(ctx, runner.PrivateHost); checkErr == nil {
+				return &ResolveResult{SessionID: sessionID, RunnerHost: runner.PrivateHost, Created: false}, nil
 			} else if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}
@@ -146,14 +155,22 @@ func (s *BrokerService) ResolveSession(ctx context.Context, sessionID string) (*
 	}
 	return &ResolveResult{
 		SessionID:  result.SessionID,
-		RunnerURL:  result.Runner.PrivateURL,
+		RunnerHost: result.Runner.PrivateHost,
 		Created:    true,
 		Reassigned: reassigned,
 	}, nil
 }
 
-func (s *BrokerService) RegisterRunner(ctx context.Context, runnerID, privateURL string) error {
-	return s.repo.Register(ctx, runnerID, privateURL)
+func (s *BrokerService) LookupSession(ctx context.Context, sessionHex string) (*LookupResult, error) {
+	runner, err := s.repo.FindBySessionID(ctx, s.namespacedSessionID(sessionHex))
+	if err != nil {
+		return nil, err
+	}
+	return &LookupResult{RunnerHost: runner.PrivateHost}, nil
+}
+
+func (s *BrokerService) RegisterRunner(ctx context.Context, runnerID, privateHost string) error {
+	return s.repo.Register(ctx, runnerID, privateHost)
 }
 
 func (s *BrokerService) DeregisterRunner(ctx context.Context, runnerID string) error {

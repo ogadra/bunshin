@@ -1,4 +1,4 @@
-data "google_project" "current" {}
+data "google_client_config" "default" {}
 
 resource "google_service_account" "gke_node" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
@@ -16,7 +16,7 @@ resource "google_project_iam_member" "gke_node" {
     "roles/stackdriver.resourceMetadata.writer",
   ])
 
-  project = data.google_project.current.project_id
+  project = data.google_client_config.default.project
   role    = each.value
   member  = google_service_account.gke_node.member
 }
@@ -30,12 +30,12 @@ resource "google_artifact_registry_repository_iam_member" "gke_node_reader" {
   member     = google_service_account.gke_node.member
 }
 
-# workload identity poolはproject-scope(`<PROJECT_ID>.svc.id.goog`)だが、KSA identifierを
-# regionごとに分けることでbindingもregionごとに独立させる。member文字列内のKSA参照は
-# kubernetes_service_account_v1.brokerのmetadataから取り、KSAとbindingをsingle source of truthに保つ
+# broker KSA identifier は kubectl 側で bunshin/broker-asne1 に固定されている。
+# workload identity pool は project-scope (`<PROJECT_ID>.svc.id.goog`) だが、KSA 名を
+# region ごとに分けることで binding も region ごとに独立する
 resource "google_service_account_iam_member" "broker_workload_identity" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   service_account_id = var.broker_service_account_id
   role               = "roles/iam.workloadIdentityUser"
-  member             = "serviceAccount:${data.google_project.current.project_id}.svc.id.goog[${kubernetes_service_account_v1.broker.metadata[0].namespace}/${kubernetes_service_account_v1.broker.metadata[0].name}]"
+  member             = "serviceAccount:${data.google_client_config.default.project}.svc.id.goog[bunshin/broker-asne1]"
 }
