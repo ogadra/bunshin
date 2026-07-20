@@ -18,10 +18,6 @@ locals {
     runner = 3000
   }
 
-  # port-forwardで外部から届けたいrunner内アプリのlisten port。
-  # 既定のrunner API (:3000) とは別のNetworkPolicyとService portで参照する。
-  runner_app_port = 5000
-
   internal_lb_name     = "bunshin-internal-${local.region}"
   internal_lb_hostname = "${local.region}.${var.domain_name}"
 
