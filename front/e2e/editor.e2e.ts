@@ -193,7 +193,8 @@ test.describe("Perl HMR wiring", () => {
   }) => {
     const REASSIGNED_HEX = "fedcba9876543210fedcba9876543210";
     const REASSIGNED_STACK = "reassigned-stack";
-    // beforeEachのPUT stubを、再割当てで別hex/stackが返る挙動に上書きする。GETはfallthroughで元stub。
+    // beforeEachのPUT stubを、再割当てで別hex/stackが返る挙動に上書きする。
+    // GETはfallthroughで元stub。
     await page.route("**/api/app/handler", async (route, req) => {
       if (req.method() !== "PUT") {
         await route.fallback();

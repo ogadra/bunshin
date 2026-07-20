@@ -941,9 +941,8 @@ func TestApiStackNameHeader(t *testing.T) {
 	}
 }
 
-// TestApiHandlerPutHeadersはPUT /api/app/handlerの応答にも
-// X-Session-HexとX-Stack-Nameが付くことを検証する。frontはPUTレスポンスから
-// preview URLを再計算するため、GETと同じ契約がPUTでも成立している必要がある。
+// TestApiHandlerPutHeadersはPUT /api/app/handlerの応答にもX-Session-HexとX-Stack-Nameが付くことを検証する。
+// frontはPUTレスポンスからpreview URLを再計算するため、GETと同じ契約がPUTでも成立している必要がある。
 func TestApiHandlerPutHeaders(t *testing.T) {
 	cookies := setupSession(t)
 	snapshotHandler(t, cookies)

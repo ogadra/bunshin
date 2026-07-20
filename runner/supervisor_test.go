@@ -253,6 +253,18 @@ func TestPerlAppFactory(t *testing.T) {
 	}
 }
 
+// restartDelayとshutdownGraceは同じtime.Duration型なので、runAppSupervisor→superviseの
+// 呼び出しで引数順を取り違えてもコンパイラは検知できない。定数値そのものを固定し、意図しない
+// 変更や入れ替えが本番プロセスへ流れないよう明示的にassertする。
+func TestPerlAppSupervisorConstants(t *testing.T) {
+	if perlAppRestartDelay != 500*time.Millisecond {
+		t.Errorf("perlAppRestartDelay = %v, want %v", perlAppRestartDelay, 500*time.Millisecond)
+	}
+	if perlAppShutdownGrace != 5*time.Second {
+		t.Errorf("perlAppShutdownGrace = %v, want %v", perlAppShutdownGrace, 5*time.Second)
+	}
+}
+
 func TestRunAppSupervisorReturnsOnCancel(t *testing.T) {
 	captureLog(t)
 	ctx, cancel := context.WithCancel(context.Background())
