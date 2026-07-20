@@ -8,7 +8,6 @@ services:
     env_file:
       - front/.env.compose.example
     environment:
-      # {stack} は broker が X-Stack-Name で返す値で置換する。
       # top-level STACK_NAME を front に伝播させると broker との drift 源になるため、
       # ここでは interpolation しない。
       VITE_PERL_ORIGIN_TEMPLATE: "http://{hex}.{stack}.${INTERNAL_DOMAIN}/"

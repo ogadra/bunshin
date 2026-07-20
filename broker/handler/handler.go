@@ -33,9 +33,7 @@ const runnerHostHeader = "X-Runner-Host"
 const sessionHexHeader = "X-Session-Hex"
 
 // stackNameHeader は broker 自身の stack 名を front に伝えるヘッダー名。
-// front は preview URL の subdomain 部を組むのに使う。STACK_NAME の
-// source of truth は broker 側とし、front / compose の interpolation で
-// 上書きされない経路にする。
+// front / compose の interpolation で上書きされないよう broker を single source とする。
 const stackNameHeader = "X-Stack-Name"
 
 // Handler は broker の HTTP ハンドラー。
