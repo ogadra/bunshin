@@ -42,7 +42,10 @@ jobs:
       - name: Build integration images
         run: docker compose --env-file .env.example --profile integration build nginx broker runner-1 forward-cert front
       - name: Verify front boots
-        run: docker compose --env-file .env.example --profile integration up --wait front
+        # `--no-deps` を付けないと nginx / forward-cert も起動し、
+        # 続く integration-test の起動時に forward-cert が再走して
+        # cert が入れ替わり、既に読み込み済みの nginx が新 cert を verify できず 502 になる。
+        run: docker compose --env-file .env.example --profile integration up --wait --no-deps front
       - name: Run integration tests
         run: docker compose --env-file .env.example --profile integration run --rm integration-test
       - name: Cleanup
