@@ -40,11 +40,26 @@ const sseBody = (lines: string[]) => {
   };
 };
 
+const HEX = "0123456789abcdef0123456789abcdef";
+
 describe("getAppHandler", () => {
-  test("GET /api/app/handler returns text body", async () => {
-    mockFetch.mockResolvedValue({ ok: true, text: async () => "sub { };" });
-    await expect(getAppHandler()).resolves.toBe("sub { };");
+  test("GET /api/app/handler returns text body and session hex", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: responseHeaders({ "X-Session-Hex": HEX }),
+      text: async () => "sub { };",
+    });
+    await expect(getAppHandler()).resolves.toEqual({ source: "sub { };", sessionHex: HEX });
     expect(mockFetch).toHaveBeenCalledWith("/api/app/handler");
+  });
+
+  test("sessionHex is null when the header is absent", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: responseHeaders(),
+      text: async () => "sub { };",
+    });
+    await expect(getAppHandler()).resolves.toEqual({ source: "sub { };", sessionHex: null });
   });
 
   test("throws on non-ok response", async () => {
@@ -54,13 +69,20 @@ describe("getAppHandler", () => {
 });
 
 describe("putAppHandler", () => {
-  test("PUT /api/app/handler with body", async () => {
-    mockFetch.mockResolvedValue({ ok: true });
-    await putAppHandler("sub { return (200, 'text/plain', 'ok'); };");
+  test("PUT /api/app/handler with body returns session hex", async () => {
+    mockFetch.mockResolvedValue({ ok: true, headers: responseHeaders({ "X-Session-Hex": HEX }) });
+    await expect(putAppHandler("sub { return (200, 'text/plain', 'ok'); };")).resolves.toEqual({
+      sessionHex: HEX,
+    });
     expect(mockFetch).toHaveBeenCalledWith("/api/app/handler", {
       method: "PUT",
       body: "sub { return (200, 'text/plain', 'ok'); };",
     });
+  });
+
+  test("sessionHex is null when the header is absent", async () => {
+    mockFetch.mockResolvedValue({ ok: true, headers: responseHeaders() });
+    await expect(putAppHandler("body")).resolves.toEqual({ sessionHex: null });
   });
 
   test("throws on non-ok response", async () => {

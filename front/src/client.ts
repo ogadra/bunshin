@@ -1,17 +1,25 @@
 import { SessionReassignedError } from "./errors/SessionReassignedError";
 
-export const getAppHandler = async (): Promise<string> => {
+// session_id cookie は HttpOnly のため、preview URL 用の session hex は
+// nginx が /api 応答に付ける X-Session-Hex ヘッダーから得る
+const sessionHexHeader = "X-Session-Hex";
+
+export const getAppHandler = async (): Promise<{
+  source: string;
+  sessionHex: string | null;
+}> => {
   const res = await fetch("/api/app/handler");
   if (!res.ok) throw new Error(`Failed to get handler: ${res.status}`);
-  return res.text();
+  return { source: await res.text(), sessionHex: res.headers.get(sessionHexHeader) };
 };
 
-export const putAppHandler = async (source: string): Promise<void> => {
+export const putAppHandler = async (source: string): Promise<{ sessionHex: string | null }> => {
   const res = await fetch("/api/app/handler", {
     method: "PUT",
     body: source,
   });
   if (!res.ok) throw new Error(`Failed to put handler: ${res.status}`);
+  return { sessionHex: res.headers.get(sessionHexHeader) };
 };
 
 export const SseEventType = {
