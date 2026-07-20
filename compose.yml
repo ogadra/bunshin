@@ -14,6 +14,11 @@ services:
       # host側の異なるarch向けtreeでbind mountされて上書きされないため。
       - ./front:/app
       - /app/node_modules
+    healthcheck:
+      test: ["CMD", "/bin/bash", "-c", "echo > /dev/tcp/localhost/5173"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
     depends_on:
       - nginx
 
