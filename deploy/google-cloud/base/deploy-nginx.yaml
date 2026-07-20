@@ -60,6 +60,8 @@ spec:
               value: ${INTERNAL_DOMAIN}
             - name: BUNSHIN_STACKS
               value: ${BUNSHIN_STACKS}
+            - name: RUNNER_APP_PORT
+              value: "5000"
             - name: NGINX_RESOLVER
               value: ${NGINX_RESOLVER}
             - name: BROKER_HOST
