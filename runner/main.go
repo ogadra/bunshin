@@ -30,13 +30,13 @@ var registerFn = register
 // It defaults to deregister and can be replaced in tests.
 var deregisterFn = deregister
 
-// main reads the RUNNER_PORT environment variable and starts the HTTP server
+// main reads the RUNNER_API_PORT environment variable and starts the HTTP server
 // with graceful shutdown on SIGTERM/SIGINT.
 // The empty host binds to all interfaces, which is intentional for use inside a Docker container.
 func main() {
-	port := os.Getenv("RUNNER_PORT")
+	port := os.Getenv("RUNNER_API_PORT")
 	if port == "" {
-		fatalf("missing required environment variable: RUNNER_PORT")
+		fatalf("missing required environment variable: RUNNER_API_PORT")
 		return
 	}
 	if err := start(":" + port); err != nil {

@@ -39,7 +39,7 @@ func setDynamoEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("STACK_NAME", "ap-northeast-1")
 	t.Setenv("BUNSHIN_STACKS", "ap-northeast-1,ap-northeast-3")
-	t.Setenv("RUNNER_PORT", "3000")
+	t.Setenv("RUNNER_API_PORT", "3000")
 	t.Setenv("BUNSHIN_STORE", "dynamodb")
 	t.Setenv("DYNAMODB_ENDPOINT", "http://localhost:18000")
 	t.Setenv("AWS_REGION", "ap-northeast-1")
@@ -333,18 +333,18 @@ func TestDefaultInitHandler_StackError(t *testing.T) {
 	}
 }
 
-// TestDefaultInitHandler_RunnerPortError は RUNNER_PORT 未設定の場合に defaultInitHandler がエラーを伝播することを検証する。
-func TestDefaultInitHandler_RunnerPortError(t *testing.T) {
+// TestDefaultInitHandler_RunnerAPIPortError は RUNNER_API_PORT 未設定の場合に defaultInitHandler がエラーを伝播することを検証する。
+func TestDefaultInitHandler_RunnerAPIPortError(t *testing.T) {
 	t.Setenv("STACK_NAME", "ap-northeast-1")
 	t.Setenv("BUNSHIN_STACKS", "ap-northeast-1")
-	t.Setenv("RUNNER_PORT", "")
+	t.Setenv("RUNNER_API_PORT", "")
 
 	_, _, err := defaultInitHandler()
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "RUNNER_PORT") {
-		t.Errorf("error = %q, want to propagate runner port error", err.Error())
+	if !strings.Contains(err.Error(), "RUNNER_API_PORT") {
+		t.Errorf("error = %q, want to propagate runner api port error", err.Error())
 	}
 }
 
@@ -352,7 +352,7 @@ func TestDefaultInitHandler_RunnerPortError(t *testing.T) {
 func TestDefaultInitHandler_RepositoryError(t *testing.T) {
 	t.Setenv("STACK_NAME", "ap-northeast-1")
 	t.Setenv("BUNSHIN_STACKS", "ap-northeast-1")
-	t.Setenv("RUNNER_PORT", "3000")
+	t.Setenv("RUNNER_API_PORT", "3000")
 	t.Setenv("BUNSHIN_STORE", "")
 
 	_, _, err := defaultInitHandler()

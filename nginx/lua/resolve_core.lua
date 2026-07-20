@@ -13,7 +13,7 @@ local own_stack_name = ""
 local internal_domain_name = ""
 local allowed_stacks = {}
 local ordered_stacks = {}
-local runner_port_number = 0
+local api_port_number = 0
 local app_port_number = 0
 local cloud_name = ""
 
@@ -35,7 +35,7 @@ local function validate_port(v, name)
     return port
 end
 
-function _M.configure(stack, domain, stack_names, runner_port, app_port, cloud)
+function _M.configure(stack, domain, stack_names, api_port, app_port, cloud)
     if stack == nil or stack == "" or domain == nil or domain == "" then
         error("resolve_core: STACK_NAME and INTERNAL_DOMAIN must be set")
     end
@@ -45,7 +45,7 @@ function _M.configure(stack, domain, stack_names, runner_port, app_port, cloud)
     if cloud == nil or not ALLOWED_CLOUDS[cloud] then
         error("resolve_core: CLOUD must be one of AWS|GOOGLE_CLOUD")
     end
-    runner_port_number = validate_port(runner_port, "RUNNER_PORT")
+    api_port_number = validate_port(api_port, "RUNNER_API_PORT")
     app_port_number = validate_port(app_port, "RUNNER_APP_PORT")
     local set = {}
     local list = {}
@@ -213,7 +213,7 @@ function _M.decide(res, stacks, domain)
         set_cookie = table.concat(set_cookie, ", ")
     end
     return {
-        runner_url = "http://" .. host .. ":" .. tostring(runner_port_number),
+        runner_url = "http://" .. host .. ":" .. tostring(api_port_number),
         set_cookie = set_cookie,
         reassigned = res.header["X-Session-Reassigned"],
         session_hex = res.header["X-Session-Hex"],

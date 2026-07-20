@@ -58,7 +58,7 @@ spec:
           env:
             - name: STACK_NAME
               value: ${REGION}
-            - name: RUNNER_PORT
+            - name: RUNNER_API_PORT
               value: "3000"
             - name: BROKER_URL
               value: http://broker.bunshin.svc.cluster.local:8080

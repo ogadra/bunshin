@@ -19,7 +19,7 @@ import (
 )
 
 func TestMainSuccess(t *testing.T) {
-	t.Setenv("RUNNER_PORT", "3000")
+	t.Setenv("RUNNER_API_PORT", "3000")
 	t.Setenv("STACK_NAME", "local")
 	restoreSupervise := stubAppSupervisor(t)
 	defer restoreSupervise()
@@ -95,7 +95,7 @@ func TestMainSuccess(t *testing.T) {
 // TestMainError verifies that main calls fatalf when start returns an error,
 // such as when the configured port is already in use.
 func TestMainError(t *testing.T) {
-	t.Setenv("RUNNER_PORT", "3000")
+	t.Setenv("RUNNER_API_PORT", "3000")
 
 	// Occupy :3000 to make start fail.
 	ln, err := net.Listen("tcp", ":3000")
@@ -121,9 +121,9 @@ func TestMainError(t *testing.T) {
 	}
 }
 
-// TestMainMissingPort verifies that main calls fatalf when RUNNER_PORT is not set.
+// TestMainMissingPort verifies that main calls fatalf when RUNNER_API_PORT is not set.
 func TestMainMissingPort(t *testing.T) {
-	t.Setenv("RUNNER_PORT", "")
+	t.Setenv("RUNNER_API_PORT", "")
 
 	orig := fatalf
 	defer func() { fatalf = orig }()
@@ -138,10 +138,10 @@ func TestMainMissingPort(t *testing.T) {
 	main()
 
 	if !called {
-		t.Fatal("fatalf should have been called when RUNNER_PORT is missing")
+		t.Fatal("fatalf should have been called when RUNNER_API_PORT is missing")
 	}
-	if !strings.Contains(msg, "RUNNER_PORT") {
-		t.Fatalf("fatalf message should mention RUNNER_PORT, got: %s", msg)
+	if !strings.Contains(msg, "RUNNER_API_PORT") {
+		t.Fatalf("fatalf message should mention RUNNER_API_PORT, got: %s", msg)
 	}
 }
 
