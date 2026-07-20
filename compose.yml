@@ -7,6 +7,12 @@ services:
       - "${FRONT_PORT}:5173"
     env_file:
       - front/.env.compose.example
+    volumes:
+      # HMR で host の front/ 変更を container の Vite dev に伝える。
+      # image で入れた node_modules は host 側の (arch が異なる可能性のある) ものに
+      # 覆われないよう匿名 volume で退避する。
+      - ./front:/app
+      - /app/node_modules
     depends_on:
       - nginx
 
