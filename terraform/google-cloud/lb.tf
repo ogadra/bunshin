@@ -30,6 +30,8 @@ resource "google_compute_backend_service" "nginx" {
   security_policy      = google_compute_security_policy.backend.id
   edge_security_policy = google_compute_security_policy.edge.id
 
+  custom_request_headers = ["X-Bunshin-Edge-Client-Address: {client_ip_address}:{client_port}"]
+
   health_checks = [google_compute_health_check.nginx.id]
 
   log_config {
@@ -58,6 +60,18 @@ resource "google_compute_url_map" "external" {
     path_matcher = "main"
   }
 
+  # port-forward: {hex}.<stack>.<domain> は所有stackのnginx NEGだけを持つbackend serviceに
+  # 振り分ける。cross-stack forwardはしない (nginx側でも404に落とす)
+  host_rule {
+    hosts        = ["*.asia-northeast1.${var.domain_name}"]
+    path_matcher = "pf-asne1"
+  }
+
+  host_rule {
+    hosts        = ["*.asia-northeast2.${var.domain_name}"]
+    path_matcher = "pf-asne2"
+  }
+
   path_matcher {
     name            = "main"
     default_service = google_compute_backend_bucket.static.id
@@ -67,13 +81,83 @@ resource "google_compute_url_map" "external" {
       service = google_compute_backend_service.nginx.id
     }
   }
+
+  path_matcher {
+    name            = "pf-asne1"
+    default_service = google_compute_backend_service.nginx_pf_asne1.id
+  }
+
+  path_matcher {
+    name            = "pf-asne2"
+    default_service = google_compute_backend_service.nginx_pf_asne2.id
+  }
+}
+
+# port-forwardのHostは所有stackにしか着弾させないため、backend NEGは当該stackのみ。
+# nginx側のcross-stack fallbackや近接ルーティングは意図的に外す。
+resource "google_compute_backend_service" "nginx_pf_asne1" {
+  # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
+  name                  = "bunshin-nginx-pf-asne1"
+  protocol              = "HTTP"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  timeout_sec           = 30
+  enable_cdn            = false
+
+  security_policy      = google_compute_security_policy.backend.id
+  edge_security_policy = google_compute_security_policy.edge.id
+
+  health_checks = [google_compute_health_check.nginx.id]
+
+  log_config {
+    enable      = true
+    sample_rate = 1.0
+  }
+
+  dynamic "backend" {
+    for_each = module.asne1.nginx_neg_ids
+    content {
+      group                 = backend.value
+      balancing_mode        = "RATE"
+      max_rate_per_endpoint = 100
+      capacity_scaler       = 1.0
+    }
+  }
+}
+
+resource "google_compute_backend_service" "nginx_pf_asne2" {
+  # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
+  name                  = "bunshin-nginx-pf-asne2"
+  protocol              = "HTTP"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  timeout_sec           = 30
+  enable_cdn            = false
+
+  security_policy      = google_compute_security_policy.backend.id
+  edge_security_policy = google_compute_security_policy.edge.id
+
+  health_checks = [google_compute_health_check.nginx.id]
+
+  log_config {
+    enable      = true
+    sample_rate = 1.0
+  }
+
+  dynamic "backend" {
+    for_each = module.asne2.nginx_neg_ids
+    content {
+      group                 = backend.value
+      balancing_mode        = "RATE"
+      max_rate_per_endpoint = 100
+      capacity_scaler       = 1.0
+    }
+  }
 }
 
 resource "google_compute_target_https_proxy" "external" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   name            = "bunshin-external"
   url_map         = google_compute_url_map.external.id
-  certificate_map = "//certificatemanager.googleapis.com/${google_certificate_manager_certificate_map.apex.id}"
+  certificate_map = "//certificatemanager.googleapis.com/${google_certificate_manager_certificate_map.external.id}"
 }
 
 resource "google_compute_global_address" "external_ipv4" {
