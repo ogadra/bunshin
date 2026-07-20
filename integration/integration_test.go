@@ -5,6 +5,7 @@ package integration
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -806,4 +807,130 @@ func TestNoIdleRunner(t *testing.T) {
 		t.Errorf("X-Fallback-Remaining should be empty, got %q", values)
 	}
 	assertForwardedClientAddress(t, got, "203.0.113.50:45678")
+}
+
+const perlHmrStack = "ap-northeast-1"
+
+const perlHmrPortForwardDomain = "internal.test"
+
+func portForwardHost(t *testing.T, cookies sessionCookies) string {
+	t.Helper()
+	_, hex, ok := strings.Cut(cookies.SessionID, "_")
+	if !ok || hex == "" {
+		t.Fatalf("portForwardHost: unexpected SessionID format: %q", cookies.SessionID)
+	}
+	return hex + "." + perlHmrStack + "." + perlHmrPortForwardDomain
+}
+
+func snapshotHandler(t *testing.T, cookies sessionCookies) {
+	t.Helper()
+	resp := doRequest(t, http.MethodGet, nginxBase+"/api/app/handler", "", cookies.cookieHeader())
+	original, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		t.Fatalf("snapshot GET body: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("snapshot GET status = %d, body = %s", resp.StatusCode, original)
+	}
+	t.Cleanup(func() {
+		putHandlerRaw(t, cookies, bytes.NewReader(original), t.Errorf)
+	})
+}
+
+// cleanup から t.Fatalf を呼ぶと後続 cleanup がスキップされるため、fail 引数で失敗経路を注入する。
+// 本体では t.Fatalf、cleanup では t.Errorf を渡す。
+func putHandlerRaw(t *testing.T, cookies sessionCookies, body io.Reader, fail func(format string, args ...any)) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPut, nginxBase+"/api/app/handler", body)
+	if err != nil {
+		fail("PUT /api/app/handler: new request: %v", err)
+		return
+	}
+	req.Header.Set("Cookie", cookies.cookieHeader())
+	req.Header.Set("Content-Type", "text/plain; charset=utf-8")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		fail("PUT /api/app/handler: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		respBody, _ := io.ReadAll(resp.Body)
+		fail("PUT /api/app/handler: status = %d, body = %s", resp.StatusCode, respBody)
+	}
+}
+
+func putHandler(t *testing.T, cookies sessionCookies, body string) {
+	t.Helper()
+	putHandlerRaw(t, cookies, strings.NewReader(body), t.Fatalf)
+}
+
+func handlerModuleSource(contentBody string) string {
+	return fmt.Sprintf("package DaiKichijoji;\nuse strict;\nuse warnings;\nsub content { return %q; }\n1;\n", contentBody)
+}
+
+func getPerl(t *testing.T, host string) (int, string) {
+	t.Helper()
+	resp := doRequestWithHeaders(t, http.MethodGet, nginxBase+"/", "", "", map[string]string{"Host": host})
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(body)
+}
+
+// 連続書き込みの mtime 衝突は response 待ちで解消できないため、PUT 側で境界跨ぎを保証すること。
+func waitPerlResponse(t *testing.T, host string, wantStatus int, wantBody string) {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	var lastStatus int
+	var lastBody string
+	for time.Now().Before(deadline) {
+		lastStatus, lastBody = getPerl(t, host)
+		if lastStatus == wantStatus && (wantBody == "" || strings.Contains(lastBody, wantBody)) {
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	if wantBody == "" {
+		t.Fatalf("perl did not return status=%d within 30s: last status=%d body=%q", wantStatus, lastStatus, lastBody)
+	}
+	t.Fatalf("perl did not return status=%d body containing %q within 30s: last status=%d body=%q", wantStatus, wantBody, lastStatus, lastBody)
+}
+
+func TestPerlHmrReachable(t *testing.T) {
+	cookies := setupSession(t)
+	host := portForwardHost(t, cookies)
+	waitPerlResponse(t, host, http.StatusOK, "")
+}
+
+func TestPerlHmrPutSwapsHandler(t *testing.T) {
+	cookies := setupSession(t)
+	host := portForwardHost(t, cookies)
+	snapshotHandler(t, cookies)
+
+	marker := fmt.Sprintf("hmr-marker-%d", time.Now().UnixNano())
+	putHandler(t, cookies, handlerModuleSource(marker))
+
+	waitPerlResponse(t, host, http.StatusOK, marker)
+}
+
+func TestPerlHmrSyntaxErrorRecovers(t *testing.T) {
+	cookies := setupSession(t)
+	host := portForwardHost(t, cookies)
+	snapshotHandler(t, cookies)
+
+	brokenPutAt := time.Now()
+	putHandler(t, cookies, "this is not perl at all !!!\n")
+	waitPerlResponse(t, host, http.StatusInternalServerError, "DaiKichijoji.pm load failed")
+
+	// Module::Refresh は mtime 比較で reload の要否を判定する。
+	// nsec 解像度を持たないファイルシステムでは同一秒内の連続書き込みが同じ mtime に丸められる。
+	// この場合、復旧 PUT の reload が silent にスキップされる。
+	// 復旧 PUT が次の秒境界を跨いだ mtime を持つよう待機する。
+	if wait := time.Until(brokenPutAt.Add(1100 * time.Millisecond)); wait > 0 {
+		time.Sleep(wait)
+	}
+
+	putHandler(t, cookies, handlerModuleSource("recovered"))
+	waitPerlResponse(t, host, http.StatusOK, "recovered")
 }
