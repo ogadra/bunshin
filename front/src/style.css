@@ -28,6 +28,18 @@ body {
   background: #fff;
 }
 
+.error-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  padding: 12px 16px;
+  background: #b00020;
+  color: #fff;
+  font-size: 14px;
+}
+
 /* pre と textarea のフォント・余白が 1px でもずれるとキャレット位置が狂うため、
    メトリクスに関わるルールは必ず両者同時に指定する */
 .editor-highlight,

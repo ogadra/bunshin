@@ -44,7 +44,7 @@ describe("getAppHandler", () => {
   test("GET /api/app/handler returns text body", async () => {
     mockFetch.mockResolvedValue({ ok: true, text: async () => "sub { };" });
     await expect(getAppHandler()).resolves.toBe("sub { };");
-    expect(mockFetch).toHaveBeenCalledWith("/api/app/handler", { signal: undefined });
+    expect(mockFetch).toHaveBeenCalledWith("/api/app/handler");
   });
 
   test("throws on non-ok response", async () => {
@@ -60,7 +60,6 @@ describe("putAppHandler", () => {
     expect(mockFetch).toHaveBeenCalledWith("/api/app/handler", {
       method: "PUT",
       body: "sub { return (200, 'text/plain', 'ok'); };",
-      signal: undefined,
     });
   });
 

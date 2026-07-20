@@ -4,7 +4,8 @@ export const sessionHexFromCookie = (cookie: string): string | null => {
   const value = match[1];
   const underscore = value.indexOf("_");
   if (underscore < 0) return null;
-  return value.slice(underscore + 1);
+  const hex = value.slice(underscore + 1);
+  return hex === "" ? null : hex;
 };
 
 export const previewUrl = (template: string, hex: string): string => {

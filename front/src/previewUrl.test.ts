@@ -20,6 +20,10 @@ describe("sessionHexFromCookie", () => {
   test("returns null when the value has no stack prefix", () => {
     expect(sessionHexFromCookie("session_id=deadbeef")).toBeNull();
   });
+
+  test("returns null when the hex portion is empty", () => {
+    expect(sessionHexFromCookie("session_id=ap-northeast-1_")).toBeNull();
+  });
 });
 
 describe("previewUrl", () => {

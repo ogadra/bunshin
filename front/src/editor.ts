@@ -73,11 +73,11 @@ export const createPerlEditor = (container: HTMLElement, initialCode: string): P
     tabMovesFocus = false;
   });
 
-  const listeners = new Set<(code: string) => void>();
+  let listener: ((code: string) => void) | null = null;
 
   input.addEventListener("input", () => {
     render();
-    for (const listener of listeners) listener(input.value);
+    listener?.(input.value);
   });
   input.addEventListener("scroll", syncScroll);
 
@@ -88,8 +88,8 @@ export const createPerlEditor = (container: HTMLElement, initialCode: string): P
     get value(): string {
       return input.value;
     },
-    onChange(listener: (code: string) => void) {
-      listeners.add(listener);
+    onChange(cb: (code: string) => void) {
+      listener = cb;
     },
   };
 };

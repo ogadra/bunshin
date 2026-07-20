@@ -32,6 +32,8 @@ async function stubHandlerApi(page: Page, initialSource: string): Promise<{ puts
   return { puts };
 }
 
+let handlerStub: { puts: string[] };
+
 test.beforeEach(async ({ page, context }) => {
   await context.addCookies([
     {
@@ -40,7 +42,7 @@ test.beforeEach(async ({ page, context }) => {
       url: "http://localhost:4273",
     },
   ]);
-  await stubHandlerApi(page, samplePerl);
+  handlerStub = await stubHandlerApi(page, samplePerl);
   await page.goto("/");
   await highlight(page).locator("span").first().waitFor();
 });
@@ -164,24 +166,6 @@ test("both layers share identical geometry", async ({ page }) => {
 });
 
 test.describe("Perl HMR wiring", () => {
-  // トップレベルの beforeEach でも stub は入っているが、PUT の payload を検査するには
-  // このブロック用の stub インスタンスを別で取り直す必要がある。片方だけ有効になるよう
-  // beforeEach を上書きして goto 前に個別 stub を仕込む
-  let stub: { puts: string[] };
-
-  test.beforeEach(async ({ page, context }) => {
-    await context.addCookies([
-      {
-        name: "session_id",
-        value: "ap-northeast-1_e2edeadbeef",
-        url: "http://localhost:4273",
-      },
-    ]);
-    stub = await stubHandlerApi(page, 'sub { return (200, "text/plain", "before"); };\n');
-    await page.goto("/");
-    await highlight(page).locator("span").first().waitFor();
-  });
-
   test("stopping typing PUTs the handler and reloads the iframe", async ({ page }) => {
     const initialSrc = await page.locator("#preview").getAttribute("src");
 
@@ -189,8 +173,8 @@ test.describe("Perl HMR wiring", () => {
     await page.keyboard.press("ControlOrMeta+End");
     await page.keyboard.type("\n# added by e2e", { delay: 20 });
 
-    await expect.poll(() => stub.puts.length, { timeout: 5000 }).toBeGreaterThan(0);
-    expect(stub.puts.at(-1)).toContain("# added by e2e");
+    await expect.poll(() => handlerStub.puts.length, { timeout: 5000 }).toBeGreaterThan(0);
+    expect(handlerStub.puts.at(-1)).toContain("# added by e2e");
     await expect
       .poll(() => page.locator("#preview").getAttribute("src"), { timeout: 5000 })
       .not.toBe(initialSrc);
@@ -200,8 +184,10 @@ test.describe("Perl HMR wiring", () => {
     page,
   }) => {
     const PUT_LATENCY_MS = 2000;
+    const DEBOUNCE_MS = 1000;
     const startTimes: number[] = [];
     const completeTimes: number[] = [];
+    const putPayloads: string[] = [];
     // beforeEach の PUT stub を意図的な遅延つきに上書きし、GET は元の stub に fallback で委譲する
     await page.route("**/api/app/handler", async (route, req) => {
       if (req.method() !== "PUT") {
@@ -209,6 +195,7 @@ test.describe("Perl HMR wiring", () => {
         return;
       }
       startTimes.push(Date.now());
+      putPayloads.push(req.postData() ?? "");
       await new Promise((r) => setTimeout(r, PUT_LATENCY_MS));
       completeTimes.push(Date.now());
       await route.fulfill({ status: 204 });
@@ -220,10 +207,15 @@ test.describe("Perl HMR wiring", () => {
     await expect.poll(() => startTimes.length, { timeout: 3000 }).toBe(1);
     await page.keyboard.type("\n# second", { delay: 5 });
     await expect.poll(() => startTimes.length, { timeout: 8000 }).toBe(2);
+    await expect.poll(() => completeTimes.length, { timeout: 5000 }).toBe(2);
 
-    // idle 契約: 1st PUT 完了直後に unsent 変更が残っていても、DEBOUNCE_MS 経つまで 2nd PUT を出さない。
-    // 旧実装 (in-flight 完了後の while ループ即 PUT) では gap ≈ 0 になる
+    // idle 契約: 1st PUT 完了直後に unsent 変更が残っていても、DEBOUNCE_MS 経つまで 2nd PUT を出さない
     const gapMs = startTimes[1] - completeTimes[0];
     expect(gapMs).toBeGreaterThanOrEqual(800);
+
+    // 収束契約: 2nd PUT は最新スナップショットを送信し、以降は追加 PUT を出さない
+    expect(putPayloads.at(-1)).toContain("# second");
+    await page.waitForTimeout(DEBOUNCE_MS * 2 + 200);
+    expect(startTimes).toHaveLength(2);
   });
 });
