@@ -26,3 +26,11 @@ spec:
       ports:
         - port: 3000
           protocol: TCP
+    - from:
+        - ipBlock:
+            cidr: 10.2.0.0/24
+        - ipBlock:
+            cidr: 10.3.0.0/24
+      ports:
+        - port: 5000
+          protocol: TCP
