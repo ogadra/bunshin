@@ -62,6 +62,8 @@ spec:
               value: ${BUNSHIN_STACKS}
             - name: RUNNER_APP_PORT
               value: "5000"
+            - name: CLOUD
+              value: GOOGLE_CLOUD
             - name: NGINX_RESOLVER
               value: ${NGINX_RESOLVER}
             - name: BROKER_HOST
