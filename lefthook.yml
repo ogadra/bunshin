@@ -77,7 +77,7 @@ pre-commit:
     041_nginx_config_test:
       root: "nginx/"
       glob: "**/*.conf"
-      run: docker build --target config-test .
+      run: docker build --target config-test --build-arg CLOUD=AWS . && docker build --target config-test --build-arg CLOUD=GOOGLE_CLOUD .
     004_gitleaks:
       run: gitleaks protect --staged
     005_trivy:

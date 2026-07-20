@@ -20,13 +20,15 @@ jobs:
         include:
           - arch: amd64
             runs-on: ubuntu-24.04
+            cloud: GOOGLE_CLOUD
           - arch: arm64
             runs-on: ubuntu-24.04-arm
+            cloud: AWS
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Build config-test stage
-        run: docker build --target config-test -t nginx-config-test nginx/
+        run: docker build --target config-test --build-arg CLOUD=${{ matrix.cloud }} -t nginx-config-test nginx/
       - name: Run Lua unit tests
         run: |
           docker run --rm nginx-config-test /usr/local/openresty/luajit/bin/luajit /usr/local/openresty/nginx/lua/runner_host_test.lua
