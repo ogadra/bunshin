@@ -12,21 +12,32 @@ if [ -z "${PROJECT}" ]; then
     exit 1
 fi
 
+delete_neg() {
+    local region="$1"
+    local zone="$2"
+    local neg_name="$3"
+    local err
+    if err=$(gcloud compute network-endpoint-groups delete "${neg_name}" \
+        --zone="${zone}" --project="${PROJECT}" -q 2>&1); then
+        printf '[%s] deleted %s\n' "${region}" "${zone}"
+    elif grep -qi 'was not found\|NOT_FOUND' <<<"${err}"; then
+        printf '[%s] already deleted %s\n' "${region}" "${zone}"
+    else
+        printf '[%s] failed to delete %s: %s\n' "${region}" "${zone}" "${err}" >&2
+        return 1
+    fi
+}
+
 cleanup_region() {
     local region="$1"
     local neg_name="bunshin-nginx-${region}"
     local zones=("${region}-a" "${region}-b" "${region}-c")
+    local rc=0
 
     for zone in "${zones[@]}"; do
-        if gcloud compute network-endpoint-groups describe "${neg_name}" \
-            --zone="${zone}" --project="${PROJECT}" >/dev/null 2>&1; then
-            gcloud compute network-endpoint-groups delete "${neg_name}" \
-                --zone="${zone}" --project="${PROJECT}" -q
-            printf '[%s] deleted %s\n' "${region}" "${zone}"
-        else
-            printf '[%s] already deleted %s\n' "${region}" "${zone}"
-        fi
+        delete_neg "${region}" "${zone}" "${neg_name}" || rc=$?
     done
+    return "${rc}"
 }
 
 pids=()
