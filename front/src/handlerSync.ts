@@ -1,7 +1,6 @@
 import type { PerlEditorHandle } from "./editor";
 
 export const SaveStatus = {
-  IDLE: "idle",
   SAVING: "saving",
   SAVED: "saved",
   ERROR: "error",
