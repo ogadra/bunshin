@@ -35,6 +35,7 @@ describe("startHandlerSync", () => {
       reloadPreview,
       debounceMs: 100,
       onPutFailure: vi.fn(),
+      onStatusChange: vi.fn(),
     });
     editor.type("edited");
     expect(putHandler).not.toHaveBeenCalled();
@@ -53,6 +54,7 @@ describe("startHandlerSync", () => {
       reloadPreview: vi.fn(),
       debounceMs: 100,
       onPutFailure: vi.fn(),
+      onStatusChange: vi.fn(),
     });
     editor.type("initial");
     await vi.advanceTimersByTimeAsync(100);
@@ -75,6 +77,7 @@ describe("startHandlerSync", () => {
       reloadPreview: vi.fn(),
       debounceMs: 100,
       onPutFailure: vi.fn(),
+      onStatusChange: vi.fn(),
     });
     editor.type("first");
     await vi.advanceTimersByTimeAsync(100);
@@ -108,6 +111,7 @@ describe("startHandlerSync", () => {
       reloadPreview,
       debounceMs: 100,
       onPutFailure,
+      onStatusChange: vi.fn(),
     });
     editor.type("edited");
     await vi.advanceTimersByTimeAsync(100);
@@ -118,5 +122,39 @@ describe("startHandlerSync", () => {
     editor.type("edited-again");
     await vi.advanceTimersByTimeAsync(500);
     expect(putHandler).toHaveBeenCalledTimes(1);
+  });
+
+  test("emits saving then saved on successful PUT", async () => {
+    const editor = createEditorStub("initial");
+    const onStatusChange = vi.fn();
+    startHandlerSync({
+      editor: editor.handle,
+      initialCode: "initial",
+      putHandler: vi.fn().mockResolvedValue(undefined),
+      reloadPreview: vi.fn(),
+      debounceMs: 100,
+      onPutFailure: vi.fn(),
+      onStatusChange,
+    });
+    editor.type("edited");
+    await vi.advanceTimersByTimeAsync(100);
+    expect(onStatusChange.mock.calls.map((c) => c[0])).toEqual(["saving", "saved"]);
+  });
+
+  test("emits saving then error on rejected PUT", async () => {
+    const editor = createEditorStub("initial");
+    const onStatusChange = vi.fn();
+    startHandlerSync({
+      editor: editor.handle,
+      initialCode: "initial",
+      putHandler: vi.fn().mockRejectedValue(new Error("boom")),
+      reloadPreview: vi.fn(),
+      debounceMs: 100,
+      onPutFailure: vi.fn(),
+      onStatusChange,
+    });
+    editor.type("edited");
+    await vi.advanceTimersByTimeAsync(100);
+    expect(onStatusChange.mock.calls.map((c) => c[0])).toEqual(["saving", "error"]);
   });
 });

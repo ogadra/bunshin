@@ -7,6 +7,7 @@ import {
   putAppHandler,
   SseEventType,
 } from "./client";
+import { AppError } from "./errors/AppError";
 import { SessionReassignedError } from "./errors/SessionReassignedError";
 
 const mockFetch = vi.fn();
@@ -44,6 +45,15 @@ const HEX = "0123456789abcdef0123456789abcdef";
 
 const STACK = "ap-northeast-1";
 
+const jsonErrorResponse = (status: number, body: unknown) => ({
+  ok: false,
+  status,
+  headers: responseHeaders(),
+  clone() {
+    return { json: async () => body };
+  },
+});
+
 describe("getAppHandler", () => {
   test("GET /api/app/handler returns text body, session hex and stack name", async () => {
     mockFetch.mockResolvedValue({
@@ -59,27 +69,40 @@ describe("getAppHandler", () => {
     expect(mockFetch).toHaveBeenCalledWith("/api/app/handler");
   });
 
-  test("sessionHex and stackName are null when headers are absent", async () => {
+  test("throws internal error when X-Session-Hex is absent", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
-      headers: responseHeaders(),
+      headers: responseHeaders({ "X-Stack-Name": STACK }),
       text: async () => "sub { };",
     });
-    await expect(getAppHandler()).resolves.toEqual({
-      source: "sub { };",
-      sessionHex: null,
-      stackName: null,
-    });
+    const err = await getAppHandler().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).key).toBe("errorInternal");
   });
 
-  test("throws on non-ok response", async () => {
-    mockFetch.mockResolvedValue({ ok: false, status: 500 });
-    await expect(getAppHandler()).rejects.toThrow("Failed to get handler: 500");
+  test("throws internal error when X-Stack-Name is absent", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: responseHeaders({ "X-Session-Hex": HEX }),
+      text: async () => "sub { };",
+    });
+    const err = await getAppHandler().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).key).toBe("errorInternal");
+  });
+
+  test("throws AppError classified from response body on non-ok", async () => {
+    mockFetch.mockResolvedValue(
+      jsonErrorResponse(503, { code: "NO_IDLE_RUNNER", message: "no idle runner available" }),
+    );
+    const err = await getAppHandler().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).key).toBe("errorNoIdleRunner");
   });
 });
 
 describe("putAppHandler", () => {
-  test("PUT /api/app/handler with body returns session hex and stack name", async () => {
+  test("PUT /api/app/handler returns hex, stack, and reassigned=false by default", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       headers: responseHeaders({ "X-Session-Hex": HEX, "X-Stack-Name": STACK }),
@@ -87,6 +110,7 @@ describe("putAppHandler", () => {
     await expect(putAppHandler("sub { return (200, 'text/plain', 'ok'); };")).resolves.toEqual({
       sessionHex: HEX,
       stackName: STACK,
+      reassigned: false,
     });
     expect(mockFetch).toHaveBeenCalledWith("/api/app/handler", {
       method: "PUT",
@@ -94,14 +118,36 @@ describe("putAppHandler", () => {
     });
   });
 
-  test("sessionHex and stackName are null when headers are absent", async () => {
-    mockFetch.mockResolvedValue({ ok: true, headers: responseHeaders() });
-    await expect(putAppHandler("body")).resolves.toEqual({ sessionHex: null, stackName: null });
+  test("reassigned is true when X-Session-Reassigned header is 'true'", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: responseHeaders({
+        "X-Session-Hex": HEX,
+        "X-Stack-Name": STACK,
+        "X-Session-Reassigned": "true",
+      }),
+    });
+    await expect(putAppHandler("body")).resolves.toEqual({
+      sessionHex: HEX,
+      stackName: STACK,
+      reassigned: true,
+    });
   });
 
-  test("throws on non-ok response", async () => {
-    mockFetch.mockResolvedValue({ ok: false, status: 400 });
-    await expect(putAppHandler("body")).rejects.toThrow("Failed to put handler: 400");
+  test("throws internal error when required headers are absent", async () => {
+    mockFetch.mockResolvedValue({ ok: true, headers: responseHeaders() });
+    const err = await putAppHandler("body").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).key).toBe("errorInternal");
+  });
+
+  test("throws AppError classified from runner body-too-large error", async () => {
+    mockFetch.mockResolvedValue(
+      jsonErrorResponse(400, { error: "read body: http: request body too large" }),
+    );
+    const err = await putAppHandler("body").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).key).toBe("errorEditTooLarge");
   });
 });
 

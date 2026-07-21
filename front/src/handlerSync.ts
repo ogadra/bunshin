@@ -1,5 +1,7 @@
 import type { PerlEditorHandle } from "./editor";
 
+export type SaveStatus = "idle" | "saving" | "saved" | "error";
+
 export type HandlerSyncDeps = {
   editor: PerlEditorHandle;
   initialCode: string;
@@ -7,6 +9,7 @@ export type HandlerSyncDeps = {
   reloadPreview: () => void;
   debounceMs: number;
   onPutFailure: (err: unknown) => void;
+  onStatusChange: (status: SaveStatus) => void;
 };
 
 export const startHandlerSync = (deps: HandlerSyncDeps): void => {
@@ -29,12 +32,15 @@ export const startHandlerSync = (deps: HandlerSyncDeps): void => {
     const snapshot = deps.editor.value;
     if (snapshot === lastSent) return;
     inFlight = true;
+    deps.onStatusChange("saving");
     try {
       await deps.putHandler(snapshot);
       lastSent = snapshot;
       deps.reloadPreview();
+      deps.onStatusChange("saved");
     } catch (err: unknown) {
       stopped = true;
+      deps.onStatusChange("error");
       deps.onPutFailure(err);
       return;
     } finally {

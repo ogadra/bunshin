@@ -241,7 +241,13 @@ test.describe("Perl HMR wiring", () => {
       putPayloads.push(req.postData() ?? "");
       await new Promise((r) => setTimeout(r, PUT_LATENCY_MS));
       completeTimes.push(Date.now());
-      await route.fulfill({ status: 204 });
+      await route.fulfill({
+        status: 204,
+        headers: {
+          "X-Session-Hex": E2E_SESSION_HEX,
+          "X-Stack-Name": E2E_STACK_NAME,
+        },
+      });
     });
 
     await input(page).click();
