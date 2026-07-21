@@ -146,8 +146,7 @@ resource "aws_cloudfront_distribution" "main" {
 }
 
 # port-forwardのdistributionはstackごとに1本ずつ持ち、Hostをそのまま
-# origin (nginx)へ通す。origin portはstackごとに固定 (apne1=8443, apne3=9443)、
-# GAのport_overrideでALB:443へ落とす。
+# origin (nginx)へ通す。origin portはstackごとに固定 (apne1=8443, apne3=9443)。
 # trivy:ignore:AVD-AWS-0010 -- CloudFront access logs are not required for the initial deployment
 resource "aws_cloudfront_distribution" "port_forward_apne1" {
   # checkov:skip=CKV_AWS_86:CloudFront access logs are not required for the initial deployment
@@ -192,7 +191,7 @@ resource "aws_cloudfront_distribution" "port_forward_apne1" {
   }
 
   viewer_certificate {
-    acm_certificate_arn      = data.aws_acm_certificate.cloudfront.arn
+    acm_certificate_arn      = aws_acm_certificate_validation.cloudfront_port_forward_apne1.certificate_arn
     minimum_protocol_version = "TLSv1.2_2021"
     ssl_support_method       = "sni-only"
   }
@@ -247,7 +246,7 @@ resource "aws_cloudfront_distribution" "port_forward_apne3" {
   }
 
   viewer_certificate {
-    acm_certificate_arn      = data.aws_acm_certificate.cloudfront.arn
+    acm_certificate_arn      = aws_acm_certificate_validation.cloudfront_port_forward_apne3.certificate_arn
     minimum_protocol_version = "TLSv1.2_2021"
     ssl_support_method       = "sni-only"
   }
