@@ -134,8 +134,21 @@ describe("putAppHandler", () => {
     });
   });
 
-  test("throws internal error when required headers are absent", async () => {
-    mockFetch.mockResolvedValue({ ok: true, headers: responseHeaders() });
+  test("throws internal error when X-Session-Hex is absent", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: responseHeaders({ "X-Stack-Name": STACK }),
+    });
+    const err = await putAppHandler("body").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).key).toBe("errorInternal");
+  });
+
+  test("throws internal error when X-Stack-Name is absent", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: responseHeaders({ "X-Session-Hex": HEX }),
+    });
     const err = await putAppHandler("body").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(AppError);
     expect((err as AppError).key).toBe("errorInternal");

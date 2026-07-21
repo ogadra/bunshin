@@ -22,7 +22,7 @@ document.body.prepend(bannerEl);
 const indicatorEl = document.createElement("div");
 indicatorEl.className = "status-indicator";
 indicatorEl.hidden = true;
-// 縦分割で iframe 側が白背景のため、暗い editor pane 内に配置する
+// 縦分割でiframe側が白背景のため、暗いeditor pane内に配置する
 editorEl.append(indicatorEl);
 
 const showBanner = (key: MessageKey): void => {
@@ -30,17 +30,13 @@ const showBanner = (key: MessageKey): void => {
   bannerEl.hidden = false;
 };
 
-const STATUS_MESSAGE: Record<Exclude<SaveStatus, typeof SaveStatus.IDLE>, MessageKey> = {
+const STATUS_MESSAGE: Record<SaveStatus, MessageKey> = {
   [SaveStatus.SAVING]: "statusSaving",
   [SaveStatus.SAVED]: "statusSaved",
   [SaveStatus.ERROR]: "statusError",
 };
 
 const renderStatus = (status: SaveStatus): void => {
-  if (status === SaveStatus.IDLE) {
-    indicatorEl.hidden = true;
-    return;
-  }
   indicatorEl.textContent = translate(lang, STATUS_MESSAGE[status]);
   indicatorEl.dataset.status = status;
   indicatorEl.hidden = false;

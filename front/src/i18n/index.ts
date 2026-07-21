@@ -1,16 +1,19 @@
 export type Lang = "en" | "ja";
 
-export type MessageKey =
-  | "errorNoIdleRunner"
-  | "errorSessionLost"
-  | "errorEditTooLarge"
-  | "errorGatewayTimeout"
-  | "errorBadGateway"
-  | "errorNetwork"
-  | "errorInternal"
-  | "statusSaving"
-  | "statusSaved"
-  | "statusError";
+export const MessageKey = {
+  errorNoIdleRunner: "errorNoIdleRunner",
+  errorSessionLost: "errorSessionLost",
+  errorEditTooLarge: "errorEditTooLarge",
+  errorGatewayTimeout: "errorGatewayTimeout",
+  errorBadGateway: "errorBadGateway",
+  errorNetwork: "errorNetwork",
+  errorInternal: "errorInternal",
+  statusSaving: "statusSaving",
+  statusSaved: "statusSaved",
+  statusError: "statusError",
+} as const;
+
+export type MessageKey = (typeof MessageKey)[keyof typeof MessageKey];
 
 type Messages = Record<Lang, Record<MessageKey, string>>;
 

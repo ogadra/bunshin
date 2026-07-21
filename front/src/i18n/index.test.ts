@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { detectLang, translate, type Lang, type MessageKey } from "./index";
+import { detectLang, MessageKey, translate, type Lang } from "./index";
 
 describe("detectLang", () => {
   test.each([
@@ -17,29 +17,36 @@ describe("detectLang", () => {
 });
 
 describe("translate", () => {
-  const KEYS: MessageKey[] = [
-    "errorNoIdleRunner",
-    "errorSessionLost",
-    "errorEditTooLarge",
-    "errorGatewayTimeout",
-    "errorBadGateway",
-    "errorNetwork",
-    "errorInternal",
-    "statusSaving",
-    "statusSaved",
-    "statusError",
-  ];
+  const EXPECTED: Record<MessageKey, { en: string; ja: string }> = {
+    errorNoIdleRunner: {
+      en: "No available execution environment",
+      ja: "実行環境に空きがありません",
+    },
+    errorSessionLost: {
+      en: "Previous execution environment was not found",
+      ja: "以前実行した環境が見つかりません",
+    },
+    errorEditTooLarge: { en: "Edit content is too large", ja: "編集内容が大きすぎます" },
+    errorGatewayTimeout: {
+      en: "Server response timed out",
+      ja: "サーバー応答がタイムアウトしました",
+    },
+    errorBadGateway: {
+      en: "Cannot reach the execution environment",
+      ja: "実行環境に接続できません",
+    },
+    errorNetwork: { en: "Cannot connect to the server", ja: "サーバーに接続できません" },
+    errorInternal: {
+      en: "An internal server error occurred",
+      ja: "サーバー内部エラーが発生しました",
+    },
+    statusSaving: { en: "Saving…", ja: "保存中…" },
+    statusSaved: { en: "Saved", ja: "保存済み" },
+    statusError: { en: "Error", ja: "エラー" },
+  };
 
-  test.each(["en", "ja"] satisfies Lang[])("every MessageKey resolves to non-empty %s", (lang) => {
-    for (const key of KEYS) {
-      const text = translate(lang, key);
-      expect(text, `${lang}:${key}`).toBeTruthy();
-    }
-  });
-
-  test("ja and en differ for every key", () => {
-    for (const key of KEYS) {
-      expect(translate("ja", key)).not.toBe(translate("en", key));
-    }
+  test.each(Object.values(MessageKey))("%s resolves to expected en/ja", (key) => {
+    expect(translate("en", key)).toBe(EXPECTED[key].en);
+    expect(translate("ja", key)).toBe(EXPECTED[key].ja);
   });
 });

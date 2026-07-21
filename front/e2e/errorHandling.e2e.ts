@@ -64,20 +64,20 @@ async function typeAppend(page: Page, text: string): Promise<void> {
 test.describe("bootstrap error → banner (ja UA)", () => {
   test.use({ locale: "ja" });
 
-  test("503 NO_IDLE_RUNNER shows 実行環境に空きがありません", async ({ page }) => {
+  test("shows Japanese message for 503 NO_IDLE_RUNNER", async ({ page }) => {
     await stubGetFails(page, 503, { code: "NO_IDLE_RUNNER", message: "no idle runner available" });
     await page.goto("/");
     await expect(banner(page)).toBeVisible();
     await expect(banner(page)).toHaveText("実行環境に空きがありません");
   });
 
-  test("404 SESSION_NOT_FOUND shows 以前実行した環境が見つかりません", async ({ page }) => {
+  test("shows Japanese message for 404 SESSION_NOT_FOUND", async ({ page }) => {
     await stubGetFails(page, 404, { code: "SESSION_NOT_FOUND", message: "session not found" });
     await page.goto("/");
     await expect(banner(page)).toHaveText("以前実行した環境が見つかりません");
   });
 
-  test("504 GATEWAY_TIMEOUT shows サーバー応答がタイムアウトしました", async ({ page }) => {
+  test("shows Japanese message for 504 GATEWAY_TIMEOUT", async ({ page }) => {
     await stubGetFails(page, 504, { code: "GATEWAY_TIMEOUT", message: "Upstream timeout." });
     await page.goto("/");
     await expect(banner(page)).toHaveText("サーバー応答がタイムアウトしました");
