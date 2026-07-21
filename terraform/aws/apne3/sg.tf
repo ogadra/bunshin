@@ -122,6 +122,32 @@ resource "aws_security_group_rule" "api_ingress_alb_ingress_https" {
   description       = "HTTPS from CloudFront through Global Accelerator"
 }
 
+resource "aws_security_group" "api_ingress_alb_port_forward" {
+  name_prefix = "bunshin-api-ingress-alb-pf-"
+  description = "Security group for API ingress ALB port-forward listener"
+  vpc_id      = aws_vpc.apne3.id
+
+  tags = merge(local.common_tags, {
+    Name    = "bunshin-apne3-api-ingress-alb-pf"
+    Service = "api-ingress-alb"
+  })
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_security_group_rule" "api_ingress_alb_ingress_https_port_forward" {
+  # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
+  type              = "ingress"
+  from_port         = local.api_ingress_port_forward_port
+  to_port           = local.api_ingress_port_forward_port
+  protocol          = "tcp"
+  prefix_list_ids   = [data.aws_ec2_managed_prefix_list.cloudfront_origin_facing.id]
+  security_group_id = aws_security_group.api_ingress_alb_port_forward.id
+  description       = "HTTPS from CloudFront through Global Accelerator (port-forward)"
+}
+
 resource "aws_security_group_rule" "api_ingress_alb_egress_nginx" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   type                     = "egress"
