@@ -423,6 +423,25 @@ func TestHealthCheck(t *testing.T) {
 	}
 }
 
+// TestAPIHealthCheck は /api/health が 200 を返し、かつ resolve.lua の session 解決経路を
+// 通らないこと (Set-Cookie / X-Session-* / X-Stack-Name を返さないこと) を検証する。
+// exact match location の記述崩れで /api/ prefix 側へフォールスルーする回帰を検知する。
+func TestAPIHealthCheck(t *testing.T) {
+	resp, err := httpClient.Get(nginxBase + "/api/health")
+	if err != nil {
+		t.Fatalf("GET /api/health: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/health: want 200, got %d", resp.StatusCode)
+	}
+	for _, h := range []string{"Set-Cookie", "X-Session-Reassigned", "X-Session-Hex", "X-Stack-Name"} {
+		if v := resp.Header.Values(h); len(v) > 0 {
+			t.Errorf("GET /api/health: unexpected header %s=%v (resolve.lua path leaked)", h, v)
+		}
+	}
+}
+
 // TestCreateShellAndExecute はセッション作成からコマンド実行までの正常系フローを検証する。
 func TestCreateShellAndExecute(t *testing.T) {
 	cookies := setupSession(t)
