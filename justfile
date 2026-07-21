@@ -29,8 +29,14 @@ deploy vendor env *service: (_validate-vendor vendor) (_validate-env env)
 
 # Destroy resources for the specified environment
 destroy vendor env: (_validate-vendor vendor) (_validate-env env)
-    terraform -chdir=terraform/{{vendor}} destroy -var-file=environments/{{env}}.tfvars
-    [ "{{vendor}}" != "google-cloud" ] || scripts/google-cloud/cleanup-nginx-neg.sh
+    #!/usr/bin/env bash
+    set -u
+    rc=0
+    terraform -chdir=terraform/{{vendor}} destroy -var-file=environments/{{env}}.tfvars || rc=$?
+    if [ "{{vendor}}" = "google-cloud" ]; then
+        scripts/google-cloud/cleanup-nginx-neg.sh || rc=$?
+    fi
+    exit "$rc"
 
 # Run k6 load test against the specified base URL
 loadtest base_url runner_count:

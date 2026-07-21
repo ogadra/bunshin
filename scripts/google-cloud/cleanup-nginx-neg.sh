@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# GKE NEG controller が作った nginx standalone zonal NEG (`bunshin-nginx-<region>`) は
-# Terraform 管理外なので destroy 後も残る。次回 apply で新 cluster の cluster-uid が
-# 一致せず controller が管理拒否して Gateway が Programmed=False で止まるため、
-# terraform destroy 完了後にこのスクリプトで削除する。
 set -euo pipefail
 
 REGIONS=(asia-northeast1 asia-northeast2)
