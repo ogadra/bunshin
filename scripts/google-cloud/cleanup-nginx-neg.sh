@@ -20,7 +20,7 @@ delete_neg() {
     if err=$(gcloud compute network-endpoint-groups delete "${neg_name}" \
         --zone="${zone}" --project="${PROJECT}" -q 2>&1); then
         printf '[%s] deleted %s\n' "${region}" "${zone}"
-    elif grep -qi 'was not found\|NOT_FOUND' <<<"${err}"; then
+    elif grep -qiE 'was not found|NOT_FOUND' <<<"${err}"; then
         printf '[%s] already deleted %s\n' "${region}" "${zone}"
     else
         printf '[%s] failed to delete %s: %s\n' "${region}" "${zone}" "${err}" >&2
