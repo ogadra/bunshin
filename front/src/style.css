@@ -34,39 +34,29 @@ body {
   left: 0;
   right: 0;
   z-index: 10;
-  padding: 12px 16px;
-  background: #b00020;
-  color: #fff;
-  font-size: 14px;
+  padding: 6px 12px;
+  background: #252526;
+  color: #f48771;
+  border-bottom: 1px solid #3c3c3c;
+  font-size: 12px;
 }
 
 .status-indicator {
   position: fixed;
-  bottom: 12px;
-  right: 12px;
+  bottom: 6px;
+  left: 12px;
   z-index: 10;
-  padding: 4px 10px;
-  background: rgba(30, 30, 30, 0.85);
-  color: #d4d4d4;
-  border: 1px solid #333;
-  border-radius: 4px;
-  font-size: 12px;
-  line-height: 1.4;
+  font-size: 11px;
+  color: #808080;
   pointer-events: none;
-}
-
-.status-indicator[data-status="saving"] {
-  color: #d4d4d4;
 }
 
 .status-indicator[data-status="saved"] {
   color: #6a9955;
-  border-color: #3a5a3a;
 }
 
 .status-indicator[data-status="error"] {
   color: #f48771;
-  border-color: #6b2b2b;
 }
 
 /* pre と textarea のフォント・余白が 1px でもずれるとキャレット位置が狂うため、
