@@ -1,3 +1,5 @@
+import { AppError } from "./errors/AppError";
+import { classifyResponse } from "./errors/classify";
 import { SessionReassignedError } from "./errors/SessionReassignedError";
 
 // session_id cookieはHttpOnlyのため、preview URL用のsession hexは
@@ -8,31 +10,43 @@ const sessionHexHeader = "X-Session-Hex";
 // brokerからのレスポンスに載せたX-Stack-Nameで受け取る
 const stackNameHeader = "X-Stack-Name";
 
+const sessionReassignedHeader = "X-Session-Reassigned";
+
+const requireHeader = (res: Response, name: string): string => {
+  const value = res.headers.get(name);
+  if (value === null) {
+    console.error(`missing required header: ${name}`);
+    throw new AppError("errorInternal");
+  }
+  return value;
+};
+
 export const getAppHandler = async (): Promise<{
   source: string;
-  sessionHex: string | null;
-  stackName: string | null;
+  sessionHex: string;
+  stackName: string;
 }> => {
   const res = await fetch("/api/app/handler");
-  if (!res.ok) throw new Error(`Failed to get handler: ${res.status}`);
+  if (!res.ok) throw await classifyResponse(res);
   return {
     source: await res.text(),
-    sessionHex: res.headers.get(sessionHexHeader),
-    stackName: res.headers.get(stackNameHeader),
+    sessionHex: requireHeader(res, sessionHexHeader),
+    stackName: requireHeader(res, stackNameHeader),
   };
 };
 
 export const putAppHandler = async (
   source: string,
-): Promise<{ sessionHex: string | null; stackName: string | null }> => {
+): Promise<{ sessionHex: string; stackName: string; reassigned: boolean }> => {
   const res = await fetch("/api/app/handler", {
     method: "PUT",
     body: source,
   });
-  if (!res.ok) throw new Error(`Failed to put handler: ${res.status}`);
+  if (!res.ok) throw await classifyResponse(res);
   return {
-    sessionHex: res.headers.get(sessionHexHeader),
-    stackName: res.headers.get(stackNameHeader),
+    sessionHex: requireHeader(res, sessionHexHeader),
+    stackName: requireHeader(res, stackNameHeader),
+    reassigned: res.headers.get(sessionReassignedHeader) === "true",
   };
 };
 

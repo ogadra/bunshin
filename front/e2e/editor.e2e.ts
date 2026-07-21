@@ -55,14 +55,25 @@ test.beforeEach(async ({ page }) => {
   await highlight(page).locator("span").first().waitFor();
 });
 
-test("the editor fills the viewport and the terminal UI is absent", async ({ page }) => {
+test("editor and preview split the viewport vertically and the terminal UI is absent", async ({
+  page,
+}) => {
   const geometry = await page.evaluate(() => ({
-    editorHeight: document.querySelector(".editor")?.getBoundingClientRect().height,
+    editorRect: document.querySelector(".editor")?.getBoundingClientRect(),
+    previewRect: document.querySelector(".preview")?.getBoundingClientRect(),
+    viewportWidth: window.innerWidth,
     viewportHeight: window.innerHeight,
     command: document.getElementById("command"),
     output: document.getElementById("output"),
   }));
-  expect(geometry.editorHeight).toBe(geometry.viewportHeight);
+  const editor = geometry.editorRect;
+  const preview = geometry.previewRect;
+  if (editor === undefined || preview === undefined) throw new Error("panes are missing");
+  expect(editor.width).toBe(geometry.viewportWidth);
+  expect(preview.width).toBe(geometry.viewportWidth);
+  expect(editor.top).toBe(0);
+  expect(preview.top).toBeGreaterThan(editor.top);
+  expect(editor.height + preview.height).toBe(geometry.viewportHeight);
   expect(geometry.command).toBeNull();
   expect(geometry.output).toBeNull();
 });
@@ -241,7 +252,13 @@ test.describe("Perl HMR wiring", () => {
       putPayloads.push(req.postData() ?? "");
       await new Promise((r) => setTimeout(r, PUT_LATENCY_MS));
       completeTimes.push(Date.now());
-      await route.fulfill({ status: 204 });
+      await route.fulfill({
+        status: 204,
+        headers: {
+          "X-Session-Hex": E2E_SESSION_HEX,
+          "X-Stack-Name": E2E_STACK_NAME,
+        },
+      });
     });
 
     await input(page).click();

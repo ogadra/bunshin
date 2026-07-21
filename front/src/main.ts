@@ -1,62 +1,110 @@
 import { getAppHandler, putAppHandler } from "./client";
 import { createPerlEditor } from "./editor";
-import { startHandlerSync } from "./handlerSync";
+import { AppError } from "./errors/AppError";
+import { classifyThrown } from "./errors/classify";
+import { SaveStatus, startHandlerSync } from "./handlerSync";
+import { detectLang, translate, type MessageKey } from "./i18n";
 import { previewUrl } from "./previewUrl";
 import "./style.css";
 
 const DEBOUNCE_MS = 1000;
 
-const PERL_ORIGIN_TEMPLATE = import.meta.env.VITE_PERL_ORIGIN_TEMPLATE;
-if (!PERL_ORIGIN_TEMPLATE) {
-  throw new Error("VITE_PERL_ORIGIN_TEMPLATE is required (see front/.env.example)");
-}
+const lang = detectLang(navigator.language);
 
 const editorEl = document.getElementById("editor") as HTMLElement;
 const iframe = document.getElementById("preview") as HTMLIFrameElement;
 
-const {
-  source: initialCode,
-  sessionHex: initialHex,
-  stackName: initialStack,
-} = await getAppHandler();
-if (initialHex === null) {
-  throw new Error("X-Session-Hex header is missing on /api/app/handler response");
-}
-if (initialStack === null) {
-  throw new Error("X-Stack-Name header is missing on /api/app/handler response");
-}
-let previewHex = initialHex;
-let previewStack = initialStack;
+const bannerEl = document.createElement("div");
+bannerEl.className = "error-banner";
+bannerEl.hidden = true;
+document.body.prepend(bannerEl);
 
-const editor = createPerlEditor(editorEl, initialCode);
+const indicatorEl = document.createElement("div");
+indicatorEl.className = "status-indicator";
+indicatorEl.hidden = true;
+// 縦分割で iframe 側が白背景のため、暗い editor pane 内に配置する
+editorEl.append(indicatorEl);
 
-const reloadPreview = (): void => {
-  // 同じURLを代入してもreloadしないブラウザがあるためcache-busterを付ける
-  const base = previewUrl(PERL_ORIGIN_TEMPLATE, previewHex, previewStack);
-  iframe.src = `${base}?_=${String(performance.now())}`;
+const showBanner = (key: MessageKey): void => {
+  bannerEl.textContent = translate(lang, key);
+  bannerEl.hidden = false;
 };
 
-const showError = (message: string): void => {
-  const banner = document.createElement("div");
-  banner.className = "error-banner";
-  banner.textContent = message;
-  document.body.prepend(banner);
+const STATUS_MESSAGE: Record<Exclude<SaveStatus, typeof SaveStatus.IDLE>, MessageKey> = {
+  [SaveStatus.SAVING]: "statusSaving",
+  [SaveStatus.SAVED]: "statusSaved",
+  [SaveStatus.ERROR]: "statusError",
 };
 
-reloadPreview();
+const renderStatus = (status: SaveStatus): void => {
+  if (status === SaveStatus.IDLE) {
+    indicatorEl.hidden = true;
+    return;
+  }
+  indicatorEl.textContent = translate(lang, STATUS_MESSAGE[status]);
+  indicatorEl.dataset.status = status;
+  indicatorEl.hidden = false;
+};
 
-startHandlerSync({
-  editor,
-  initialCode,
-  putHandler: async (source: string): Promise<void> => {
-    const { sessionHex, stackName } = await putAppHandler(source);
-    // セッション再割当てでhexや所属stackが変わったら、次のreloadから新しいpreview先を指す
-    if (sessionHex !== null) previewHex = sessionHex;
-    if (stackName !== null) previewStack = stackName;
-  },
-  reloadPreview,
-  debounceMs: DEBOUNCE_MS,
-  onPutFailure: (err) => {
-    showError(`Failed to save handler: ${String(err)}. Reload the page to retry.`);
-  },
+const readTemplate = (): string => {
+  const template = import.meta.env.VITE_PERL_ORIGIN_TEMPLATE;
+  if (!template) {
+    console.error("VITE_PERL_ORIGIN_TEMPLATE is required (see front/.env.example)");
+    throw new AppError("errorInternal");
+  }
+  return template;
+};
+
+type PreviewController = {
+  reload: () => void;
+  setSession: (hex: string, stack: string) => void;
+};
+
+const createPreviewController = (
+  iframe: HTMLIFrameElement,
+  template: string,
+  hex: string,
+  stack: string,
+): PreviewController => {
+  let currentHex = hex;
+  let currentStack = stack;
+  return {
+    reload: () => {
+      // 同じURLを代入してもreloadしないブラウザがあるためcache-busterを付ける
+      const base = previewUrl(template, currentHex, currentStack);
+      iframe.src = `${base}?_=${String(performance.now())}`;
+    },
+    setSession: (nextHex, nextStack) => {
+      currentHex = nextHex;
+      currentStack = nextStack;
+    },
+  };
+};
+
+const boot = async (): Promise<void> => {
+  const template = readTemplate();
+  const { source, sessionHex, stackName } = await getAppHandler();
+  const editor = createPerlEditor(editorEl, source);
+  const preview = createPreviewController(iframe, template, sessionHex, stackName);
+  preview.reload();
+
+  startHandlerSync({
+    editor,
+    initialCode: source,
+    putHandler: async (next: string): Promise<void> => {
+      const res = await putAppHandler(next);
+      preview.setSession(res.sessionHex, res.stackName);
+      if (res.reassigned) showBanner("errorSessionLost");
+    },
+    reloadPreview: preview.reload,
+    debounceMs: DEBOUNCE_MS,
+    onPutFailure: (err) => {
+      showBanner(classifyThrown(err).key);
+    },
+    onStatusChange: renderStatus,
+  });
+};
+
+boot().catch((err: unknown) => {
+  showBanner(classifyThrown(err).key);
 });
