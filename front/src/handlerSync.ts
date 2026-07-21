@@ -1,6 +1,13 @@
 import type { PerlEditorHandle } from "./editor";
 
-export type SaveStatus = "idle" | "saving" | "saved" | "error";
+export const SaveStatus = {
+  IDLE: "idle",
+  SAVING: "saving",
+  SAVED: "saved",
+  ERROR: "error",
+} as const;
+
+export type SaveStatus = (typeof SaveStatus)[keyof typeof SaveStatus];
 
 export type HandlerSyncDeps = {
   editor: PerlEditorHandle;
@@ -32,15 +39,15 @@ export const startHandlerSync = (deps: HandlerSyncDeps): void => {
     const snapshot = deps.editor.value;
     if (snapshot === lastSent) return;
     inFlight = true;
-    deps.onStatusChange("saving");
+    deps.onStatusChange(SaveStatus.SAVING);
     try {
       await deps.putHandler(snapshot);
       lastSent = snapshot;
       deps.reloadPreview();
-      deps.onStatusChange("saved");
+      deps.onStatusChange(SaveStatus.SAVED);
     } catch (err: unknown) {
       stopped = true;
-      deps.onStatusChange("error");
+      deps.onStatusChange(SaveStatus.ERROR);
       deps.onPutFailure(err);
       return;
     } finally {
