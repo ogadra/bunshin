@@ -50,6 +50,19 @@ login_ecr() {
         | docker login --username AWS --password-stdin "${registry}"
 }
 
+fetch_tfstate() {
+    local env_name="${1:?}"
+
+    : "${TF_BACKEND_BUCKET:?TF_BACKEND_BUCKET must be set (tfstate bucket for ecspresso plugin)}"
+
+    TFSTATE_PATH="$(mktemp)"
+    export TFSTATE_PATH
+    trap 'rm -f "${TFSTATE_PATH}"' EXIT
+    aws --profile prd s3 cp \
+        "s3://${TF_BACKEND_BUCKET}/bunshin/aws/${env_name}.tfstate" \
+        "${TFSTATE_PATH}" >/dev/null
+}
+
 main() {
     local env_name="${1:?Usage: scripts/aws/deploy.sh <env> [service...]}"
     shift
@@ -85,6 +98,7 @@ main() {
 
     if [[ "${need_ecr_login}" == "true" ]]; then
         login_ecr "${env_name}" "${aws_account_id}"
+        fetch_tfstate "${env_name}"
     fi
 
     # shellcheck disable=SC1091

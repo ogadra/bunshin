@@ -7,5 +7,4 @@ timeout: 15m0s
 plugins:
   - name: tfstate
     config:
-      url: s3://{{ must_env `TF_BACKEND_BUCKET` }}/bunshin/aws/{{ must_env `ENV` }}.tfstate
-      profile: prd
+      path: {{ must_env `TFSTATE_PATH` }}
