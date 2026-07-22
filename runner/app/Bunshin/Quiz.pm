@@ -115,8 +115,15 @@ sub page {
         </section>
         <section class="quiz">
           <h2>問題</h2>
-          <p>この往復記録に<strong>2回</strong>現れる、漢字3文字の駅を抜き出せ。</p>
+          <p>
+            たかし君は最寄り駅から電車に乗って、下記の駅に停車しながら最寄り駅まで戻りました。<br/>
+            ただし、乗り換えに使用した駅は2回表示されています。
+          </p>
           <pre class="map">$map_html</pre>
+          <p>
+            たかし君が乗り換えに使用した駅の中で、漢字3文字の駅はどれですか？<br/>
+            正規表現で抜き出して解答してください。
+          </p>
           <p>正規表現: <code>$re_html</code> ($rd->{bytes} bytes)</p>
           <p class="verdict verdict-$judged->{status}">$msg_html</p>
         </section>
