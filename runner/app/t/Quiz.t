@@ -71,39 +71,22 @@ subtest 'judge: /s lookahead backref is correct' => sub {
     is $v->{status}, 'correct';
 };
 
-subtest 'judge: greedy /s backref is partial (吉祥寺 only)' => sub {
+subtest 'judge: matching only 吉祥寺 is wrong' => sub {
     my $m = Quiz::evaluate(re => qr{(...).*\1}s);
     my $v = Quiz::judge(matches => $m);
-    is $v->{status}, 'partial';
-    like $v->{message}, qr{家から出ていません};
+    is $v->{status}, 'wrong';
 };
 
-subtest 'judge: (...)\n\1 is partial (大井町 only)' => sub {
+subtest 'judge: matching only 大井町 is wrong' => sub {
     my $m = Quiz::evaluate(re => qr{(...)\n\1});
     my $v = Quiz::judge(matches => $m);
-    is $v->{status}, 'partial';
-    like $v->{message}, qr{帰りの電車};
-};
-
-subtest 'judge: stage 2 (anchored) is partial (吉祥寺 only)' => sub {
-    my $m = Quiz::evaluate(re => qr{^...|...$});
-    my $v = Quiz::judge(matches => $m);
-    is $v->{status}, 'partial';
-    like $v->{message}, qr{家から出ていません};
-};
-
-subtest 'judge: 大井町 only is partial with the return-trip message' => sub {
-    my $m = Quiz::evaluate(re => qr{大井町});
-    my $v = Quiz::judge(matches => $m);
-    is $v->{status}, 'partial';
-    like $v->{message}, qr{帰りの電車};
+    is $v->{status}, 'wrong';
 };
 
 subtest 'judge: no matches is wrong' => sub {
     my $m = Quiz::evaluate(re => qr{ZZZZ});
     my $v = Quiz::judge(matches => $m);
     is $v->{status}, 'wrong';
-    like $v->{message}, qr{ヒットなし};
 };
 
 subtest 'judge: unexpected match set is wrong' => sub {

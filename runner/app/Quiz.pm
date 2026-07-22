@@ -45,16 +45,9 @@ sub judge {
     my $expected = join '|', sort keys %$ANSWER;
     my $actual   = join '|', sort keys %set;
 
-    return { status => 'correct', message => '正解！家に帰り着きました。' }
-        if $actual eq $expected;
-    if (keys(%set) == 1 && $set{'吉祥寺'}) {
-        return { status => 'partial', message => '家から出ていません。' };
-    }
-    if (keys(%set) == 1 && $set{'大井町'}) {
-        return { status => 'partial', message => '帰りの電車がありません。' };
-    }
-    my $msg = @$matches ? '不正解。答えは漢字3文字の駅、2つ。' : '不正解。ヒットなし。';
-    return { status => 'wrong', message => $msg };
+    return $actual eq $expected
+        ? { status => 'correct', message => '正解！' }
+        : { status => 'wrong',   message => '不正解…' };
 }
 
 sub regex_display {
