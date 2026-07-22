@@ -44,7 +44,7 @@ subtest 'happy path: ok body is embedded in the HTML shell' => sub {
     like $r, qr{Hello from test};
 };
 
-subtest 'content is embedded as raw HTML (Quiz owns per-value escaping)' => sub {
+subtest 'content is embedded as raw HTML' => sub {
     local $Bunshin::App::RUN_CONTENT_FN = sub { +{ status => 'ok', body => "<b>bold</b>" } };
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{<b>bold</b>}, 'raw tag passes through';

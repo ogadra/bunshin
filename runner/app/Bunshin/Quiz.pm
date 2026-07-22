@@ -23,8 +23,8 @@ sub _esc { HTML::Entities::encode_entities($_[0], $UNSAFE_HTML) }
 
 sub evaluate {
     my (%opts) = @_;
-    my $re  = $opts{re}  // die "re required\n";
-    my $map = $opts{map} // $MAP;
+    my $re  = $opts{re} // die "re required\n";
+    my $map = $MAP;
 
     my @matches;
     while ($map =~ /$re/g) {
@@ -56,7 +56,7 @@ sub judge {
     if (keys(%set) == 1 && $set{'大井町'}) {
         return { status => 'partial', message => '帰りの電車がありません。' };
     }
-    my $msg = @$matches ? '不正解。答えは漢字 3 文字の駅、2 つ。' : '不正解。ヒットなし。';
+    my $msg = @$matches ? '不正解。答えは漢字3文字の駅、2つ。' : '不正解。ヒットなし。';
     return { status => 'wrong', message => $msg };
 }
 
@@ -97,8 +97,8 @@ sub update_record {
 
 sub highlight_map {
     my (%opts) = @_;
-    my $map     = $opts{map}     // $MAP;
     my $matches = $opts{matches} // die "matches required\n";
+    my $map     = $MAP;
     my @sorted  = sort { $a->{start} <=> $b->{start} } @$matches;
 
     my ($out, $cursor) = ('', 0);
@@ -115,7 +115,7 @@ sub highlight_map {
 sub kirban {
     my ($visits) = @_;
     return unless $visits > 0;
-    return '大吉 (100 の倍数)' if $visits % 100 == 0;
+    return '大吉 (100の倍数)' if $visits % 100 == 0;
     my $s = "$visits";
     return '大吉 (ゾロ目)' if length($s) >= 3 && $s =~ /^(.)\1+$/;
     return;
@@ -147,13 +147,13 @@ sub page {
     my $best     = $rec->{best_bytes}          || '—';
 
     return <<~"HTML";
-        <h1>大吉祥寺.pm 平成 CGI</h1>
+        <h1>大吉祥寺.pm平成CGI</h1>
         <section class="counter">
           <p>アクセス数: <strong>$counter</strong>$kir_html</p>
         </section>
         <section class="quiz">
           <h2>問題</h2>
-          <p>この往復記録に <strong>2 回</strong>現れる、漢字 3 文字の駅を抜き出せ。</p>
+          <p>この往復記録に<strong>2回</strong>現れる、漢字3文字の駅を抜き出せ。</p>
           <pre class="map">$map_html</pre>
           <p>正規表現: <code>$re_html</code> ($rd->{bytes} bytes)</p>
           <p class="verdict verdict-$judged->{status}">$msg_html</p>

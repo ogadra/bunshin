@@ -169,7 +169,7 @@ subtest 'update_record: best_bytes decreases only' => sub {
 };
 
 subtest 'kirban: multiples of 100 and repunit visits get 大吉' => sub {
-    is Bunshin::Quiz::kirban(100), '大吉 (100 の倍数)';
+    is Bunshin::Quiz::kirban(100), '大吉 (100の倍数)';
     is Bunshin::Quiz::kirban(555), '大吉 (ゾロ目)';
     is Bunshin::Quiz::kirban(11), undef, 'two-digit repdigit is not 大吉';
     is Bunshin::Quiz::kirban(42), undef;
@@ -183,12 +183,57 @@ subtest 'highlight_map: matched spans are wrapped in <mark>' => sub {
     unlike $html, qr{<mark></mark>}, 'no empty marks';
 };
 
+subtest 'highlight_map: HTML metacharacters in the map are escaped' => sub {
+    local $Bunshin::Quiz::MAP = 'abc<xy>&"z';
+    my $m = Bunshin::Quiz::evaluate(re => qr{abc});
+    my $html = Bunshin::Quiz::highlight_map(matches => $m);
+    like $html, qr{&lt;xy&gt;},   '< > escaped';
+    like $html, qr{&amp;},        '& escaped';
+    like $html, qr{&quot;},       '" escaped';
+    unlike $html, qr{<xy>},       'raw tag not present';
+};
+
+subtest 'page: HTML metacharacters in the regex source are escaped' => sub {
+    with_record(sub {
+        my ($path) = @_;
+        my $html = Bunshin::Quiz::page(re => qr{<script>}, visits => 1, record_path => $path);
+        like $html, qr{&lt;script&gt;}, 'user-supplied regex is escaped';
+        unlike $html, qr{<script>},     'raw regex not embedded';
+    });
+};
+
+subtest 'evaluate: zero-width lookahead scan terminates and advances' => sub {
+    local $Bunshin::Quiz::MAP = 'aXaXa';
+    my $matches = Bunshin::Quiz::evaluate(re => qr{(?=a)});
+    is scalar(@$matches), 3, 'one zero-width hit per a';
+    is_deeply [map { $_->{start} } @$matches], [0, 2, 4], 'positions advance';
+};
+
+subtest 'required opts: subs die when a critical arg is missing' => sub {
+    my @cases = (
+        [sub { Bunshin::Quiz::evaluate() },       qr{re required} ],
+        [sub { Bunshin::Quiz::judge() },          qr{matches required} ],
+        [sub { Bunshin::Quiz::highlight_map() },  qr{matches required} ],
+        [sub { Bunshin::Quiz::update_record() },  qr{status required} ],
+        [sub { Bunshin::Quiz::update_record(status => 'wrong') },              qr{visits required} ],
+        [sub { Bunshin::Quiz::update_record(status => 'wrong', visits => 1) }, qr{bytes required} ],
+        [sub { Bunshin::Quiz::page() },           qr{re required} ],
+        [sub { Bunshin::Quiz::page(re => qr{x}) },qr{visits required} ],
+    );
+    for my $c (@cases) {
+        my ($fn, $pat) = @$c;
+        my $ok = eval { $fn->(); 1 };
+        ok !$ok, 'died';
+        like $@, $pat, "matches $pat";
+    }
+};
+
 subtest 'page: renders counter, question, verdict, and record' => sub {
     with_record(sub {
         my ($path) = @_;
         my $html = Bunshin::Quiz::page(re => qr{吉祥寺|大井町}, visits => 42, record_path => $path);
         like $html, qr{アクセス数.*0000042}s, 'counter is 7-digit zero padded';
-        like $html, qr{2 回}, 'question copy present';
+        like $html, qr{2回}, 'question copy present';
         like $html, qr{verdict-correct}, 'verdict class reflects status';
         like $html, qr{訪問 #42}, 'first_correct_visit rendered';
         like $html, qr{最短バイト: 19}, 'best_bytes rendered';
