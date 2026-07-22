@@ -5,14 +5,14 @@ use warnings;
 use Fcntl qw(:flock O_RDWR O_CREAT);
 use FindBin;
 use lib "$FindBin::Bin";
-use Bunshin::Quiz;
+use Quiz;
 
 my $COUNTER_PATH = $ENV{BUNSHIN_QUIZ_COUNTER} // '/tmp/bunshin-quiz-visits';
 
 sub content {
     my $visits = _tick();
     my $re = qr{吉祥寺|大井町};
-    return Bunshin::Quiz::page(re => $re, visits => $visits);
+    return Quiz::page(re => $re, visits => $visits);
 }
 
 sub _tick {

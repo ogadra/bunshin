@@ -1,4 +1,4 @@
-package Bunshin::Quiz;
+package Quiz;
 use strict;
 use warnings;
 use utf8;

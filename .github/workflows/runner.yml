@@ -58,9 +58,9 @@ jobs:
           perl -Irunner/app -c runner/app/Bunshin/Server.pm
           perl -Irunner/app -c runner/app/Bunshin/ContentRunner.pm
           perl -Irunner/app -c runner/app/Bunshin/App.pm
-          perl -Irunner/app -c runner/app/Bunshin/Quiz.pm
           perl -Irunner/app -c runner/app/server.pl
           perl -Irunner/app -c runner/app/DaiKichijoji.pm
+          perl -Irunner/app -c runner/app/Quiz.pm
       - name: Run Perl tests
         run: prove -Irunner/app -v -r runner/app/t/
 
