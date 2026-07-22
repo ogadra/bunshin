@@ -68,6 +68,7 @@ sub highlight_map {
     my ($out, $cursor) = ('', 0);
     for my $m (@sorted) {
         next if $m->{start} < $cursor;
+        next if $m->{end} == $m->{start};
         $out .= _esc(substr($map, $cursor, $m->{start} - $cursor));
         $out .= '<mark>' . _esc($m->{whole}) . '</mark>';
         $cursor = $m->{end};

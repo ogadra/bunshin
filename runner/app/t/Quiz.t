@@ -122,6 +122,13 @@ subtest 'highlight_map: matched spans are wrapped in <mark>' => sub {
     unlike $html, qr{<mark></mark>}, 'no empty marks';
 };
 
+subtest 'highlight_map: zero-width matches leave no empty marks' => sub {
+    my $m = Quiz::evaluate(re => qr{(?=大井町)});
+    my $html = Quiz::highlight_map(matches => $m);
+    unlike $html, qr{<mark></mark>}, 'no empty marks';
+    unlike $html, qr{<mark>}, 'zero-width matches highlight nothing';
+};
+
 subtest 'highlight_map: HTML metacharacters in the map are escaped' => sub {
     local $Quiz::MAP = 'abc<xy>&"z';
     my $m = Quiz::evaluate(re => qr{abc});
