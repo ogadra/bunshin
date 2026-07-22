@@ -68,7 +68,7 @@ resource "google_container_cluster" "bunshin" {
       service_account = google_service_account.gke_node.email
       oauth_scopes    = ["https://www.googleapis.com/auth/cloud-platform"]
       disk_type       = "pd-balanced"
-      disk_size       = 50
+      disk_size       = 10
     }
   }
 
