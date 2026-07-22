@@ -3,19 +3,16 @@ use strict;
 use warnings;
 use utf8;
 use Encode ();
-use Fcntl qw(:flock O_RDWR O_CREAT);
 use HTML::Entities ();
 use re qw(regexp_pattern);
 
 our $MAP = join "\n",
-    '吉祥寺井の頭公園三鷹台久我山高井戸浜田山西永福永福町明大前下北沢神泉渋谷',
-    '渋谷恵比寿大崎',
-    '大崎大井町',
+    '吉祥寺久我山永福町明大前下北沢渋谷',
+    '渋谷恵比寿大崎大井町',
     '大井町品川高輪ゲートウェイ田町浜松町新橋有楽町東京',
-    '東京神田御茶ノ水四ツ谷新宿中野高円寺阿佐ケ谷荻窪西荻窪吉祥寺';
+    '東京神田御茶ノ水四ツ谷新宿中野荻窪吉祥寺';
 
 our $ANSWER = { '吉祥寺' => 1, '大井町' => 1 };
-our $RECORD_PATH = $ENV{BUNSHIN_QUIZ_RECORD} // '/tmp/bunshin-quiz-record';
 
 my $UNSAFE_HTML = '<>&"';
 
@@ -69,32 +66,6 @@ sub regex_display {
     return { pattern => $pat, mods => $mods, source => $src, bytes => length $bytes };
 }
 
-sub update_record {
-    my (%opts) = @_;
-    my $status = $opts{status} // die "status required\n";
-    my $visits = $opts{visits} // die "visits required\n";
-    my $bytes  = $opts{bytes}  // die "bytes required\n";
-    my $path   = $opts{path}   // $RECORD_PATH;
-
-    sysopen(my $fh, $path, O_RDWR | O_CREAT, 0644) or die "open $path: $!\n";
-    flock($fh, LOCK_EX) or die "flock $path: $!\n";
-    my $content = do { local $/; <$fh> } // '';
-    my ($first, $best) = (0, 0);
-    if ($content =~ /^first_correct_visit=(\d+)$/m) { $first = $1 + 0 }
-    if ($content =~ /^best_bytes=(\d+)$/m)          { $best  = $1 + 0 }
-
-    if ($status eq 'correct') {
-        $first = $visits if !$first;
-        $best  = $bytes  if !$best || $bytes < $best;
-    }
-
-    seek($fh, 0, 0);
-    truncate($fh, 0);
-    print $fh "first_correct_visit=$first\nbest_bytes=$best\n";
-    close $fh;
-    return { first_correct_visit => $first, best_bytes => $best };
-}
-
 sub highlight_map {
     my (%opts) = @_;
     my $matches = $opts{matches} // die "matches required\n";
@@ -125,17 +96,10 @@ sub page {
     my (%opts) = @_;
     my $re     = $opts{re}     // die "re required\n";
     my $visits = $opts{visits} // die "visits required\n";
-    my $path   = $opts{record_path} // $RECORD_PATH;
 
     my $rd      = regex_display($re);
     my $matches = evaluate(re => $re);
     my $judged  = judge(matches => $matches);
-    my $rec     = update_record(
-        status => $judged->{status},
-        visits => $visits,
-        bytes  => $rd->{bytes},
-        path   => $path,
-    );
 
     my $counter = sprintf('%07d', $visits);
     my $kir     = kirban($visits);
@@ -143,11 +107,9 @@ sub page {
     my $map_html = highlight_map(matches => $matches);
     my $re_html  = _esc($rd->{source});
     my $msg_html = _esc($judged->{message});
-    my $first    = $rec->{first_correct_visit} || '—';
-    my $best     = $rec->{best_bytes}          || '—';
 
     return <<~"HTML";
-        <h1>大吉祥寺.pm平成CGI</h1>
+        <h1>Perl 正規表現クイズ!</h1>
         <section class="counter">
           <p>アクセス数: <strong>$counter</strong>$kir_html</p>
         </section>
@@ -157,11 +119,6 @@ sub page {
           <pre class="map">$map_html</pre>
           <p>正規表現: <code>$re_html</code> ($rd->{bytes} bytes)</p>
           <p class="verdict verdict-$judged->{status}">$msg_html</p>
-        </section>
-        <section class="record">
-          <h2>記録</h2>
-          <p>初正解: 訪問 #$first</p>
-          <p>最短バイト: $best</p>
         </section>
         HTML
 }

@@ -4,20 +4,10 @@ use utf8;
 use Test::More;
 use FindBin;
 use lib "$FindBin::Bin/../..";
-use File::Temp qw(tempfile);
 use Bunshin::Quiz;
 
 binmode Test::More->builder->$_, ':encoding(UTF-8)'
     for qw(output failure_output todo_output);
-
-sub with_record {
-    my ($fn) = @_;
-    my ($fh, $path) = tempfile(UNLINK => 1);
-    close $fh;
-    unlink $path;
-    local $Bunshin::Quiz::RECORD_PATH = $path;
-    $fn->($path);
-}
 
 subtest 'MAP: 3-char windows repeat only for 吉祥寺 and 大井町' => sub {
     my %count;
@@ -134,40 +124,6 @@ subtest 'regex_display: /s backref answer weighs 11 bytes' => sub {
     is $rd->{mods}, 's';
 };
 
-subtest 'update_record: monotonic first_correct_visit' => sub {
-    with_record(sub {
-        my ($path) = @_;
-        my $r1 = Bunshin::Quiz::update_record(status => 'correct', visits => 42, bytes => 19, path => $path);
-        is $r1->{first_correct_visit}, 42;
-        my $r2 = Bunshin::Quiz::update_record(status => 'correct', visits => 100, bytes => 19, path => $path);
-        is $r2->{first_correct_visit}, 42, 'first_correct_visit does not move on later correct visits';
-    });
-};
-
-subtest 'update_record: wrong/partial answers cannot corrupt the record' => sub {
-    with_record(sub {
-        my ($path) = @_;
-        Bunshin::Quiz::update_record(status => 'correct', visits => 5, bytes => 11, path => $path);
-        my $r = Bunshin::Quiz::update_record(status => 'wrong', visits => 6, bytes => 3, path => $path);
-        is $r->{first_correct_visit}, 5, 'wrong answer keeps first_correct_visit';
-        is $r->{best_bytes}, 11, 'wrong answer keeps best_bytes';
-        $r = Bunshin::Quiz::update_record(status => 'partial', visits => 7, bytes => 3, path => $path);
-        is $r->{first_correct_visit}, 5, 'partial answer keeps first_correct_visit';
-        is $r->{best_bytes}, 11, 'partial answer keeps best_bytes';
-    });
-};
-
-subtest 'update_record: best_bytes decreases only' => sub {
-    with_record(sub {
-        my ($path) = @_;
-        Bunshin::Quiz::update_record(status => 'correct', visits => 1, bytes => 19, path => $path);
-        my $r = Bunshin::Quiz::update_record(status => 'correct', visits => 2, bytes => 25, path => $path);
-        is $r->{best_bytes}, 19, 'higher-bytes correct does not raise best';
-        $r = Bunshin::Quiz::update_record(status => 'correct', visits => 3, bytes => 11, path => $path);
-        is $r->{best_bytes}, 11, 'lower-bytes correct lowers best';
-    });
-};
-
 subtest 'kirban: multiples of 100 and repunit visits get 大吉' => sub {
     is Bunshin::Quiz::kirban(100), '大吉 (100の倍数)';
     is Bunshin::Quiz::kirban(555), '大吉 (ゾロ目)';
@@ -194,12 +150,9 @@ subtest 'highlight_map: HTML metacharacters in the map are escaped' => sub {
 };
 
 subtest 'page: HTML metacharacters in the regex source are escaped' => sub {
-    with_record(sub {
-        my ($path) = @_;
-        my $html = Bunshin::Quiz::page(re => qr{<script>}, visits => 1, record_path => $path);
-        like $html, qr{&lt;script&gt;}, 'user-supplied regex is escaped';
-        unlike $html, qr{<script>},     'raw regex not embedded';
-    });
+    my $html = Bunshin::Quiz::page(re => qr{<script>}, visits => 1);
+    like $html, qr{&lt;script&gt;}, 'user-supplied regex is escaped';
+    unlike $html, qr{<script>},     'raw regex not embedded';
 };
 
 subtest 'evaluate: zero-width lookahead scan terminates and advances' => sub {
@@ -214,9 +167,6 @@ subtest 'required opts: subs die when a critical arg is missing' => sub {
         [sub { Bunshin::Quiz::evaluate() },       qr{re required} ],
         [sub { Bunshin::Quiz::judge() },          qr{matches required} ],
         [sub { Bunshin::Quiz::highlight_map() },  qr{matches required} ],
-        [sub { Bunshin::Quiz::update_record() },  qr{status required} ],
-        [sub { Bunshin::Quiz::update_record(status => 'wrong') },              qr{visits required} ],
-        [sub { Bunshin::Quiz::update_record(status => 'wrong', visits => 1) }, qr{bytes required} ],
         [sub { Bunshin::Quiz::page() },           qr{re required} ],
         [sub { Bunshin::Quiz::page(re => qr{x}) },qr{visits required} ],
     );
@@ -228,26 +178,11 @@ subtest 'required opts: subs die when a critical arg is missing' => sub {
     }
 };
 
-subtest 'page: renders counter, question, verdict, and record' => sub {
-    with_record(sub {
-        my ($path) = @_;
-        my $html = Bunshin::Quiz::page(re => qr{吉祥寺|大井町}, visits => 42, record_path => $path);
-        like $html, qr{アクセス数.*0000042}s, 'counter is 7-digit zero padded';
-        like $html, qr{2回}, 'question copy present';
-        like $html, qr{verdict-correct}, 'verdict class reflects status';
-        like $html, qr{訪問 #42}, 'first_correct_visit rendered';
-        like $html, qr{最短バイト: 19}, 'best_bytes rendered';
-    });
-};
-
-subtest 'page: partial answer does not update the record' => sub {
-    with_record(sub {
-        my ($path) = @_;
-        my $html = Bunshin::Quiz::page(re => qr{大井町}, visits => 1, record_path => $path);
-        like $html, qr{verdict-partial};
-        like $html, qr{訪問 #—};
-        like $html, qr{最短バイト: —};
-    });
+subtest 'page: renders counter, question, and verdict' => sub {
+    my $html = Bunshin::Quiz::page(re => qr{吉祥寺|大井町}, visits => 42);
+    like $html, qr{アクセス数.*0000042}s, 'counter is 7-digit zero padded';
+    like $html, qr{2回}, 'question copy present';
+    like $html, qr{verdict-correct}, 'verdict class reflects status';
 };
 
 done_testing;

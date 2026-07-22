@@ -9,9 +9,7 @@ use lib "$FindBin::Bin/../..";
 
 BEGIN {
     my ($fh1, $counter) = tempfile(UNLINK => 1); close $fh1; unlink $counter;
-    my ($fh2, $record)  = tempfile(UNLINK => 1); close $fh2; unlink $record;
     $ENV{BUNSHIN_QUIZ_COUNTER} = $counter;
-    $ENV{BUNSHIN_QUIZ_RECORD}  = $record;
 }
 
 use Bunshin::App;
