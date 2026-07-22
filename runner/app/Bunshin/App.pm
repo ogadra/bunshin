@@ -81,7 +81,7 @@ sub handle_conn {
 
     for ($result->{status}) {
         if ($_ eq 'ok') {
-            Bunshin::HTTP::respond($conn, 200, 'text/html; charset=utf-8', sprintf($HTML_SHELL, HTML::Entities::encode_entities($result->{body})));
+            Bunshin::HTTP::respond($conn, 200, 'text/html; charset=utf-8', sprintf($HTML_SHELL, $result->{body}));
         } elsif ($_ eq 'died') {
             respond_error($conn, "DaiKichijoji::content died: $result->{error}");
         } elsif ($_ eq 'exited') {

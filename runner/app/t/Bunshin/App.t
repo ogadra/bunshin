@@ -1,11 +1,25 @@
 use strict;
 use warnings;
+use utf8;
 use Test::More;
 use FindBin;
+use File::Temp qw(tempfile);
+use Encode ();
 use lib "$FindBin::Bin/../..";
+
+BEGIN {
+    my ($fh1, $counter) = tempfile(UNLINK => 1); close $fh1; unlink $counter;
+    my ($fh2, $record)  = tempfile(UNLINK => 1); close $fh2; unlink $record;
+    $ENV{BUNSHIN_QUIZ_COUNTER} = $counter;
+    $ENV{BUNSHIN_QUIZ_RECORD}  = $record;
+}
+
 use Bunshin::App;
 use DaiKichijoji;
 use Socket qw(AF_UNIX SOCK_STREAM PF_UNSPEC);
+
+binmode Test::More->builder->$_, ':encoding(UTF-8)'
+    for qw(output failure_output todo_output);
 
 sub roundtrip {
     my ($request_data) = @_;
@@ -30,11 +44,11 @@ subtest 'happy path: ok body is embedded in the HTML shell' => sub {
     like $r, qr{Hello from test};
 };
 
-subtest 'content HTML metacharacters are escaped' => sub {
+subtest 'content is embedded as raw HTML (Quiz owns per-value escaping)' => sub {
     local $Bunshin::App::RUN_CONTENT_FN = sub { +{ status => 'ok', body => "<b>bold</b>" } };
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
-    like $r, qr{&lt;b&gt;bold&lt;/b&gt;}, 'metacharacters escaped';
-    unlike $r, qr{<b>bold</b>}, 'raw tag not present';
+    like $r, qr{<b>bold</b>}, 'raw tag passes through';
+    unlike $r, qr{&lt;b&gt;bold&lt;/b&gt;}, 'no over-escaping';
 };
 
 subtest 'refresh failure surfaces the load-failed message from the runner' => sub {
@@ -200,7 +214,10 @@ subtest 'integration: real Module::Refresh + a real broken file dies with the co
 subtest 'real defaults: dispatches through the real ContentRunner and DaiKichijoji' => sub {
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 200 OK\r\n};
-    like $r, qr{Hello from DaiKichijoji};
+    my $heading = Encode::encode('UTF-8', '大吉祥寺.pm');
+    my $counter = Encode::encode('UTF-8', 'アクセス数');
+    like $r, qr{\Q$heading\E}, 'the quiz page heading is served';
+    like $r, qr{\Q$counter\E}, 'the counter section is rendered';
 };
 
 subtest 'real defaults: 500 when DaiKichijoji::content is missing' => sub {

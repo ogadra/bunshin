@@ -1,0 +1,208 @@
+use strict;
+use warnings;
+use utf8;
+use Test::More;
+use FindBin;
+use lib "$FindBin::Bin/../..";
+use File::Temp qw(tempfile);
+use Bunshin::Quiz;
+
+binmode Test::More->builder->$_, ':encoding(UTF-8)'
+    for qw(output failure_output todo_output);
+
+sub with_record {
+    my ($fn) = @_;
+    my ($fh, $path) = tempfile(UNLINK => 1);
+    close $fh;
+    unlink $path;
+    local $Bunshin::Quiz::RECORD_PATH = $path;
+    $fn->($path);
+}
+
+subtest 'MAP: 3-char windows repeat only for 吉祥寺 and 大井町' => sub {
+    my %count;
+    my $len = length $Bunshin::Quiz::MAP;
+    for my $i (0 .. $len - 3) {
+        my $window = substr($Bunshin::Quiz::MAP, $i, 3);
+        next if $window =~ /\n/;
+        $count{$window}++;
+    }
+    my @repeated = sort grep { $count{$_} >= 2 } keys %count;
+    is_deeply \@repeated, ['吉祥寺', '大井町'],
+        'only 吉祥寺 and 大井町 repeat among all 3-char (no-newline) windows';
+};
+
+subtest 'evaluate: literal 吉祥寺|大井町 picks up both stations' => sub {
+    my $matches = Bunshin::Quiz::evaluate(re => qr{吉祥寺|大井町});
+    my %set = map { $_->{pick} => 1 } @$matches;
+    is_deeply [sort keys %set], ['吉祥寺', '大井町'], 'match set = expected';
+    cmp_ok scalar(@$matches), '>=', 4, 'both stations matched twice';
+};
+
+subtest 'evaluate: greedy /s backref consumes the whole string in one match' => sub {
+    my $matches = Bunshin::Quiz::evaluate(re => qr{(...).*\1}s);
+    my %set = map { $_->{pick} => 1 } @$matches;
+    is scalar(@$matches), 1, 'greedy .* leaves nothing for a second iteration';
+    is_deeply [sort keys %set], ['吉祥寺'], 'only the outermost pair is picked';
+};
+
+subtest 'evaluate: /s lookahead backref captures both stations' => sub {
+    my $matches = Bunshin::Quiz::evaluate(re => qr{(...)(?=.*\1)}s);
+    my %set = map { $_->{pick} => 1 } @$matches;
+    is_deeply [sort keys %set], ['吉祥寺', '大井町'], 'captures fill the answer set';
+};
+
+subtest 'evaluate: no /s + backref finds nothing (dot skips newline)' => sub {
+    my $matches = Bunshin::Quiz::evaluate(re => qr{(...).*\1});
+    is scalar(@$matches), 0, 'no cross-line matches';
+};
+
+subtest 'evaluate: (...)\n\1 captures only the adjacent-line pair (大井町)' => sub {
+    my $matches = Bunshin::Quiz::evaluate(re => qr{(...)\n\1});
+    my %set = map { $_->{pick} => 1 } @$matches;
+    is_deeply [sort keys %set], ['大井町'], 'the 3-char neighbour is 大井町';
+};
+
+subtest 'evaluate: /^...|...$/ picks up 吉祥寺 only (both string ends)' => sub {
+    my $matches = Bunshin::Quiz::evaluate(re => qr{^...|...$});
+    my %set = map { $_->{pick} => 1 } @$matches;
+    is_deeply [sort keys %set], ['吉祥寺'], 'only 吉祥寺 at the string ends';
+};
+
+subtest 'judge: stage 1 (literal) is correct' => sub {
+    my $m = Bunshin::Quiz::evaluate(re => qr{吉祥寺|大井町});
+    my $v = Bunshin::Quiz::judge(matches => $m);
+    is $v->{status}, 'correct';
+};
+
+subtest 'judge: /s lookahead backref is correct' => sub {
+    my $m = Bunshin::Quiz::evaluate(re => qr{(...)(?=.*\1)}s);
+    my $v = Bunshin::Quiz::judge(matches => $m);
+    is $v->{status}, 'correct';
+};
+
+subtest 'judge: greedy /s backref is partial (吉祥寺 only)' => sub {
+    my $m = Bunshin::Quiz::evaluate(re => qr{(...).*\1}s);
+    my $v = Bunshin::Quiz::judge(matches => $m);
+    is $v->{status}, 'partial';
+    like $v->{message}, qr{家から出ていません};
+};
+
+subtest 'judge: (...)\n\1 is partial (大井町 only)' => sub {
+    my $m = Bunshin::Quiz::evaluate(re => qr{(...)\n\1});
+    my $v = Bunshin::Quiz::judge(matches => $m);
+    is $v->{status}, 'partial';
+    like $v->{message}, qr{帰りの電車};
+};
+
+subtest 'judge: stage 2 (anchored) is partial (吉祥寺 only)' => sub {
+    my $m = Bunshin::Quiz::evaluate(re => qr{^...|...$});
+    my $v = Bunshin::Quiz::judge(matches => $m);
+    is $v->{status}, 'partial';
+    like $v->{message}, qr{家から出ていません};
+};
+
+subtest 'judge: 大井町 only is partial with the return-trip message' => sub {
+    my $m = Bunshin::Quiz::evaluate(re => qr{大井町});
+    my $v = Bunshin::Quiz::judge(matches => $m);
+    is $v->{status}, 'partial';
+    like $v->{message}, qr{帰りの電車};
+};
+
+subtest 'judge: no matches is wrong' => sub {
+    my $m = Bunshin::Quiz::evaluate(re => qr{ZZZZ});
+    my $v = Bunshin::Quiz::judge(matches => $m);
+    is $v->{status}, 'wrong';
+    like $v->{message}, qr{ヒットなし};
+};
+
+subtest 'judge: unexpected match set is wrong' => sub {
+    my $m = Bunshin::Quiz::evaluate(re => qr{渋谷});
+    my $v = Bunshin::Quiz::judge(matches => $m);
+    is $v->{status}, 'wrong';
+};
+
+subtest 'regex_display: literal answer weighs 19 bytes' => sub {
+    my $rd = Bunshin::Quiz::regex_display(qr{吉祥寺|大井町});
+    is $rd->{bytes}, 19, '3 kanji x 6 + | = 19 bytes';
+    is $rd->{mods}, '', 'implicit /u is hidden';
+};
+
+subtest 'regex_display: /s backref answer weighs 11 bytes' => sub {
+    my $rd = Bunshin::Quiz::regex_display(qr{(...).*\1}s);
+    is $rd->{bytes}, 11, 'pattern (9) + /s (2) = 11';
+    is $rd->{mods}, 's';
+};
+
+subtest 'update_record: monotonic first_correct_visit' => sub {
+    with_record(sub {
+        my ($path) = @_;
+        my $r1 = Bunshin::Quiz::update_record(status => 'correct', visits => 42, bytes => 19, path => $path);
+        is $r1->{first_correct_visit}, 42;
+        my $r2 = Bunshin::Quiz::update_record(status => 'correct', visits => 100, bytes => 19, path => $path);
+        is $r2->{first_correct_visit}, 42, 'first_correct_visit does not move on later correct visits';
+    });
+};
+
+subtest 'update_record: wrong/partial answers cannot corrupt the record' => sub {
+    with_record(sub {
+        my ($path) = @_;
+        Bunshin::Quiz::update_record(status => 'correct', visits => 5, bytes => 11, path => $path);
+        my $r = Bunshin::Quiz::update_record(status => 'wrong', visits => 6, bytes => 3, path => $path);
+        is $r->{first_correct_visit}, 5, 'wrong answer keeps first_correct_visit';
+        is $r->{best_bytes}, 11, 'wrong answer keeps best_bytes';
+        $r = Bunshin::Quiz::update_record(status => 'partial', visits => 7, bytes => 3, path => $path);
+        is $r->{first_correct_visit}, 5, 'partial answer keeps first_correct_visit';
+        is $r->{best_bytes}, 11, 'partial answer keeps best_bytes';
+    });
+};
+
+subtest 'update_record: best_bytes decreases only' => sub {
+    with_record(sub {
+        my ($path) = @_;
+        Bunshin::Quiz::update_record(status => 'correct', visits => 1, bytes => 19, path => $path);
+        my $r = Bunshin::Quiz::update_record(status => 'correct', visits => 2, bytes => 25, path => $path);
+        is $r->{best_bytes}, 19, 'higher-bytes correct does not raise best';
+        $r = Bunshin::Quiz::update_record(status => 'correct', visits => 3, bytes => 11, path => $path);
+        is $r->{best_bytes}, 11, 'lower-bytes correct lowers best';
+    });
+};
+
+subtest 'kirban: multiples of 100 and repunit visits get 大吉' => sub {
+    is Bunshin::Quiz::kirban(100), '大吉 (100 の倍数)';
+    is Bunshin::Quiz::kirban(555), '大吉 (ゾロ目)';
+    is Bunshin::Quiz::kirban(11), undef, 'two-digit repdigit is not 大吉';
+    is Bunshin::Quiz::kirban(42), undef;
+};
+
+subtest 'highlight_map: matched spans are wrapped in <mark>' => sub {
+    my $m = Bunshin::Quiz::evaluate(re => qr{吉祥寺|大井町});
+    my $html = Bunshin::Quiz::highlight_map(matches => $m);
+    like $html, qr{<mark>吉祥寺</mark>};
+    like $html, qr{<mark>大井町</mark>};
+    unlike $html, qr{<mark></mark>}, 'no empty marks';
+};
+
+subtest 'page: renders counter, question, verdict, and record' => sub {
+    with_record(sub {
+        my ($path) = @_;
+        my $html = Bunshin::Quiz::page(re => qr{吉祥寺|大井町}, visits => 42, record_path => $path);
+        like $html, qr{アクセス数.*0000042}s, 'counter is 7-digit zero padded';
+        like $html, qr{2 回}, 'question copy present';
+        like $html, qr{verdict-correct}, 'verdict class reflects status';
+        like $html, qr{訪問 #42}, 'first_correct_visit rendered';
+        like $html, qr{最短バイト: 19}, 'best_bytes rendered';
+    });
+};
+
+subtest 'page: partial answer does not update the record' => sub {
+    with_record(sub {
+        my ($path) = @_;
+        my $html = Bunshin::Quiz::page(re => qr{大井町}, visits => 1, record_path => $path);
+        like $html, qr{verdict-partial};
+        like $html, qr{訪問 #—};
+        like $html, qr{最短バイト: —};
+    });
+};
+
+done_testing;
