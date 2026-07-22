@@ -3,11 +3,18 @@ use warnings;
 use utf8;
 use Test::More;
 use FindBin;
-use lib "$FindBin::Bin/../..";
+use lib "$FindBin::Bin/..";
 use Quiz;
 
 binmode Test::More->builder->$_, ':encoding(UTF-8)'
     for qw(output failure_output todo_output);
+
+sub with_content {
+    my ($answer, $fn) = @_;
+    no warnings 'redefine', 'once';
+    local *DaiKichijoji::content = sub { $answer };
+    $fn->();
+}
 
 subtest 'MAP: 3-char windows repeat only for 吉祥寺 and 大井町' => sub {
     my %count;
@@ -126,9 +133,11 @@ subtest 'highlight_map: HTML metacharacters in the map are escaped' => sub {
 };
 
 subtest 'page: HTML metacharacters in the regex source are escaped' => sub {
-    my $html = Quiz::page(re => qr{<script>});
-    like $html, qr{&lt;script&gt;}, 'user-supplied regex is escaped';
-    unlike $html, qr{<script>},     'raw regex not embedded';
+    with_content(qr{<script>}, sub {
+        my $html = Quiz::page();
+        like $html, qr{&lt;script&gt;}, 'user-supplied regex is escaped';
+        unlike $html, qr{<script>},     'raw regex not embedded';
+    });
 };
 
 subtest 'evaluate: zero-width lookahead scan terminates and advances' => sub {
@@ -143,7 +152,6 @@ subtest 'required opts: subs die when a critical arg is missing' => sub {
         [sub { Quiz::evaluate() },       qr{re required} ],
         [sub { Quiz::judge() },          qr{matches required} ],
         [sub { Quiz::highlight_map() },  qr{matches required} ],
-        [sub { Quiz::page() },           qr{re required} ],
     );
     for my $c (@cases) {
         my ($fn, $pat) = @$c;
@@ -153,10 +161,33 @@ subtest 'required opts: subs die when a critical arg is missing' => sub {
     }
 };
 
-subtest 'page: renders question and verdict' => sub {
-    my $html = Quiz::page(re => qr{吉祥寺|大井町});
-    like $html, qr{たかし君}, 'question copy present';
-    like $html, qr{verdict-correct}, 'verdict class reflects status';
+subtest 'page: renders question and verdict from the content answer' => sub {
+    with_content(qr{吉祥寺|大井町}, sub {
+        my $html = Quiz::page();
+        like $html, qr{たかし君}, 'question copy present';
+        like $html, qr{verdict-correct}, 'verdict class reflects status';
+    });
+};
+
+subtest 'page: a wrong answer renders verdict-wrong' => sub {
+    with_content(qr{渋谷}, sub {
+        my $html = Quiz::page();
+        like $html, qr{verdict-wrong}, 'verdict class reflects status';
+    });
+};
+
+subtest 'page: dies when DaiKichijoji::content is not defined' => sub {
+    my $ok = eval { Quiz::page(); 1 };
+    ok !$ok, 'died';
+    like $@, qr{DaiKichijoji::content is not defined};
+};
+
+subtest 'page: dies when content returns something other than qr//' => sub {
+    with_content('吉祥寺|大井町', sub {
+        my $ok = eval { Quiz::page(); 1 };
+        ok !$ok, 'died';
+        like $@, qr{must return a compiled regex};
+    });
 };
 
 done_testing;

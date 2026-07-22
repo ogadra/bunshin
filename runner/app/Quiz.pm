@@ -77,8 +77,11 @@ sub highlight_map {
 }
 
 sub page {
-    my (%opts) = @_;
-    my $re     = $opts{re} // die "re required\n";
+    my $sub = DaiKichijoji->can('content')
+        or die "DaiKichijoji::content is not defined\n";
+    my $re = $sub->();
+    die "DaiKichijoji::content must return a compiled regex (qr//)\n"
+        unless ref $re eq 'Regexp';
 
     my $rd      = regex_display($re);
     my $matches = evaluate(re => $re);

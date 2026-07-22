@@ -7,6 +7,7 @@ use Bunshin::ContentRunner;
 use Bunshin::HTTP;
 use HTML::Entities ();
 use Module::Refresh;
+use Quiz;
 
 my $HTML_SHELL = <<~'HTML';
     <!doctype html>
@@ -25,11 +26,7 @@ my $HTML_SHELL = <<~'HTML';
     </html>
     HTML
 
-my $CONTENT_FN = sub {
-    my $sub = DaiKichijoji->can('content')
-        or die "DaiKichijoji::content is not defined\n";
-    $sub->();
-};
+my $CONTENT_FN = sub { Quiz::page() };
 our $RUN_CONTENT_FN = sub {
     my @load_errors;
     {
