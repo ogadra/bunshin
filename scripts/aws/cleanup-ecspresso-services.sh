@@ -59,10 +59,18 @@ delete_service() {
     fi
 
     printf '[%s] deleting %s via ecspresso\n' "${region_dir}" "${service}"
-    if ! ecspresso delete --config "${config}" --force --terminate; then
-        printf '[%s] failed to delete %s\n' "${region_dir}" "${service}" >&2
-        return 1
+    local delete_out
+    if delete_out="$(ecspresso delete --config "${config}" --force --terminate 2>&1)"; then
+        printf '%s\n' "${delete_out}"
+        return 0
     fi
+    printf '%s\n' "${delete_out}" >&2
+    if [[ "${delete_out}" == *ClusterNotFoundException* ]]; then
+        printf '[%s] cluster gone mid-delete, skipping %s\n' "${region_dir}" "${service}"
+        return 0
+    fi
+    printf '[%s] failed to delete %s\n' "${region_dir}" "${service}" >&2
+    return 1
 }
 
 pids=()
