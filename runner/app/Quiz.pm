@@ -76,36 +76,20 @@ sub highlight_map {
     return $out;
 }
 
-sub kirban {
-    my ($visits) = @_;
-    return unless $visits > 0;
-    return '大吉 (100の倍数)' if $visits % 100 == 0;
-    my $s = "$visits";
-    return '大吉 (ゾロ目)' if length($s) >= 3 && $s =~ /^(.)\1+$/;
-    return;
-}
-
 sub page {
     my (%opts) = @_;
-    my $re     = $opts{re}     // die "re required\n";
-    my $visits = $opts{visits} // die "visits required\n";
+    my $re     = $opts{re} // die "re required\n";
 
     my $rd      = regex_display($re);
     my $matches = evaluate(re => $re);
     my $judged  = judge(matches => $matches);
 
-    my $counter = sprintf('%07d', $visits);
-    my $kir     = kirban($visits);
-    my $kir_html = defined $kir ? ' <em class="kirban">' . _esc($kir) . '</em>' : '';
     my $map_html = highlight_map(matches => $matches);
     my $re_html  = _esc($rd->{source});
     my $msg_html = _esc($judged->{message});
 
     return <<~"HTML";
         <h1>Perl 正規表現クイズ!</h1>
-        <section class="counter">
-          <p>アクセス数: <strong>$counter</strong>$kir_html</p>
-        </section>
         <section class="quiz">
           <h2>問題</h2>
           <p>

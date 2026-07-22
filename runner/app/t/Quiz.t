@@ -107,13 +107,6 @@ subtest 'regex_display: /s backref answer weighs 11 bytes' => sub {
     is $rd->{mods}, 's';
 };
 
-subtest 'kirban: multiples of 100 and repunit visits get 大吉' => sub {
-    is Quiz::kirban(100), '大吉 (100の倍数)';
-    is Quiz::kirban(555), '大吉 (ゾロ目)';
-    is Quiz::kirban(11), undef, 'two-digit repdigit is not 大吉';
-    is Quiz::kirban(42), undef;
-};
-
 subtest 'highlight_map: matched spans are wrapped in <mark>' => sub {
     my $m = Quiz::evaluate(re => qr{吉祥寺|大井町});
     my $html = Quiz::highlight_map(matches => $m);
@@ -133,7 +126,7 @@ subtest 'highlight_map: HTML metacharacters in the map are escaped' => sub {
 };
 
 subtest 'page: HTML metacharacters in the regex source are escaped' => sub {
-    my $html = Quiz::page(re => qr{<script>}, visits => 1);
+    my $html = Quiz::page(re => qr{<script>});
     like $html, qr{&lt;script&gt;}, 'user-supplied regex is escaped';
     unlike $html, qr{<script>},     'raw regex not embedded';
 };
@@ -151,7 +144,6 @@ subtest 'required opts: subs die when a critical arg is missing' => sub {
         [sub { Quiz::judge() },          qr{matches required} ],
         [sub { Quiz::highlight_map() },  qr{matches required} ],
         [sub { Quiz::page() },           qr{re required} ],
-        [sub { Quiz::page(re => qr{x}) },qr{visits required} ],
     );
     for my $c (@cases) {
         my ($fn, $pat) = @$c;
@@ -161,10 +153,9 @@ subtest 'required opts: subs die when a critical arg is missing' => sub {
     }
 };
 
-subtest 'page: renders counter, question, and verdict' => sub {
-    my $html = Quiz::page(re => qr{吉祥寺|大井町}, visits => 42);
-    like $html, qr{アクセス数.*0000042}s, 'counter is 7-digit zero padded';
-    like $html, qr{2回}, 'question copy present';
+subtest 'page: renders question and verdict' => sub {
+    my $html = Quiz::page(re => qr{吉祥寺|大井町});
+    like $html, qr{たかし君}, 'question copy present';
     like $html, qr{verdict-correct}, 'verdict class reflects status';
 };
 

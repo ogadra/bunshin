@@ -3,14 +3,8 @@ use warnings;
 use utf8;
 use Test::More;
 use FindBin;
-use File::Temp qw(tempfile);
 use Encode ();
 use lib "$FindBin::Bin/../..";
-
-BEGIN {
-    my ($fh1, $counter) = tempfile(UNLINK => 1); close $fh1; unlink $counter;
-    $ENV{BUNSHIN_QUIZ_COUNTER} = $counter;
-}
 
 use Bunshin::App;
 use DaiKichijoji;
@@ -213,9 +207,9 @@ subtest 'real defaults: dispatches through the real ContentRunner and DaiKichijo
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 200 OK\r\n};
     my $heading = Encode::encode('UTF-8', '大吉祥寺.pm');
-    my $counter = Encode::encode('UTF-8', 'アクセス数');
-    like $r, qr{\Q$heading\E}, 'the quiz page heading is served';
-    like $r, qr{\Q$counter\E}, 'the counter section is rendered';
+    my $question = Encode::encode('UTF-8', 'たかし君');
+    like $r, qr{\Q$heading\E},  'the quiz page heading is served';
+    like $r, qr{\Q$question\E}, 'the quiz question copy is rendered';
 };
 
 subtest 'real defaults: 500 when DaiKichijoji::content is missing' => sub {
