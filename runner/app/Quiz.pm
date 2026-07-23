@@ -93,7 +93,7 @@ sub page {
     my $msg_html = _esc($judged->{message});
 
     return <<~"HTML";
-        <h1>Perl 正規表現クイズ!</h1>
+        <h1>Perl正規表現クイズ!</h1>
         <section class="quiz">
           <h2>問題</h2>
           <p>

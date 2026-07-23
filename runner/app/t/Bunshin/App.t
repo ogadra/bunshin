@@ -221,4 +221,17 @@ subtest 'real defaults: 500 when DaiKichijoji::content is missing' => sub {
     like $r, qr{DaiKichijoji::content died: DaiKichijoji::content is not defined};
 };
 
+subtest 'real defaults: 500 when DaiKichijoji::content returns a non-regex' => sub {
+    # 直前の subtest が stash から glob を delete して作り直しているため、
+    # コンパイル時に解決されるベアワード glob では現行の stash に届かない。
+    no strict 'refs';
+    no warnings 'redefine';
+    my $orig = \&{'DaiKichijoji::content'};
+    *{'DaiKichijoji::content'} = sub { 'not a regex' };
+    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
+    *{'DaiKichijoji::content'} = $orig;
+    like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
+    like $r, qr{DaiKichijoji::content died: DaiKichijoji::content must return a compiled regex};
+};
+
 done_testing;
