@@ -34,7 +34,7 @@ subtest 'evaluate: literal 吉祥寺|大井町 picks up both stations' => sub {
     my $matches = Quiz::evaluate(re => qr{吉祥寺|大井町});
     my %set = map { $_->{pick} => 1 } @$matches;
     is_deeply [sort keys %set], ['吉祥寺', '大井町'], 'match set = expected';
-    cmp_ok scalar(@$matches), '>=', 4, 'both stations matched twice';
+    is scalar(@$matches), 4, 'both stations matched exactly twice';
 };
 
 subtest 'evaluate: greedy /s backref consumes the whole string in one match' => sub {

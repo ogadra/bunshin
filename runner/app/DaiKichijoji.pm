@@ -2,12 +2,12 @@ use utf8;
 package DaiKichijoji;
 use strict;
 use warnings;
-use Fcntl qw(:flock O_RDWR O_CREAT);
+use Fcntl qw(:flock O_RDWR O_CREAT O_NOFOLLOW);
 
 my $COUNTER_PATH = $ENV{BUNSHIN_QUIZ_COUNTER} // '/tmp/bunshin-quiz-visits';
 
 sub counter {
-    sysopen(my $fh, $COUNTER_PATH, O_RDWR | O_CREAT, 0644)
+    sysopen(my $fh, $COUNTER_PATH, O_RDWR | O_CREAT | O_NOFOLLOW, 0600)
         or die "open $COUNTER_PATH: $!\n";
     flock($fh, LOCK_EX) or die "flock $COUNTER_PATH: $!\n";
     my $n = do { local $/; <$fh> } // '';

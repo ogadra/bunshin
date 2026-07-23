@@ -53,6 +53,17 @@ subtest 'counter: digits embedded in garbage still count as corrupt' => sub {
     like $@, qr{corrupt counter file};
 };
 
+subtest 'counter: a symlinked counter path dies instead of writing through' => sub {
+    unlink $COUNTER;
+    my ($fh, $target) = tempfile(UNLINK => 1);
+    close $fh;
+    symlink $target, $COUNTER or die "symlink $COUNTER: $!";
+    my $ok = eval { DaiKichijoji::counter(); 1 };
+    ok !$ok, 'died';
+    like $@, qr{open \Q$COUNTER\E}, 'O_NOFOLLOW refuses the symlink';
+    unlink $COUNTER;
+};
+
 subtest 'content: the initial answer catches line-crossing repeats but misses 吉祥寺' => sub {
     require Quiz;
     my $matches = Quiz::evaluate(re => DaiKichijoji::content());
