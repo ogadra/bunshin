@@ -26,17 +26,20 @@ fi
 context="$(connect_gateway_context "${project}" "${membership}")"
 
 for _ in $(seq 1 60); do
-    annotation=$(kubectl --context="${context}" -n "${namespace}" get svc "${service}" \
-        -o jsonpath='{.metadata.annotations.cloud\.google\.com/neg-status}' 2>/dev/null || true)
-    if [[ -n "${annotation}" ]]; then
-        registered=$(jq -r --arg neg "${neg_name}" \
-            '.network_endpoint_groups | to_entries[] | select(.value == $neg) | .value' \
-            <<<"${annotation}")
-        if [[ -n "${registered}" ]]; then
-            zones=$(jq -r '.zones | join(",")' <<<"${annotation}")
-            if [[ -n "${zones}" ]]; then
-                jq -n --arg zones "${zones}" '{zones: $zones}'
-                exit 0
+    svc_json=$(kubectl --context="${context}" -n "${namespace}" get svc "${service}" \
+        --ignore-not-found=true -o json)
+    if [[ -n "${svc_json}" ]]; then
+        annotation=$(jq -r '.metadata.annotations["cloud.google.com/neg-status"] // ""' <<<"${svc_json}")
+        if [[ -n "${annotation}" ]]; then
+            registered=$(jq -r --arg neg "${neg_name}" \
+                '.network_endpoint_groups | to_entries[] | select(.value == $neg) | .value' \
+                <<<"${annotation}")
+            if [[ -n "${registered}" ]]; then
+                zones=$(jq -r '.zones | join(",")' <<<"${annotation}")
+                if [[ -n "${zones}" ]]; then
+                    jq -n --arg zones "${zones}" '{zones: $zones}'
+                    exit 0
+                fi
             fi
         fi
     fi
