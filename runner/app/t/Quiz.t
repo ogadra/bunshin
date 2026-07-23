@@ -67,10 +67,18 @@ subtest 'evaluate: /^...|...$/ picks up 吉祥寺 only (both string ends)' => su
     is_deeply [sort keys %set], ['吉祥寺'], 'only 吉祥寺 at the string ends';
 };
 
-subtest 'judge: stage 1 (literal) is correct' => sub {
+subtest 'judge: literal 吉祥寺|大井町 double-matches and is wrong' => sub {
     my $m = Quiz::evaluate(re => qr{吉祥寺|大井町});
     my $v = Quiz::judge(matches => $m);
-    is $v->{status}, 'correct';
+    is $v->{status}, 'wrong';
+    like $v->{message}, qr{同じ駅が2回マッチ}, 'dedicated duplicate message';
+};
+
+subtest 'judge: a wrong set with duplicates gets the plain message' => sub {
+    my $m = Quiz::evaluate(re => qr{渋谷});
+    my $v = Quiz::judge(matches => $m);
+    is $v->{status}, 'wrong';
+    is $v->{message}, '不正解…', 'set mismatch outranks the duplicate hint';
 };
 
 subtest 'judge: /s lookahead backref is correct' => sub {
@@ -170,7 +178,7 @@ subtest 'required opts: subs die when a critical arg is missing' => sub {
 };
 
 subtest 'page: renders question and verdict from the content answer' => sub {
-    with_content(qr{吉祥寺|大井町}, sub {
+    with_content(qr{(...)(?=.*\1)}s, sub {
         my $html = Quiz::page();
         like $html, qr{たかし君}, 'question copy present';
         like $html, qr{verdict-correct}, 'verdict class reflects status';
@@ -181,6 +189,13 @@ subtest 'page: a wrong answer renders verdict-wrong' => sub {
     with_content(qr{渋谷}, sub {
         my $html = Quiz::page();
         like $html, qr{verdict-wrong}, 'verdict class reflects status';
+    });
+};
+
+subtest 'page: lists the picked stations next to the regex' => sub {
+    with_content(qr{(...)(?=.*\1)}s, sub {
+        my $html = Quiz::page();
+        like $html, qr{マッチした駅.*<code>吉祥寺, 大井町</code>}s, 'picks are rendered in match order';
     });
 };
 

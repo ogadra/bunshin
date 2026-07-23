@@ -41,13 +41,16 @@ sub evaluate {
 sub judge {
     my (%opts) = @_;
     my $matches = $opts{matches} // die "matches required\n";
-    my %set = map { $_->{pick} => 1 } @$matches;
+    my %count;
+    $count{ $_->{pick} }++ for @$matches;
     my $expected = join '|', sort keys %$ANSWER;
-    my $actual   = join '|', sort keys %set;
+    my $actual   = join '|', sort keys %count;
 
-    return $actual eq $expected
-        ? { status => 'correct', message => '正解！' }
-        : { status => 'wrong',   message => '不正解…' };
+    return { status => 'wrong', message => '不正解…' }
+        if $actual ne $expected;
+    return { status => 'wrong', message => '不正解… 駅は合っていますが、同じ駅が2回マッチしています' }
+        if grep { $_ > 1 } values %count;
+    return { status => 'correct', message => '正解！' };
 }
 
 sub regex_display {
@@ -107,15 +110,17 @@ sub page {
         <section class="quiz">
           <h2>問題</h2>
           <p>
-            たかし君は最寄り駅から電車に乗って、下記の駅に停車しながら最寄り駅まで戻りました。<br/>
-            ただし、乗り換えに使用した駅は2回表示されています。
+            たかし君は最寄り駅から電車に乗って、いくつかの路線を乗り継ぎ、最寄り駅まで戻ってきました。<br/>
+            下の各行は、乗った路線ごとの停車駅を順に並べたものです。
           </p>
           <pre class="map">$map_html</pre>
           <p>
-            たかし君が乗り換えに使用した駅の中で、漢字3文字の駅はどれですか？<br/>
-            正規表現で抜き出して解答してください。
+            2回登場する駅のうち、漢字3文字の駅はどれですか？<br/>
+            正規表現で重複なく抜き出して解答してください。
           </p>
           <p>正規表現: <code>$re_html</code> ($rd->{bytes} bytes)</p>
+          <p>
+            マッチした駅: <code>@{[ join ', ', map { _esc($_->{pick}) } @$matches ]}</code></p>
           <p class="verdict verdict-$judged->{status}">$msg_html</p>
         </section>
         HTML
