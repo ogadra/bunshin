@@ -8,7 +8,7 @@ const highlight = (page: Page) => page.locator(".editor-highlight");
 const E2E_SESSION_HEX = "0123456789abcdef0123456789abcdef";
 
 // brokerが/api応答に付けるX-Stack-Nameを模したテスト用のstack
-const E2E_STACK_NAME = "preview";
+const E2E_STACK_NAME = "asia-northeast1";
 
 // vite previewはSPA fallbackで/api/app/handlerにもindex.htmlを返してしまうので、
 // GETを明示的にモックしないとinitial codeがHTMLになってPerlのトークン検証が壊れる。
@@ -41,7 +41,7 @@ async function stubHandlerApi(page: Page, initialSource: string): Promise<{ puts
   });
   // preview先ドメインはpreviewサーバーからは到達不能なので、任意の200を返してDevToolsの
   // net::ERRノイズと視覚的な壊れ表示を抑える。webServer.envのVITE_PERL_ORIGIN_TEMPLATEと揃える
-  await page.route("http://*.preview.test/**", async (route) => {
+  await page.route("http://*.asia-northeast1.test/**", async (route) => {
     await route.fulfill({ status: 200, body: current, contentType: "text/plain" });
   });
   return { puts };
@@ -67,7 +67,7 @@ test("no terminal UI is present", async ({ page }) => {
 const paneGeometry = (page: Page) =>
   page.evaluate(() => ({
     editorRect: document.querySelector(".editor")?.getBoundingClientRect(),
-    previewRect: document.querySelector(".preview")?.getBoundingClientRect(),
+    previewRect: document.querySelector(".preview-pane")?.getBoundingClientRect(),
     viewportWidth: window.innerWidth,
     viewportHeight: window.innerHeight,
   }));
@@ -99,6 +99,58 @@ test.describe("portrait viewport", () => {
     expect(g.editorRect.top).toBe(0);
     expect(g.previewRect.top).toBeGreaterThan(g.editorRect.top);
     expect(g.editorRect.height + g.previewRect.height).toBe(g.viewportHeight);
+  });
+
+  test("gives the preview pane a taller share than the editor", async ({ page }) => {
+    const g = await paneGeometry(page);
+    if (g.editorRect === undefined || g.previewRect === undefined)
+      throw new Error("panes are missing");
+    expect(g.previewRect.height).toBeGreaterThan(g.editorRect.height * 1.5);
+  });
+});
+
+test.describe("pane overlays", () => {
+  test("the editor pane shows the DaiKichijoji.pm filename label", async ({ page }) => {
+    const label = page.locator(".editor-filename");
+    await expect(label).toHaveText("DaiKichijoji.pm");
+    const geometry = await page.evaluate(() => {
+      const editor = document.querySelector(".editor")?.getBoundingClientRect();
+      const label = document.querySelector(".editor-filename")?.getBoundingClientRect();
+      if (editor === undefined || label === undefined) throw new Error("label is missing");
+      return { editor, label };
+    });
+    expect(geometry.editor.right - geometry.label.right).toBeLessThan(20);
+    expect(geometry.label.top - geometry.editor.top).toBeLessThan(20);
+  });
+
+  test("clicking the stack info button opens a modal with the mapped region and cloud", async ({
+    page,
+  }) => {
+    const dialog = page.locator("#stack-info-dialog");
+    await expect(dialog).toBeHidden();
+    await page.locator("#stack-info-button").click();
+    await expect(dialog).toBeVisible();
+    const values = dialog.locator("dd");
+    await expect(values).toHaveText(["東京", "Google Cloud"]);
+  });
+
+  test("clicking the backdrop outside the modal dismisses it", async ({ page }) => {
+    const dialog = page.locator("#stack-info-dialog");
+    await page.locator("#stack-info-button").click();
+    await expect(dialog).toBeVisible();
+    const box = await dialog.boundingBox();
+    if (box === null) throw new Error("dialog has no bounding box");
+    await page.mouse.click(box.x - 20, box.y - 20);
+    await expect(dialog).toBeHidden();
+  });
+
+  test("the stack info button label follows the browser locale", async ({ browser }) => {
+    const context = await browser.newContext({ locale: "ja" });
+    const page = await context.newPage();
+    await stubHandlerApi(page, samplePerl);
+    await page.goto("/");
+    await expect(page.locator("#stack-info-button")).toHaveText("接続先");
+    await context.close();
   });
 });
 
@@ -240,7 +292,7 @@ test.describe("Perl HMR wiring", () => {
     page,
   }) => {
     const REASSIGNED_HEX = "fedcba9876543210fedcba9876543210";
-    const REASSIGNED_STACK = "reassigned-stack";
+    const REASSIGNED_STACK = "asia-northeast2";
     // beforeEachのPUT stubを、再割当てで別hex/stackが返る挙動に上書きする。
     // GETはfallthroughで元stub。
     await page.route("**/api/app/handler", async (route, req) => {

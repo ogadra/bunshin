@@ -43,6 +43,11 @@ describe("translate", () => {
     statusSaving: { en: "Saving…", ja: "保存中…" },
     statusSaved: { en: "Saved", ja: "保存済み" },
     statusError: { en: "Error", ja: "エラー" },
+    stackInfoOpen: { en: "Stack info", ja: "接続先" },
+    stackInfoTitle: { en: "Connected stack", ja: "接続中のスタック" },
+    stackInfoRegion: { en: "Region", ja: "リージョン" },
+    stackInfoCloud: { en: "Cloud", ja: "クラウド" },
+    stackInfoClose: { en: "Close", ja: "閉じる" },
   };
 
   test.each(Object.values(MessageKey))("%s resolves to expected en/ja", (key) => {

@@ -2,7 +2,7 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 import { samplePerl } from "../src/samplePerl";
 
 const E2E_SESSION_HEX = "0123456789abcdef0123456789abcdef";
-const E2E_STACK_NAME = "preview";
+const E2E_STACK_NAME = "asia-northeast1";
 
 const apiHeaders = {
   "X-Session-Hex": E2E_SESSION_HEX,
@@ -36,7 +36,7 @@ async function stubHandlerApi(page: Page, put: PutHandler): Promise<void> {
     }
     await route.continue();
   });
-  await page.route("http://*.preview.test/**", async (route) => {
+  await page.route("http://*.asia-northeast1.test/**", async (route) => {
     await route.fulfill({ status: 200, body: "", contentType: "text/plain" });
   });
 }
