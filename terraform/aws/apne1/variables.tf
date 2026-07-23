@@ -38,3 +38,13 @@ variable "peer_vpc" {
     peering_connection_id = string
   })
 }
+
+variable "gcp_forwarder_subnet_cidrs" {
+  description = "GCP asne1/asne2 workload subnet CIDRs hosting Cloud DNS inbound forwarders; egress destination for the Route53 Resolver OUTBOUND endpoint"
+  type        = list(string)
+
+  validation {
+    condition     = length(var.gcp_forwarder_subnet_cidrs) > 0 && alltrue([for c in var.gcp_forwarder_subnet_cidrs : can(cidrhost(c, 0))])
+    error_message = "gcp_forwarder_subnet_cidrs must be a non-empty list of CIDR blocks."
+  }
+}
