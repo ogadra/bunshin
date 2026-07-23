@@ -72,28 +72,34 @@ const paneGeometry = (page: Page) =>
     viewportHeight: window.innerHeight,
   }));
 
-test("landscape viewports split the panes side-by-side", async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 720 });
-  const g = await paneGeometry(page);
-  if (g.editorRect === undefined || g.previewRect === undefined)
-    throw new Error("panes are missing");
-  expect(g.editorRect.height).toBe(g.viewportHeight);
-  expect(g.previewRect.height).toBe(g.viewportHeight);
-  expect(g.editorRect.left).toBe(0);
-  expect(g.previewRect.left).toBeGreaterThan(g.editorRect.left);
-  expect(g.editorRect.width + g.previewRect.width).toBe(g.viewportWidth);
+test.describe("landscape viewport", () => {
+  test.use({ viewport: { width: 1280, height: 720 } });
+
+  test("splits the panes side-by-side", async ({ page }) => {
+    const g = await paneGeometry(page);
+    if (g.editorRect === undefined || g.previewRect === undefined)
+      throw new Error("panes are missing");
+    expect(g.editorRect.height).toBe(g.viewportHeight);
+    expect(g.previewRect.height).toBe(g.viewportHeight);
+    expect(g.editorRect.left).toBe(0);
+    expect(g.previewRect.left).toBeGreaterThan(g.editorRect.left);
+    expect(g.editorRect.width + g.previewRect.width).toBe(g.viewportWidth);
+  });
 });
 
-test("portrait viewports stack the panes vertically", async ({ page }) => {
-  await page.setViewportSize({ width: 480, height: 900 });
-  const g = await paneGeometry(page);
-  if (g.editorRect === undefined || g.previewRect === undefined)
-    throw new Error("panes are missing");
-  expect(g.editorRect.width).toBe(g.viewportWidth);
-  expect(g.previewRect.width).toBe(g.viewportWidth);
-  expect(g.editorRect.top).toBe(0);
-  expect(g.previewRect.top).toBeGreaterThan(g.editorRect.top);
-  expect(g.editorRect.height + g.previewRect.height).toBe(g.viewportHeight);
+test.describe("portrait viewport", () => {
+  test.use({ viewport: { width: 480, height: 900 } });
+
+  test("stacks the panes vertically", async ({ page }) => {
+    const g = await paneGeometry(page);
+    if (g.editorRect === undefined || g.previewRect === undefined)
+      throw new Error("panes are missing");
+    expect(g.editorRect.width).toBe(g.viewportWidth);
+    expect(g.previewRect.width).toBe(g.viewportWidth);
+    expect(g.editorRect.top).toBe(0);
+    expect(g.previewRect.top).toBeGreaterThan(g.editorRect.top);
+    expect(g.editorRect.height + g.previewRect.height).toBe(g.viewportHeight);
+  });
 });
 
 test("the initial sample renders every token kind", async ({ page }) => {
@@ -166,8 +172,8 @@ test("both layers lay out lines at the same vertical extent", async ({ page }) =
     el.value = code;
     el.dispatchEvent(new Event("input"));
   }, OVERFLOWING_CODE);
-  // 折り返し位置がずれるとキャレットと色付き文字が合わなくなるため、scrollHeight の一致で
-  // 両レイヤが同じ幅で折り返していることを確認する
+  // 折り返し位置がずれるとキャレットと色付き文字が合わなくなる。
+  // scrollHeight の一致で両レイヤが同じ幅で折り返していることを確認する
   const height = await page.evaluate(() => {
     const ta = document.querySelector<HTMLTextAreaElement>(".editor-input");
     const hl = document.querySelector<HTMLElement>(".editor-highlight");
@@ -175,6 +181,24 @@ test("both layers lay out lines at the same vertical extent", async ({ page }) =
     return [ta.scrollHeight, hl.scrollHeight];
   });
   expect(height[0]).toBe(height[1]);
+});
+
+test("wrap keeps both layers within their client width", async ({ page }) => {
+  await input(page).evaluate((el: HTMLTextAreaElement, code) => {
+    el.value = code;
+    el.dispatchEvent(new Event("input"));
+  }, OVERFLOWING_CODE);
+  const overflow = await page.evaluate(() => {
+    const ta = document.querySelector<HTMLTextAreaElement>(".editor-input");
+    const hl = document.querySelector<HTMLElement>(".editor-highlight");
+    if (ta === null || hl === null) throw new Error("editor layers are missing");
+    return {
+      input: ta.scrollWidth - ta.clientWidth,
+      highlight: hl.scrollWidth - hl.clientWidth,
+    };
+  });
+  expect(overflow.input).toBeLessThanOrEqual(0);
+  expect(overflow.highlight).toBeLessThanOrEqual(0);
 });
 
 test("both layers share identical geometry", async ({ page }) => {

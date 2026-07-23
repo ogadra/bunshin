@@ -73,7 +73,7 @@ describe("createPerlEditor", () => {
     expect(input.spellcheck).toBe(false);
   });
 
-  test("long lines soft-wrap instead of scrolling horizontally", () => {
+  test("sets the textarea wrap attribute to soft", () => {
     const { input } = setup("");
     expect(input.wrap).toBe("soft");
   });
