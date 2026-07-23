@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-# terraform data "external" 用の helper。
-# stdin から JSON 化されたクエリを受け、Service annotation
-# cloud.google.com/neg-status に期待 NEG が現れるまで kubectl でポーリングし、
-# その NEG が生成された zone を CSV 化して JSON で返す。
-# Autopilot が Pod をどの zone に配置するかは capacity 依存で確定できないため、
-# Terraform 側で zone 固定リストを持たず annotation を唯一の source of truth にする
 set -euo pipefail
 
 query="$(cat)"
