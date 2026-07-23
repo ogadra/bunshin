@@ -19,6 +19,9 @@ locals {
   # terraform/aws/locals.tfのgoogle_cloud_dns_forwarder_source_rangeと一致させる
   google_cloud_dns_forwarder_source_range = "35.199.192.0/19"
 
+  # terraform/google-cloud/asne{1,2}/locals.tfのpods_secondary_cidrと一致させる
+  google_cloud_pod_secondary_cidrs = ["10.2.16.0/20", "10.3.16.0/20"]
+
   # AWS VGW default ASN(apne1/apne3のaws_vpn_gatewayはamazon_side_asn未指定のため64512)
   aws_vgw_asn = 64512
 

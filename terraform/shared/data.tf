@@ -107,3 +107,24 @@ data "google_compute_addresses" "google_cloud_inbound_forwarder" {
   region = each.value
   filter = "purpose = DNS_RESOLVER"
 }
+
+data "google_compute_address" "google_cloud_internal_lb" {
+  for_each = local.google_cloud_regions
+
+  name   = "bunshin-internal-${each.value}"
+  region = each.value
+}
+
+# create_before_destroy な nginx / internal_alb SG を tag:Name で lookup すると置換中に複数マッチしうるため、aws state を経由して ID で解決する
+data "terraform_remote_state" "aws" {
+  backend = "s3"
+
+  config = {
+    bucket       = var.tf_backend_bucket
+    key          = "bunshin/aws/${var.env}.tfstate"
+    region       = "ap-northeast-1"
+    encrypt      = true
+    use_lockfile = true
+    profile      = "prd"
+  }
+}
