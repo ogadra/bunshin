@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd -- "$(dirname -- "$0")" && pwd)"
+repo_root="$(git -C "${script_dir}" rev-parse --show-toplevel)"
+# shellcheck source=../../../../../scripts/google-cloud/lib/connect_gateway.sh
+source "${repo_root}/scripts/google-cloud/lib/connect_gateway.sh"
+
 query="$(cat)"
 project=$(jq -r '.project' <<<"${query}")
 membership=$(jq -r '.membership' <<<"${query}")
@@ -8,10 +13,17 @@ namespace=$(jq -r '.namespace' <<<"${query}")
 service=$(jq -r '.service' <<<"${query}")
 neg_name=$(jq -r '.neg_name' <<<"${query}")
 
-context="connectgateway_${project}_global_${membership}"
+emit_empty() {
+    jq -n '{zones: ""}'
+    exit 0
+}
 
-gcloud container fleet memberships get-credentials "${membership}" \
-    --project="${project}" >/dev/null 2>&1
+if ! connect_gateway_fetch_credentials "${project}" "${membership}" 2>/dev/null; then
+    echo "nginx_neg_zones: fleet membership ${membership} unreachable; emitting empty zone list" >&2
+    emit_empty
+fi
+
+context="$(connect_gateway_context "${project}" "${membership}")"
 
 for _ in $(seq 1 60); do
     annotation=$(kubectl --context="${context}" -n "${namespace}" get svc "${service}" \
@@ -31,5 +43,5 @@ for _ in $(seq 1 60); do
     sleep 5
 done
 
-echo "nginx NEG ${neg_name} did not appear in ${context}/${namespace}/${service} neg-status within 300s" >&2
-exit 1
+echo "nginx_neg_zones: ${neg_name} not found in ${context}/${namespace}/${service} neg-status within 300s; emitting empty zone list" >&2
+emit_empty

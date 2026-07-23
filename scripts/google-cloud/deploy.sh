@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
+# shellcheck source=lib/connect_gateway.sh
+source "${SCRIPT_DIR}/lib/connect_gateway.sh"
+
 SERVICES=(broker nginx runner front)
 REGIONS=(asia-northeast1 asia-northeast2)
 REGION_DIRS=(asne1 asne2)
@@ -214,7 +218,7 @@ main() {
     for i in "${!REGION_DIRS[@]}"; do
         region_dir="${REGION_DIRS[$i]}"
         membership="${MEMBERSHIPS[$i]}"
-        context="connectgateway_${project}_global_${membership}"
+        context="$(connect_gateway_context "${project}" "${membership}")"
 
         nginx_resolver="$(read_system_field "${system_json}" ".nginx_resolver.${region_dir}")"
         export NGINX_RESOLVER="${nginx_resolver}"
@@ -234,8 +238,7 @@ main() {
         done
 
         echo "[${membership}] fetching Connect Gateway credentials"
-        gcloud container fleet memberships get-credentials "${membership}" \
-            --project="${project}" >/dev/null
+        connect_gateway_fetch_credentials "${project}" "${membership}"
 
         apply_manifests "${context}"
 
