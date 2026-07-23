@@ -26,7 +26,7 @@ sub counter {
 }
 
 sub content {
-    return qr{(...)(?=.*\1)}s;
+    return qr{(..+)(?=.*\1)}s;
 }
 
 1;

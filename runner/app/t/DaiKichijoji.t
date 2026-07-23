@@ -15,6 +15,9 @@ BEGIN {
 
 use DaiKichijoji;
 
+binmode Test::More->builder->$_, ':encoding(UTF-8)'
+    for qw(output failure_output todo_output);
+
 subtest 'counter: first visit creates the file and returns 1' => sub {
     ok !-e $COUNTER, 'no counter file before the first visit';
     is DaiKichijoji::counter(), 1;
@@ -50,11 +53,14 @@ subtest 'counter: digits embedded in garbage still count as corrupt' => sub {
     like $@, qr{corrupt counter file};
 };
 
-subtest 'content: the shipped answer solves the quiz' => sub {
+subtest 'content: the initial answer picks every repeated station and judges wrong' => sub {
     require Quiz;
     my $matches = Quiz::evaluate(re => DaiKichijoji::content());
-    is Quiz::judge(matches => $matches)->{status}, 'correct',
-        'the initial regex judges correct against the real map';
+    my %set = map { $_->{pick} => 1 } @$matches;
+    is_deeply [sort keys %set], ['吉祥寺', '大井町', '東京', '渋谷'],
+        'two-char stations are caught too';
+    is Quiz::judge(matches => $matches)->{status}, 'wrong',
+        'participants still have to narrow the answer down';
 };
 
 done_testing;
