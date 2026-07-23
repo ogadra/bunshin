@@ -192,6 +192,7 @@ subtest 'page: renders the counter in a 7-digit zero-padded strong' => sub {
 };
 
 subtest 'page: dies when DaiKichijoji::counter is not defined' => sub {
+    ok !DaiKichijoji->can('counter'), 'precondition: this test file never loads DaiKichijoji';
     my $ok = eval { Quiz::page(); 1 };
     ok !$ok, 'died';
     like $@, qr{DaiKichijoji::counter is not defined};
@@ -199,14 +200,17 @@ subtest 'page: dies when DaiKichijoji::counter is not defined' => sub {
 
 subtest 'page: dies when counter returns something other than a positive integer' => sub {
     no warnings 'redefine', 'once';
-    local *DaiKichijoji::counter = sub { 'nope' };
     local *DaiKichijoji::content = sub { qr{吉祥寺|大井町} };
-    my $ok = eval { Quiz::page(); 1 };
-    ok !$ok, 'died';
-    like $@, qr{must return a positive integer};
+    for my $bad ('nope', 0) {
+        local *DaiKichijoji::counter = sub { $bad };
+        my $ok = eval { Quiz::page(); 1 };
+        ok !$ok, "died for '$bad'";
+        like $@, qr{must return a positive integer}, "'$bad' is rejected";
+    }
 };
 
 subtest 'page: dies when DaiKichijoji::content is not defined' => sub {
+    ok !DaiKichijoji->can('content'), 'precondition: this test file never loads DaiKichijoji';
     no warnings 'redefine', 'once';
     local *DaiKichijoji::counter = sub { 1 };
     my $ok = eval { Quiz::page(); 1 };

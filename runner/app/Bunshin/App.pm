@@ -80,11 +80,11 @@ sub handle_conn {
         if ($_ eq 'ok') {
             Bunshin::HTTP::respond($conn, 200, 'text/html; charset=utf-8', sprintf($HTML_SHELL, $result->{body}));
         } elsif ($_ eq 'died') {
-            respond_error($conn, "DaiKichijoji::content died: $result->{error}");
+            respond_error($conn, "quiz page died: $result->{error}");
         } elsif ($_ eq 'exited') {
-            respond_error($conn, "DaiKichijoji::content exited with code $result->{code}");
+            respond_error($conn, "quiz page exited with code $result->{code}");
         } elsif ($_ eq 'timed_out') {
-            respond_error($conn, "DaiKichijoji::content timed out: exceeded $result->{ms}ms");
+            respond_error($conn, "quiz page timed out: exceeded $result->{ms}ms");
         } else {
             respond_error($conn, "content runner returned unknown status: $_");
         }
