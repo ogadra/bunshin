@@ -11,22 +11,16 @@ sub counter {
         or die "open $COUNTER_PATH: $!\n";
     flock($fh, LOCK_EX) or die "flock $COUNTER_PATH: $!\n";
     my $n = do { local $/; <$fh> } // '';
-    if ($n eq '') {
-        $n = 1;
-    } elsif ($n =~ /\A(\d+)\z/) {
-        $n = $1 + 1;
-    } else {
-        die "corrupt counter file $COUNTER_PATH\n";
-    }
-    seek($fh, 0, 0);
-    truncate($fh, 0);
+    $n =~ /\A\d*\z/ or die "corrupt counter file $COUNTER_PATH\n";
+    $n++;
+    seek $fh, 0, 0;
+    truncate $fh, 0;
     print $fh $n;
-    close $fh;
     return $n;
 }
 
 sub content {
-    return qr{(..+)(?=.*\1)}s;
+    return qr{(\S+)\n\1}s;
 }
 
 1;
