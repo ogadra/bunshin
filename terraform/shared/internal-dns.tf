@@ -1,10 +1,3 @@
-locals {
-  aws_inbound_endpoint_ips = {
-    apne1 = data.aws_route53_resolver_endpoint.apne1_inbound.ip_addresses
-    apne3 = data.aws_route53_resolver_endpoint.apne3_inbound.ip_addresses
-  }
-}
-
 resource "aws_route53_resolver_rule" "apne1_to_google_cloud" {
   provider = aws.apne1
   for_each = local.google_cloud_regions

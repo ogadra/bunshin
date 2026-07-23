@@ -73,6 +73,11 @@ locals {
     aws_vpn_connection.apne3,
   )
 
+  aws_inbound_endpoint_ips = {
+    apne1 = data.aws_route53_resolver_endpoint.apne1_inbound.ip_addresses
+    apne3 = data.aws_route53_resolver_endpoint.apne3_inbound.ip_addresses
+  }
+
   # AWS default は transform set が多く、SA payload の fragmentation で Google Cloud HA VPN の rekey が失敗する。
   # lifetime は AWS 上限 (P1 28800 / P2 3600) を使う。Google Cloud HA VPN の固定値より短いため rekey は AWS 側発火。
   # https://cloud.google.com/network-connectivity/docs/vpn/how-to/connect-ha-vpn-aws-peer-gateway
