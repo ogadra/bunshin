@@ -11,6 +11,14 @@ locals {
     asne2 = "asia-northeast2"
   }
 
+  aws_regions = {
+    apne1 = "ap-northeast-1"
+    apne3 = "ap-northeast-3"
+  }
+
+  # AWS 側の return path 用に GCP Cloud Router で custom advertise する
+  gcp_dns_forwarder_source_range = "35.199.192.0/19"
+
   # AWS VGW default ASN (apne1/apne3 の aws_vpn_gateway は amazon_side_asn 未指定のため 64512)
   aws_vgw_asn = 64512
 
