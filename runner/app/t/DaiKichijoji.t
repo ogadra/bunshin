@@ -50,4 +50,11 @@ subtest 'counter: digits embedded in garbage still count as corrupt' => sub {
     like $@, qr{corrupt counter file};
 };
 
+subtest 'content: the shipped answer solves the quiz' => sub {
+    require Quiz;
+    my $matches = Quiz::evaluate(re => DaiKichijoji::content());
+    is Quiz::judge(matches => $matches)->{status}, 'correct',
+        'the initial regex judges correct against the real map';
+};
+
 done_testing;
