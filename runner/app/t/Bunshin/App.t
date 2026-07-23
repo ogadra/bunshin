@@ -3,14 +3,8 @@ use warnings;
 use utf8;
 use Test::More;
 use FindBin;
-use File::Temp qw(tempfile);
 use Encode ();
 use lib "$FindBin::Bin/../..";
-
-BEGIN {
-    my ($fh, $counter) = tempfile(UNLINK => 1); close $fh; unlink $counter;
-    $ENV{BUNSHIN_QUIZ_COUNTER} = $counter;
-}
 
 use Bunshin::App;
 use DaiKichijoji;
