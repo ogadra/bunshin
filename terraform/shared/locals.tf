@@ -11,10 +11,18 @@ locals {
     asne2 = "asia-northeast2"
   }
 
-  # AWS VGW default ASN (apne1/apne3 の aws_vpn_gateway は amazon_side_asn 未指定のため 64512)
+  aws_regions = {
+    apne1 = "ap-northeast-1"
+    apne3 = "ap-northeast-3"
+  }
+
+  # terraform/aws/locals.tfのgoogle_cloud_dns_forwarder_source_rangeと一致させる
+  google_cloud_dns_forwarder_source_range = "35.199.192.0/19"
+
+  # AWS VGW default ASN(apne1/apne3のaws_vpn_gatewayはamazon_side_asn未指定のため64512)
   aws_vgw_asn = 64512
 
-  # Google Cloud Router ASN。region ごとに別 ASN を採番して同一 AWS 側から見た BGP session を区別する
+  # Google Cloud Router ASN。regionごとに別ASNを採番して同一AWS側から見たBGP sessionを区別する
   google_cloud_router_asn = {
     asne1 = 64520
     asne2 = 64521
@@ -65,9 +73,13 @@ locals {
     aws_vpn_connection.apne3,
   )
 
-  # AWS default は transform set が多く、SA payload の fragmentation で Google Cloud HA VPN の rekey が失敗する。
-  # lifetime は AWS 上限 (P1 28800 / P2 3600) を使う。
-  # Google Cloud HA VPN の固定値より短いため rekey は AWS 側発火。
+  aws_inbound_endpoint_ips = {
+    apne1 = data.aws_route53_resolver_endpoint.apne1_inbound.ip_addresses
+    apne3 = data.aws_route53_resolver_endpoint.apne3_inbound.ip_addresses
+  }
+
+  # AWS defaultはtransform setが多く、SA payloadのfragmentationでGoogle Cloud HA VPNのrekeyが失敗する。
+  # lifetimeはAWS上限(P1 28800 / P2 3600)を使う。Google Cloud HA VPNの固定値より短いためrekeyはAWS側発火。
   # https://cloud.google.com/network-connectivity/docs/vpn/how-to/connect-ha-vpn-aws-peer-gateway
   aws_vpn_ike_proposal = {
     ike_versions            = ["ikev2"]

@@ -119,7 +119,14 @@ resource "google_compute_router" "vpn" {
   network = data.google_compute_network.google_cloud[each.key].id
 
   bgp {
-    asn = local.google_cloud_router_asn[each.key]
+    asn               = local.google_cloud_router_asn[each.key]
+    advertise_mode    = "CUSTOM"
+    advertised_groups = ["ALL_SUBNETS"]
+
+    advertised_ip_ranges {
+      range       = local.google_cloud_dns_forwarder_source_range
+      description = "Return path for Cloud DNS forwarder queries to AWS Route53 Resolver INBOUND"
+    }
   }
 }
 
