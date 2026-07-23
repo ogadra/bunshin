@@ -64,4 +64,19 @@ locals {
     aws_vpn_connection.apne1,
     aws_vpn_connection.apne3,
   )
+
+  # AWS default は transform set が多く、SA payload の fragmentation で GCP HA VPN の rekey が失敗する。
+  # lifetime は AWS 上限 (P1 28800 / P2 3600) を使う。GCP HA VPN の固定値より短いため rekey は AWS 側発火。
+  # https://cloud.google.com/network-connectivity/docs/vpn/how-to/connect-ha-vpn-aws-peer-gateway
+  aws_vpn_ike_proposal = {
+    ike_versions            = ["ikev2"]
+    phase1_encryption       = ["AES256"]
+    phase1_integrity        = ["SHA2-256"]
+    phase1_dh_group         = [14]
+    phase1_lifetime_seconds = 28800
+    phase2_encryption       = ["AES256"]
+    phase2_integrity        = ["SHA2-256"]
+    phase2_dh_group         = [14]
+    phase2_lifetime_seconds = 3600
+  }
 }

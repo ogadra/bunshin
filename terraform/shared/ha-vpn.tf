@@ -33,6 +33,26 @@ resource "aws_vpn_connection" "apne1" {
   type                = "ipsec.1"
   static_routes_only  = false
 
+  tunnel1_ike_versions                 = local.aws_vpn_ike_proposal.ike_versions
+  tunnel1_phase1_encryption_algorithms = local.aws_vpn_ike_proposal.phase1_encryption
+  tunnel1_phase1_integrity_algorithms  = local.aws_vpn_ike_proposal.phase1_integrity
+  tunnel1_phase1_dh_group_numbers      = local.aws_vpn_ike_proposal.phase1_dh_group
+  tunnel1_phase1_lifetime_seconds      = local.aws_vpn_ike_proposal.phase1_lifetime_seconds
+  tunnel1_phase2_encryption_algorithms = local.aws_vpn_ike_proposal.phase2_encryption
+  tunnel1_phase2_integrity_algorithms  = local.aws_vpn_ike_proposal.phase2_integrity
+  tunnel1_phase2_dh_group_numbers      = local.aws_vpn_ike_proposal.phase2_dh_group
+  tunnel1_phase2_lifetime_seconds      = local.aws_vpn_ike_proposal.phase2_lifetime_seconds
+
+  tunnel2_ike_versions                 = local.aws_vpn_ike_proposal.ike_versions
+  tunnel2_phase1_encryption_algorithms = local.aws_vpn_ike_proposal.phase1_encryption
+  tunnel2_phase1_integrity_algorithms  = local.aws_vpn_ike_proposal.phase1_integrity
+  tunnel2_phase1_dh_group_numbers      = local.aws_vpn_ike_proposal.phase1_dh_group
+  tunnel2_phase1_lifetime_seconds      = local.aws_vpn_ike_proposal.phase1_lifetime_seconds
+  tunnel2_phase2_encryption_algorithms = local.aws_vpn_ike_proposal.phase2_encryption
+  tunnel2_phase2_integrity_algorithms  = local.aws_vpn_ike_proposal.phase2_integrity
+  tunnel2_phase2_dh_group_numbers      = local.aws_vpn_ike_proposal.phase2_dh_group
+  tunnel2_phase2_lifetime_seconds      = local.aws_vpn_ike_proposal.phase2_lifetime_seconds
+
   tags = merge(local.common_tags, {
     Name = "bunshin-vpn-${each.key}"
   })
@@ -46,6 +66,26 @@ resource "aws_vpn_connection" "apne3" {
   customer_gateway_id = aws_customer_gateway.apne3[each.key].id
   type                = "ipsec.1"
   static_routes_only  = false
+
+  tunnel1_ike_versions                 = local.aws_vpn_ike_proposal.ike_versions
+  tunnel1_phase1_encryption_algorithms = local.aws_vpn_ike_proposal.phase1_encryption
+  tunnel1_phase1_integrity_algorithms  = local.aws_vpn_ike_proposal.phase1_integrity
+  tunnel1_phase1_dh_group_numbers      = local.aws_vpn_ike_proposal.phase1_dh_group
+  tunnel1_phase1_lifetime_seconds      = local.aws_vpn_ike_proposal.phase1_lifetime_seconds
+  tunnel1_phase2_encryption_algorithms = local.aws_vpn_ike_proposal.phase2_encryption
+  tunnel1_phase2_integrity_algorithms  = local.aws_vpn_ike_proposal.phase2_integrity
+  tunnel1_phase2_dh_group_numbers      = local.aws_vpn_ike_proposal.phase2_dh_group
+  tunnel1_phase2_lifetime_seconds      = local.aws_vpn_ike_proposal.phase2_lifetime_seconds
+
+  tunnel2_ike_versions                 = local.aws_vpn_ike_proposal.ike_versions
+  tunnel2_phase1_encryption_algorithms = local.aws_vpn_ike_proposal.phase1_encryption
+  tunnel2_phase1_integrity_algorithms  = local.aws_vpn_ike_proposal.phase1_integrity
+  tunnel2_phase1_dh_group_numbers      = local.aws_vpn_ike_proposal.phase1_dh_group
+  tunnel2_phase1_lifetime_seconds      = local.aws_vpn_ike_proposal.phase1_lifetime_seconds
+  tunnel2_phase2_encryption_algorithms = local.aws_vpn_ike_proposal.phase2_encryption
+  tunnel2_phase2_integrity_algorithms  = local.aws_vpn_ike_proposal.phase2_integrity
+  tunnel2_phase2_dh_group_numbers      = local.aws_vpn_ike_proposal.phase2_dh_group
+  tunnel2_phase2_lifetime_seconds      = local.aws_vpn_ike_proposal.phase2_lifetime_seconds
 
   tags = merge(local.common_tags, {
     Name = "bunshin-vpn-${each.key}"
