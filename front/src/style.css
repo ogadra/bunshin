@@ -28,6 +28,16 @@ body {
   background: #fff;
 }
 
+@media (orientation: landscape) {
+  body {
+    flex-direction: row;
+  }
+  .preview {
+    border-top: none;
+    border-left: 1px solid #333;
+  }
+}
+
 .error-banner {
   position: fixed;
   top: 0;

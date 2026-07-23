@@ -55,27 +55,45 @@ test.beforeEach(async ({ page }) => {
   await highlight(page).locator("span").first().waitFor();
 });
 
-test("editor and preview split the viewport vertically and the terminal UI is absent", async ({
-  page,
-}) => {
-  const geometry = await page.evaluate(() => ({
+test("no terminal UI is present", async ({ page }) => {
+  const dom = await page.evaluate(() => ({
+    command: document.getElementById("command"),
+    output: document.getElementById("output"),
+  }));
+  expect(dom.command).toBeNull();
+  expect(dom.output).toBeNull();
+});
+
+const paneGeometry = (page: Page) =>
+  page.evaluate(() => ({
     editorRect: document.querySelector(".editor")?.getBoundingClientRect(),
     previewRect: document.querySelector(".preview")?.getBoundingClientRect(),
     viewportWidth: window.innerWidth,
     viewportHeight: window.innerHeight,
-    command: document.getElementById("command"),
-    output: document.getElementById("output"),
   }));
-  const editor = geometry.editorRect;
-  const preview = geometry.previewRect;
-  if (editor === undefined || preview === undefined) throw new Error("panes are missing");
-  expect(editor.width).toBe(geometry.viewportWidth);
-  expect(preview.width).toBe(geometry.viewportWidth);
-  expect(editor.top).toBe(0);
-  expect(preview.top).toBeGreaterThan(editor.top);
-  expect(editor.height + preview.height).toBe(geometry.viewportHeight);
-  expect(geometry.command).toBeNull();
-  expect(geometry.output).toBeNull();
+
+test("landscape viewports split the panes side-by-side", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  const g = await paneGeometry(page);
+  if (g.editorRect === undefined || g.previewRect === undefined)
+    throw new Error("panes are missing");
+  expect(g.editorRect.height).toBe(g.viewportHeight);
+  expect(g.previewRect.height).toBe(g.viewportHeight);
+  expect(g.editorRect.left).toBe(0);
+  expect(g.previewRect.left).toBeGreaterThan(g.editorRect.left);
+  expect(g.editorRect.width + g.previewRect.width).toBe(g.viewportWidth);
+});
+
+test("portrait viewports stack the panes vertically", async ({ page }) => {
+  await page.setViewportSize({ width: 480, height: 900 });
+  const g = await paneGeometry(page);
+  if (g.editorRect === undefined || g.previewRect === undefined)
+    throw new Error("panes are missing");
+  expect(g.editorRect.width).toBe(g.viewportWidth);
+  expect(g.previewRect.width).toBe(g.viewportWidth);
+  expect(g.editorRect.top).toBe(0);
+  expect(g.previewRect.top).toBeGreaterThan(g.editorRect.top);
+  expect(g.editorRect.height + g.previewRect.height).toBe(g.viewportHeight);
 });
 
 test("the initial sample renders every token kind", async ({ page }) => {

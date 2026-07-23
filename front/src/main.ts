@@ -22,7 +22,7 @@ document.body.prepend(bannerEl);
 const indicatorEl = document.createElement("div");
 indicatorEl.className = "status-indicator";
 indicatorEl.hidden = true;
-// 縦分割でiframe側が白背景のため、暗いeditor pane内に配置する
+// iframeは白背景でindicatorが読めないので、body直下ではなく暗いeditor pane内に配置する
 editorEl.append(indicatorEl);
 
 const showBanner = (key: MessageKey): void => {
