@@ -115,16 +115,38 @@ data "google_compute_address" "google_cloud_internal_lb" {
   region = each.value
 }
 
-# create_before_destroy な nginx / internal_alb SG を tag:Name で lookup すると置換中に複数マッチしうるため、aws state を経由して ID で解決する
-data "terraform_remote_state" "aws" {
-  backend = "s3"
+data "aws_security_group" "apne1_nginx" {
+  provider = aws.apne1
 
-  config = {
-    bucket       = var.tf_backend_bucket
-    key          = "bunshin/aws/${var.env}.tfstate"
-    region       = "ap-northeast-1"
-    encrypt      = true
-    use_lockfile = true
-    profile      = "prd"
+  filter {
+    name   = "tag:Name"
+    values = ["bunshin-apne1-nginx"]
+  }
+}
+
+data "aws_security_group" "apne3_nginx" {
+  provider = aws.apne3
+
+  filter {
+    name   = "tag:Name"
+    values = ["bunshin-apne3-nginx"]
+  }
+}
+
+data "aws_security_group" "apne1_internal_alb" {
+  provider = aws.apne1
+
+  filter {
+    name   = "tag:Name"
+    values = ["bunshin-apne1-internal-alb"]
+  }
+}
+
+data "aws_security_group" "apne3_internal_alb" {
+  provider = aws.apne3
+
+  filter {
+    name   = "tag:Name"
+    values = ["bunshin-apne3-internal-alb"]
   }
 }

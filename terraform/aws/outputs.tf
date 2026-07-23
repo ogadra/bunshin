@@ -38,26 +38,6 @@ output "user_dns" {
   }
 }
 
-output "apne1_nginx_security_group_id" {
-  description = "Consumed by terraform/shared to attach cross-cloud HTTPS SG rules"
-  value       = module.apne1.nginx_security_group_id
-}
-
-output "apne1_internal_alb_security_group_id" {
-  description = "Consumed by terraform/shared to attach cross-cloud HTTPS SG rules"
-  value       = module.apne1.internal_alb_security_group_id
-}
-
-output "apne3_nginx_security_group_id" {
-  description = "Consumed by terraform/shared to attach cross-cloud HTTPS SG rules"
-  value       = module.apne3.nginx_security_group_id
-}
-
-output "apne3_internal_alb_security_group_id" {
-  description = "Consumed by terraform/shared to attach cross-cloud HTTPS SG rules"
-  value       = module.apne3.internal_alb_security_group_id
-}
-
 output "user_dns_acm_validation" {
   description = "ACM DNS validation CNAMEs to publish in the external authoritative zone before re-applying"
   value = {

@@ -22,6 +22,11 @@ locals {
   # terraform/google-cloud/asne{1,2}/locals.tfのpods_secondary_cidrと一致させる
   google_cloud_pod_secondary_cidrs = ["10.2.16.0/20", "10.3.16.0/20"]
 
+  google_cloud_internal_lb_cidrs = [
+    for k in sort(keys(local.google_cloud_regions)) :
+    "${data.google_compute_address.google_cloud_internal_lb[k].address}/32"
+  ]
+
   # AWS VGW default ASN(apne1/apne3のaws_vpn_gatewayはamazon_side_asn未指定のため64512)
   aws_vgw_asn = 64512
 

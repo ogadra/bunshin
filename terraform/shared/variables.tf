@@ -8,26 +8,6 @@ variable "aws_profile" {
   }
 }
 
-variable "env" {
-  description = "Environment name; selects the terraform/aws remote state key (bunshin/aws/<env>.tfstate)"
-  type        = string
-
-  validation {
-    condition     = contains(["stg", "prd"], var.env)
-    error_message = "env must be one of stg, prd."
-  }
-}
-
-variable "tf_backend_bucket" {
-  description = "S3 bucket holding all vendor tfstates; must match TF_BACKEND_BUCKET at init"
-  type        = string
-
-  validation {
-    condition     = length(var.tf_backend_bucket) > 0
-    error_message = "tf_backend_bucket must not be empty."
-  }
-}
-
 variable "domain_name" {
   description = "Apex domain composing the AWS / Google Cloud region internal zones (<region>.<domain>) resolved across HA VPN"
   type        = string

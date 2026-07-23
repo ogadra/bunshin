@@ -1,4 +1,2 @@
-aws_profile       = "bunshin-dev"
-domain_name       = "example.bunshin.dev"
-env               = "stg"
-tf_backend_bucket = "bunshin-terraform-state"
+aws_profile = "bunshin-dev"
+domain_name = "example.bunshin.dev"
