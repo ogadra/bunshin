@@ -13,6 +13,7 @@ sub with_content {
     my ($answer, $fn) = @_;
     no warnings 'redefine', 'once';
     local *DaiKichijoji::content = sub { $answer };
+    local *DaiKichijoji::counter = sub { 42 };
     $fn->();
 }
 
@@ -183,7 +184,31 @@ subtest 'page: a wrong answer renders verdict-wrong' => sub {
     });
 };
 
+subtest 'page: renders the counter in a 7-digit zero-padded strong' => sub {
+    with_content(qr{吉祥寺|大井町}, sub {
+        my $html = Quiz::page();
+        like $html, qr{アクセス数.*<strong>0000042</strong>}s, 'counter is 7-digit zero padded';
+    });
+};
+
+subtest 'page: dies when DaiKichijoji::counter is not defined' => sub {
+    my $ok = eval { Quiz::page(); 1 };
+    ok !$ok, 'died';
+    like $@, qr{DaiKichijoji::counter is not defined};
+};
+
+subtest 'page: dies when counter returns something other than a positive integer' => sub {
+    no warnings 'redefine', 'once';
+    local *DaiKichijoji::counter = sub { 'nope' };
+    local *DaiKichijoji::content = sub { qr{吉祥寺|大井町} };
+    my $ok = eval { Quiz::page(); 1 };
+    ok !$ok, 'died';
+    like $@, qr{must return a positive integer};
+};
+
 subtest 'page: dies when DaiKichijoji::content is not defined' => sub {
+    no warnings 'redefine', 'once';
+    local *DaiKichijoji::counter = sub { 1 };
     my $ok = eval { Quiz::page(); 1 };
     ok !$ok, 'died';
     like $@, qr{DaiKichijoji::content is not defined};
