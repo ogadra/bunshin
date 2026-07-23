@@ -13,7 +13,7 @@ locals {
   api_ingress_origin_domain_name = "api-ingress.${var.domain_name}"
 
   # asne1 / asne2 workload subnet と同期する
-  gcp_forwarder_subnet_cidrs = ["10.2.0.0/24", "10.3.0.0/24"]
+  google_cloud_forwarder_subnet_cidrs = ["10.2.0.0/24", "10.3.0.0/24"]
 
-  gcp_dns_forwarder_source_range = "35.199.192.0/19"
+  google_cloud_dns_forwarder_source_range = "35.199.192.0/19"
 }

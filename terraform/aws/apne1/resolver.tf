@@ -19,7 +19,7 @@ resource "aws_security_group_rule" "resolver_inbound_ingress_tcp" {
   from_port         = 53
   to_port           = 53
   protocol          = "tcp"
-  cidr_blocks       = [var.gcp_dns_forwarder_source_range]
+  cidr_blocks       = [var.google_cloud_dns_forwarder_source_range]
   security_group_id = aws_security_group.resolver_inbound.id
   description       = "DNS TCP from Cloud DNS forwarder source range"
 }
@@ -30,7 +30,7 @@ resource "aws_security_group_rule" "resolver_inbound_ingress_udp" {
   from_port         = 53
   to_port           = 53
   protocol          = "udp"
-  cidr_blocks       = [var.gcp_dns_forwarder_source_range]
+  cidr_blocks       = [var.google_cloud_dns_forwarder_source_range]
   security_group_id = aws_security_group.resolver_inbound.id
   description       = "DNS UDP from Cloud DNS forwarder source range"
 }
@@ -56,9 +56,9 @@ resource "aws_security_group_rule" "resolver_outbound_egress_tcp" {
   from_port         = 53
   to_port           = 53
   protocol          = "tcp"
-  cidr_blocks       = var.gcp_forwarder_subnet_cidrs
+  cidr_blocks       = var.google_cloud_forwarder_subnet_cidrs
   security_group_id = aws_security_group.resolver_outbound.id
-  description       = "DNS TCP to GCP inbound forwarder subnets"
+  description       = "DNS TCP to Google Cloud inbound forwarder subnets"
 }
 
 resource "aws_security_group_rule" "resolver_outbound_egress_udp" {
@@ -67,9 +67,9 @@ resource "aws_security_group_rule" "resolver_outbound_egress_udp" {
   from_port         = 53
   to_port           = 53
   protocol          = "udp"
-  cidr_blocks       = var.gcp_forwarder_subnet_cidrs
+  cidr_blocks       = var.google_cloud_forwarder_subnet_cidrs
   security_group_id = aws_security_group.resolver_outbound.id
-  description       = "DNS UDP to GCP inbound forwarder subnets"
+  description       = "DNS UDP to Google Cloud inbound forwarder subnets"
 }
 
 resource "aws_route53_resolver_endpoint" "inbound" {

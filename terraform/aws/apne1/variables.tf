@@ -39,22 +39,22 @@ variable "peer_vpc" {
   })
 }
 
-variable "gcp_forwarder_subnet_cidrs" {
-  description = "GCP asne1/asne2 workload subnet CIDRs hosting Cloud DNS inbound forwarders; egress destination for the Route53 Resolver OUTBOUND endpoint"
+variable "google_cloud_forwarder_subnet_cidrs" {
+  description = "Google Cloud asne1/asne2 workload subnet CIDRs hosting Cloud DNS inbound forwarders; egress destination for the Route53 Resolver OUTBOUND endpoint"
   type        = list(string)
 
   validation {
-    condition     = length(var.gcp_forwarder_subnet_cidrs) > 0 && alltrue([for c in var.gcp_forwarder_subnet_cidrs : can(cidrhost(c, 0))])
-    error_message = "gcp_forwarder_subnet_cidrs must be a non-empty list of CIDR blocks."
+    condition     = length(var.google_cloud_forwarder_subnet_cidrs) > 0 && alltrue([for c in var.google_cloud_forwarder_subnet_cidrs : can(cidrhost(c, 0))])
+    error_message = "google_cloud_forwarder_subnet_cidrs must be a non-empty list of CIDR blocks."
   }
 }
 
-variable "gcp_dns_forwarder_source_range" {
+variable "google_cloud_dns_forwarder_source_range" {
   description = "Google-owned source CIDR for Cloud DNS forwarder queries hitting the Route53 Resolver INBOUND endpoint"
   type        = string
 
   validation {
-    condition     = can(cidrhost(var.gcp_dns_forwarder_source_range, 0))
-    error_message = "gcp_dns_forwarder_source_range must be a CIDR block."
+    condition     = can(cidrhost(var.google_cloud_dns_forwarder_source_range, 0))
+    error_message = "google_cloud_dns_forwarder_source_range must be a CIDR block."
   }
 }
