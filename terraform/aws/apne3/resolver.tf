@@ -5,7 +5,7 @@ resource "aws_security_group" "resolver_inbound" {
 
   tags = merge(local.common_tags, {
     Name    = "bunshin-apne3-resolver-inbound"
-    Service = "resolver-endpoint"
+    Service = "resolver-inbound"
   })
 
   lifecycle {
@@ -19,7 +19,7 @@ resource "aws_security_group_rule" "resolver_inbound_ingress_tcp" {
   from_port         = 53
   to_port           = 53
   protocol          = "tcp"
-  cidr_blocks       = ["35.199.192.0/19"]
+  cidr_blocks       = [var.gcp_dns_forwarder_source_range]
   security_group_id = aws_security_group.resolver_inbound.id
   description       = "DNS TCP from Cloud DNS forwarder source range"
 }
@@ -30,7 +30,7 @@ resource "aws_security_group_rule" "resolver_inbound_ingress_udp" {
   from_port         = 53
   to_port           = 53
   protocol          = "udp"
-  cidr_blocks       = ["35.199.192.0/19"]
+  cidr_blocks       = [var.gcp_dns_forwarder_source_range]
   security_group_id = aws_security_group.resolver_inbound.id
   description       = "DNS UDP from Cloud DNS forwarder source range"
 }
@@ -42,7 +42,7 @@ resource "aws_security_group" "resolver_outbound" {
 
   tags = merge(local.common_tags, {
     Name    = "bunshin-apne3-resolver-outbound"
-    Service = "resolver-endpoint"
+    Service = "resolver-outbound"
   })
 
   lifecycle {
@@ -88,7 +88,7 @@ resource "aws_route53_resolver_endpoint" "inbound" {
 
   tags = merge(local.common_tags, {
     Name    = "bunshin-apne3-inbound"
-    Service = "resolver-endpoint"
+    Service = "resolver-inbound"
   })
 }
 
@@ -108,6 +108,6 @@ resource "aws_route53_resolver_endpoint" "outbound" {
 
   tags = merge(local.common_tags, {
     Name    = "bunshin-apne3-outbound"
-    Service = "resolver-endpoint"
+    Service = "resolver-outbound"
   })
 }

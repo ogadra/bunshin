@@ -48,3 +48,13 @@ variable "gcp_forwarder_subnet_cidrs" {
     error_message = "gcp_forwarder_subnet_cidrs must be a non-empty list of CIDR blocks."
   }
 }
+
+variable "gcp_dns_forwarder_source_range" {
+  description = "Google-owned source CIDR for Cloud DNS forwarder queries hitting the Route53 Resolver INBOUND endpoint"
+  type        = string
+
+  validation {
+    condition     = can(cidrhost(var.gcp_dns_forwarder_source_range, 0))
+    error_message = "gcp_dns_forwarder_source_range must be a CIDR block."
+  }
+}
