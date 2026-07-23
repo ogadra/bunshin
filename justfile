@@ -31,9 +31,10 @@ deploy vendor env *service: (_validate-vendor vendor) (_validate-env env)
 destroy vendor env: (_validate-vendor vendor) (_validate-env env)
     scripts/{{vendor}}/destroy.sh {{env}}
 
-# Run k6 load test against the specified base URL
-loadtest base_url runner_count:
-    k6 run -e BASE_URL={{base_url}} -e RUNNER_COUNT={{runner_count}} loadtest/loadtest.js 2>&1 | tee k6-output.log
+# Run a k6 load test scenario against the specified base URL
+# scenario must match a file under loadtest/ (e.g. session_uniqueness / concurrent_execute / capacity_overflow)
+loadtest base_url runner_count scenario:
+    k6 run -e BASE_URL={{base_url}} -e RUNNER_COUNT={{runner_count}} loadtest/{{scenario}}.js 2>&1 | tee k6-output.log
 
 # Check for session_id duplicates in k6 output (empty output means no duplicates)
 loadtest-check-dup:
