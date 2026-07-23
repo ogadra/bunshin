@@ -34,15 +34,15 @@ data "aws_route_tables" "apne3_private" {
   }
 }
 
-data "google_compute_ha_vpn_gateway" "gcp" {
-  for_each = local.gcp_regions
+data "google_compute_ha_vpn_gateway" "google_cloud" {
+  for_each = local.google_cloud_regions
 
   name   = "bunshin-ha-vpn-${each.key}"
   region = each.value
 }
 
-data "google_compute_network" "gcp" {
-  for_each = local.gcp_regions
+data "google_compute_network" "google_cloud" {
+  for_each = local.google_cloud_regions
 
   name = "bunshin-${each.key}-vpc"
 }
