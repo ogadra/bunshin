@@ -2,8 +2,8 @@ resource "aws_customer_gateway" "apne1" {
   provider = aws.apne1
   for_each = local.vpn_interfaces_apne1
 
-  bgp_asn    = local.gcp_router_asn[each.value.gcp]
-  ip_address = data.google_compute_ha_vpn_gateway.gcp[each.value.gcp].vpn_interfaces[each.value.interface].ip_address
+  bgp_asn    = local.google_cloud_router_asn[each.value.google_cloud]
+  ip_address = data.google_compute_ha_vpn_gateway.google_cloud[each.value.google_cloud].vpn_interfaces[each.value.interface].ip_address
   type       = "ipsec.1"
 
   tags = merge(local.common_tags, {
@@ -15,8 +15,8 @@ resource "aws_customer_gateway" "apne3" {
   provider = aws.apne3
   for_each = local.vpn_interfaces_apne3
 
-  bgp_asn    = local.gcp_router_asn[each.value.gcp]
-  ip_address = data.google_compute_ha_vpn_gateway.gcp[each.value.gcp].vpn_interfaces[each.value.interface].ip_address
+  bgp_asn    = local.google_cloud_router_asn[each.value.google_cloud]
+  ip_address = data.google_compute_ha_vpn_gateway.google_cloud[each.value.google_cloud].vpn_interfaces[each.value.interface].ip_address
   type       = "ipsec.1"
 
   tags = merge(local.common_tags, {
@@ -112,14 +112,21 @@ resource "aws_vpn_gateway_route_propagation" "apne3" {
 
 resource "google_compute_router" "vpn" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
-  for_each = local.gcp_regions
+  for_each = local.google_cloud_regions
 
   name    = "bunshin-vpn-${each.key}-router"
   region  = each.value
-  network = data.google_compute_network.gcp[each.key].id
+  network = data.google_compute_network.google_cloud[each.key].id
 
   bgp {
-    asn = local.gcp_router_asn[each.key]
+    asn               = local.google_cloud_router_asn[each.key]
+    advertise_mode    = "CUSTOM"
+    advertised_groups = ["ALL_SUBNETS"]
+
+    advertised_ip_ranges {
+      range       = local.google_cloud_dns_forwarder_source_range
+      description = "Return path for Cloud DNS forwarder queries to AWS Route53 Resolver INBOUND"
+    }
   }
 }
 
@@ -153,12 +160,12 @@ resource "google_compute_vpn_tunnel" "cross_cloud" {
   for_each = local.vpn_tunnels_all
 
   name                            = "bunshin-vpn-${each.key}"
-  region                          = local.gcp_regions[each.value.gcp]
-  vpn_gateway                     = data.google_compute_ha_vpn_gateway.gcp[each.value.gcp].id
+  region                          = local.google_cloud_regions[each.value.google_cloud]
+  vpn_gateway                     = data.google_compute_ha_vpn_gateway.google_cloud[each.value.google_cloud].id
   vpn_gateway_interface           = each.value.interface
   peer_external_gateway           = google_compute_external_vpn_gateway.cross_cloud[each.value.pair_key].id
   peer_external_gateway_interface = each.value.interface * 2 + (each.value.tunnel - 1)
-  router                          = google_compute_router.vpn[each.value.gcp].id
+  router                          = google_compute_router.vpn[each.value.google_cloud].id
   ike_version                     = 2
 
   shared_secret = each.value.tunnel == 1 ? (
@@ -175,8 +182,8 @@ resource "google_compute_router_interface" "vpn" {
   for_each = local.vpn_tunnels_all
 
   name       = "bunshin-vpn-${each.key}"
-  router     = google_compute_router.vpn[each.value.gcp].name
-  region     = local.gcp_regions[each.value.gcp]
+  router     = google_compute_router.vpn[each.value.google_cloud].name
+  region     = local.google_cloud_regions[each.value.google_cloud]
   vpn_tunnel = google_compute_vpn_tunnel.cross_cloud[each.key].name
 
   ip_range = each.value.tunnel == 1 ? (
@@ -191,8 +198,8 @@ resource "google_compute_router_peer" "vpn" {
   for_each = local.vpn_tunnels_all
 
   name      = "bunshin-vpn-${each.key}"
-  router    = google_compute_router.vpn[each.value.gcp].name
-  region    = local.gcp_regions[each.value.gcp]
+  router    = google_compute_router.vpn[each.value.google_cloud].name
+  region    = local.google_cloud_regions[each.value.google_cloud]
   interface = google_compute_router_interface.vpn[each.key].name
   peer_asn  = local.aws_vgw_asn
 
