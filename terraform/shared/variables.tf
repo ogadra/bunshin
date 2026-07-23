@@ -13,7 +13,9 @@ variable "domain_name" {
   type        = string
 
   validation {
-    condition     = can(regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$", var.domain_name))
-    error_message = "domain_name must be a lowercase DNS-1123 hostname with at least one dot."
+    condition = length(var.domain_name) <= 253 && alltrue([
+      for label in split(".", var.domain_name) : length(label) <= 63
+    ]) && can(regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$", var.domain_name))
+    error_message = "domain_name must be a lowercase DNS-1123 hostname with at least one dot; each label at most 63 characters and the full name at most 253 characters."
   }
 }
