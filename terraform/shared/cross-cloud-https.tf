@@ -24,7 +24,7 @@ resource "aws_security_group_rule" "apne3_nginx_egress_google_cloud_internal_lb"
   description       = "HTTPS to Google Cloud internal LB across HA VPN"
 }
 
-# GKE Autopilot は ip-masq-agent の default で RFC1918 宛の Pod source IP を保持する
+# GKE Autopilotはip-masq-agentのdefaultでRFC1918宛のPod source IPを保持する
 resource "aws_security_group_rule" "apne1_internal_alb_ingress_google_cloud_nginx" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   provider = aws.apne1
