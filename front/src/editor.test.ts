@@ -73,7 +73,7 @@ describe("createPerlEditor", () => {
     expect(input.getAttribute("autocapitalize")).toBe("off");
     expect(input.getAttribute("autocorrect")).toBe("off");
     expect(input.spellcheck).toBe(false);
-    expect(input.wrap).toBe("off");
+    expect(input.wrap).toBe("soft");
   });
 
   test("returns a handle exposing the current value", () => {
