@@ -60,7 +60,7 @@ resource "aws_route53_resolver_rule_association" "apne3" {
   vpc_id           = data.aws_vpc.apne3.id
 }
 
-# forwarding_path=private で RFC1918 宛でも public path に fallback させず HA VPN 経由に固定する
+# forwarding_path=privateでRFC1918宛でもpublic pathにfallbackさせずHA VPN経由に固定する
 resource "google_dns_managed_zone" "aws_forwarding" {
   for_each = local.aws_regions
 
@@ -90,7 +90,7 @@ resource "google_dns_managed_zone" "aws_forwarding" {
   }
 }
 
-# 到達元 (AWS OUTBOUND ENI IP) がこの phase で確定するためここで作る
+# 到達元(AWS OUTBOUND ENI IP)がこのphaseで確定するためここで作る
 resource "google_compute_firewall" "aws_outbound_dns" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   for_each = local.google_cloud_regions
