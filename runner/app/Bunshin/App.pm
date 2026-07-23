@@ -7,13 +7,14 @@ use Bunshin::ContentRunner;
 use Bunshin::HTTP;
 use HTML::Entities ();
 use Module::Refresh;
+use Quiz;
 
 my $HTML_SHELL = <<~'HTML';
     <!doctype html>
     <html lang="en">
       <head>
         <meta charset="utf-8">
-        <title>bunshin perl demo: 大吉祥寺.pm</title>
+        <title>大吉祥寺.pm</title>
         <style>
           body { font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.6; }
           pre { background: #fee; padding: 1rem; border-radius: 4px; overflow: auto; }
@@ -25,11 +26,7 @@ my $HTML_SHELL = <<~'HTML';
     </html>
     HTML
 
-my $CONTENT_FN = sub {
-    my $sub = DaiKichijoji->can('content')
-        or die "DaiKichijoji::content is not defined\n";
-    $sub->();
-};
+my $CONTENT_FN = sub { Quiz::page() };
 our $RUN_CONTENT_FN = sub {
     my @load_errors;
     {
@@ -81,13 +78,13 @@ sub handle_conn {
 
     for ($result->{status}) {
         if ($_ eq 'ok') {
-            Bunshin::HTTP::respond($conn, 200, 'text/html; charset=utf-8', sprintf($HTML_SHELL, HTML::Entities::encode_entities($result->{body})));
+            Bunshin::HTTP::respond($conn, 200, 'text/html; charset=utf-8', sprintf($HTML_SHELL, $result->{body}));
         } elsif ($_ eq 'died') {
-            respond_error($conn, "DaiKichijoji::content died: $result->{error}");
+            respond_error($conn, "quiz page died: $result->{error}");
         } elsif ($_ eq 'exited') {
-            respond_error($conn, "DaiKichijoji::content exited with code $result->{code}");
+            respond_error($conn, "quiz page exited with code $result->{code}");
         } elsif ($_ eq 'timed_out') {
-            respond_error($conn, "DaiKichijoji::content timed out: exceeded $result->{ms}ms");
+            respond_error($conn, "quiz page timed out: exceeded $result->{ms}ms");
         } else {
             respond_error($conn, "content runner returned unknown status: $_");
         }

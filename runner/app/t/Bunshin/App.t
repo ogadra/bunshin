@@ -1,11 +1,23 @@
 use strict;
 use warnings;
+use utf8;
 use Test::More;
 use FindBin;
+use File::Temp qw(tempfile);
+use Encode ();
 use lib "$FindBin::Bin/../..";
+
+BEGIN {
+    my ($fh, $counter) = tempfile(UNLINK => 1); close $fh; unlink $counter;
+    $ENV{BUNSHIN_QUIZ_COUNTER} = $counter;
+}
+
 use Bunshin::App;
 use DaiKichijoji;
 use Socket qw(AF_UNIX SOCK_STREAM PF_UNSPEC);
+
+binmode Test::More->builder->$_, ':encoding(UTF-8)'
+    for qw(output failure_output todo_output);
 
 sub roundtrip {
     my ($request_data) = @_;
@@ -30,11 +42,11 @@ subtest 'happy path: ok body is embedded in the HTML shell' => sub {
     like $r, qr{Hello from test};
 };
 
-subtest 'content HTML metacharacters are escaped' => sub {
+subtest 'content is embedded as raw HTML' => sub {
     local $Bunshin::App::RUN_CONTENT_FN = sub { +{ status => 'ok', body => "<b>bold</b>" } };
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
-    like $r, qr{&lt;b&gt;bold&lt;/b&gt;}, 'metacharacters escaped';
-    unlike $r, qr{<b>bold</b>}, 'raw tag not present';
+    like $r, qr{<b>bold</b>}, 'raw tag passes through';
+    unlike $r, qr{&lt;b&gt;bold&lt;/b&gt;}, 'no over-escaping';
 };
 
 subtest 'refresh failure surfaces the load-failed message from the runner' => sub {
@@ -49,28 +61,28 @@ subtest 'died status yields 500 with the error message' => sub {
     local $Bunshin::App::RUN_CONTENT_FN = sub { +{ status => 'died', error => "boom at DaiKichijoji.pm line 5" } };
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
-    like $r, qr{DaiKichijoji::content died: boom at DaiKichijoji.pm line 5};
+    like $r, qr{quiz page died: boom at DaiKichijoji.pm line 5};
 };
 
 subtest 'exited status yields 500 with exit code' => sub {
     local $Bunshin::App::RUN_CONTENT_FN = sub { +{ status => 'exited', code => 42 } };
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
-    like $r, qr{DaiKichijoji::content exited with code 42};
+    like $r, qr{quiz page exited with code 42};
 };
 
 subtest 'exited status with code 0 also yields 500' => sub {
     local $Bunshin::App::RUN_CONTENT_FN = sub { +{ status => 'exited', code => 0 } };
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
-    like $r, qr{DaiKichijoji::content exited with code 0};
+    like $r, qr{quiz page exited with code 0};
 };
 
 subtest 'timed_out status yields 500 with elapsed budget' => sub {
     local $Bunshin::App::RUN_CONTENT_FN = sub { +{ status => 'timed_out', ms => 3000 } };
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
-    like $r, qr{DaiKichijoji::content timed out: exceeded 3000ms};
+    like $r, qr{quiz page timed out: exceeded 3000ms};
 };
 
 subtest 'runner throwing an exception yields 500 with the raw error' => sub {
@@ -200,7 +212,10 @@ subtest 'integration: real Module::Refresh + a real broken file dies with the co
 subtest 'real defaults: dispatches through the real ContentRunner and DaiKichijoji' => sub {
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 200 OK\r\n};
-    like $r, qr{Hello from DaiKichijoji};
+    my $heading = Encode::encode('UTF-8', '大吉祥寺.pm');
+    my $question = Encode::encode('UTF-8', 'たかし君');
+    like $r, qr{\Q$heading\E},  'the quiz page heading is served';
+    like $r, qr{\Q$question\E}, 'the quiz question copy is rendered';
 };
 
 subtest 'real defaults: 500 when DaiKichijoji::content is missing' => sub {
@@ -209,7 +224,20 @@ subtest 'real defaults: 500 when DaiKichijoji::content is missing' => sub {
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     { no strict 'refs'; *{'DaiKichijoji::content'} = $orig; }
     like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
-    like $r, qr{DaiKichijoji::content died: DaiKichijoji::content is not defined};
+    like $r, qr{quiz page died: DaiKichijoji::content is not defined};
+};
+
+subtest 'real defaults: 500 when DaiKichijoji::content returns a non-regex' => sub {
+    # 直前のsubtestがstashからglobをdeleteして作り直しているため、
+    # コンパイル時に解決されるベアワードglobでは現行のstashに届かない。
+    no strict 'refs';
+    no warnings 'redefine';
+    my $orig = \&{'DaiKichijoji::content'};
+    *{'DaiKichijoji::content'} = sub { 'not a regex' };
+    my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
+    *{'DaiKichijoji::content'} = $orig;
+    like $r, qr{^HTTP/1\.1 500 Internal Server Error\r\n};
+    like $r, qr{quiz page died: DaiKichijoji::content must return a compiled regex};
 };
 
 done_testing;
