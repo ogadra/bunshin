@@ -1,42 +1,24 @@
-export const samplePerl = String.raw`#!/usr/bin/perl
+export const samplePerl = String.raw`package DaiKichijoji;
 use strict;
 use warnings;
 
-package Greeter;
-
 =pod
 
-Perl syntax highlight demo.
+Edit sub content to change the page rendered in the preview iframe.
+The HTML shell around the returned string lives in Bunshin/App.pm.
 
 =cut
 
-my $count = 1_000;
+my $count = 42;
 my @names = qw(alice bob carol);
-my %seen;
 
-sub greet {
-    my ($name) = @_;
-    my $message = <<~"EOF";
-        Hello, $name!
-        You are visitor number $count.
-        EOF
-    print $message;
+sub content {
+    my $greeting = "Hello from DaiKichijoji.pm";
+    if ($greeting =~ m/(\w+)\s+from/) {
+        print "matched: $1\n";
+    }
+    return join(" — ", $greeting, "count=$count", "names=" . scalar(@names));
 }
 
-foreach my $name (@names) {
-    next if $seen{$name}++;
-    greet($name);
-}
-
-my $csv = join(",", @names);
-if ($csv =~ m/(\w+),(\w+)/) {
-    print "first=$1 second=$2\n";
-}
-
-(my $upper = $csv) =~ tr/a-z/A-Z/;
-my $ratio = $count / 2;
-print q{done}, "\n";
-
-__END__
-Everything below is ignored.
+1;
 `;

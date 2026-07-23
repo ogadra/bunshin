@@ -22,7 +22,8 @@ import (
 type mockService struct {
 	closeSessionFn     func(ctx context.Context, sessionID string) error
 	resolveSessionFn   func(ctx context.Context, sessionID string) (*service.ResolveResult, error)
-	registerRunnerFn   func(ctx context.Context, runnerID, privateURL string) error
+	lookupSessionFn    func(ctx context.Context, hex string) (*service.LookupResult, error)
+	registerRunnerFn   func(ctx context.Context, runnerID, privateHost string) error
 	deregisterRunnerFn func(ctx context.Context, runnerID string) error
 	listBusyRunnersFn  func(ctx context.Context) ([]model.Runner, error)
 }
@@ -37,9 +38,14 @@ func (m *mockService) ResolveSession(ctx context.Context, sessionID string) (*se
 	return m.resolveSessionFn(ctx, sessionID)
 }
 
+// LookupSession はモック LookupSession を呼び出す。
+func (m *mockService) LookupSession(ctx context.Context, hex string) (*service.LookupResult, error) {
+	return m.lookupSessionFn(ctx, hex)
+}
+
 // RegisterRunner はモック RegisterRunner を呼び出す。
-func (m *mockService) RegisterRunner(ctx context.Context, runnerID, privateURL string) error {
-	return m.registerRunnerFn(ctx, runnerID, privateURL)
+func (m *mockService) RegisterRunner(ctx context.Context, runnerID, privateHost string) error {
+	return m.registerRunnerFn(ctx, runnerID, privateHost)
 }
 
 // DeregisterRunner はモック DeregisterRunner を呼び出す。
@@ -59,7 +65,8 @@ func newTestRouter(h *Handler) *gin.Engine {
 		return "test-req-id", nil
 	}))
 	r.DELETE("/sessions/:sessionId", h.DeleteSession)
-	r.GET("/resolve", h.GetResolve)
+	r.GET("/resolve/session", h.GetResolveSession)
+	r.GET("/resolve/app", h.GetResolveApp)
 	r.POST("/internal/runners/register", h.PostRegister)
 	r.DELETE("/internal/runners/:runnerId", h.DeleteRunner)
 	r.GET("/runners/busy", h.GetListBusyRunners)
@@ -76,7 +83,7 @@ func TestDeleteSession_Success(t *testing.T) {
 			}
 			return nil
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodDelete, "/sessions/sess-abc", nil)
@@ -95,7 +102,7 @@ func TestDeleteSession_NotFound(t *testing.T) {
 		closeSessionFn: func(_ context.Context, _ string) error {
 			return store.ErrNotFound
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodDelete, "/sessions/sess-missing", nil)
@@ -114,7 +121,7 @@ func TestDeleteSession_InternalError(t *testing.T) {
 		closeSessionFn: func(_ context.Context, _ string) error {
 			return errors.New("unexpected")
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodDelete, "/sessions/sess-abc", nil)
@@ -126,29 +133,32 @@ func TestDeleteSession_InternalError(t *testing.T) {
 	}
 }
 
-// TestGetResolve_ExistingSession は既存セッションの解決成功を検証する。
-func TestGetResolve_ExistingSession(t *testing.T) {
+// TestGetResolveSession_ExistingSession は既存セッションの解決成功を検証する。
+func TestGetResolveSession_ExistingSession(t *testing.T) {
 	t.Parallel()
 	h := NewHandler(&mockService{
 		resolveSessionFn: func(_ context.Context, sessionID string) (*service.ResolveResult, error) {
-			if sessionID != "sess-abc" {
-				t.Errorf("sessionID = %q, want %q", sessionID, "sess-abc")
+			if sessionID != "ap-northeast-1_sess-abc" {
+				t.Errorf("sessionID = %q, want %q", sessionID, "ap-northeast-1_sess-abc")
 			}
-			return &service.ResolveResult{SessionID: "sess-abc", RunnerURL: "http://10.0.0.1:8080", Created: false}, nil
+			return &service.ResolveResult{SessionHex: "sess-abc", RunnerHost: "10.0.0.1", Created: false}, nil
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
-	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: "sess-abc"})
+	req := httptest.NewRequest(http.MethodGet, "/resolve/session", nil)
+	req.AddCookie(&http.Cookie{Name: "session_id", Value: "ap-northeast-1_sess-abc"})
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
-	if got := rec.Header().Get("X-Runner-Url"); got != "http://10.0.0.1:8080" {
-		t.Errorf("X-Runner-Url = %q, want %q", got, "http://10.0.0.1:8080")
+	if got := rec.Header().Get(runnerHostHeader); got != "10.0.0.1" {
+		t.Errorf("%s = %q, want %q", runnerHostHeader, got, "10.0.0.1")
+	}
+	if got := rec.Header().Get(stackNameHeader); got != "ap-northeast-1" {
+		t.Errorf("%s = %q, want %q", stackNameHeader, got, "ap-northeast-1")
 	}
 	for _, c := range rec.Result().Cookies() {
 		if c.Name == "session_id" {
@@ -157,28 +167,28 @@ func TestGetResolve_ExistingSession(t *testing.T) {
 	}
 }
 
-// TestGetResolve_MissingCookie_CreatesSession は cookie がない場合にセッションを新規作成することを検証する。
-func TestGetResolve_MissingCookie_CreatesSession(t *testing.T) {
+// TestGetResolveSession_MissingCookie_CreatesSession は cookie がない場合にセッションを新規作成することを検証する。
+func TestGetResolveSession_MissingCookie_CreatesSession(t *testing.T) {
 	t.Parallel()
 	h := NewHandler(&mockService{
 		resolveSessionFn: func(_ context.Context, sessionID string) (*service.ResolveResult, error) {
 			if sessionID != "" {
 				t.Errorf("sessionID = %q, want empty", sessionID)
 			}
-			return &service.ResolveResult{SessionID: "ap-northeast-1_new-sess", RunnerURL: "http://10.0.0.2:8080", Created: true}, nil
+			return &service.ResolveResult{SessionID: "ap-northeast-1_new-sess", SessionHex: "new-sess", RunnerHost: "10.0.0.2", Created: true}, nil
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
-	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
+	req := httptest.NewRequest(http.MethodGet, "/resolve/session", nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
-	if got := rec.Header().Get("X-Runner-Url"); got != "http://10.0.0.2:8080" {
-		t.Errorf("X-Runner-Url = %q, want %q", got, "http://10.0.0.2:8080")
+	if got := rec.Header().Get(runnerHostHeader); got != "10.0.0.2" {
+		t.Errorf("%s = %q, want %q", runnerHostHeader, got, "10.0.0.2")
 	}
 	found := false
 	for _, c := range rec.Result().Cookies() {
@@ -191,25 +201,31 @@ func TestGetResolve_MissingCookie_CreatesSession(t *testing.T) {
 	}
 }
 
-// TestGetResolve_NoIdleRunner は idle runner がない場合に 503 を返すことを検証する。
-func TestGetResolve_NoIdleRunner(t *testing.T) {
+// TestGetResolveSession_NoIdleRunner は idle runner がない場合に 503 を返すことを検証する。
+func TestGetResolveSession_NoIdleRunner(t *testing.T) {
 	t.Parallel()
 	h := NewHandler(&mockService{
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return nil, store.ErrNoIdleRunner
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
-	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
+	req := httptest.NewRequest(http.MethodGet, "/resolve/session", nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
 	}
-	if got := rec.Header().Get("X-Fallback-Stack"); got != "" {
-		t.Errorf("X-Fallback-Stack = %q, want empty when no fallback configured", got)
+	if got := rec.Header().Get(fallbackStackHeader); got != "" {
+		t.Errorf("%s = %q, want empty when no fallback configured", fallbackStackHeader, got)
+	}
+	if got := rec.Header().Get(sessionHexHeader); got != "" {
+		t.Errorf("%s = %q, want empty on error", sessionHexHeader, got)
+	}
+	if got := rec.Header().Get(stackNameHeader); got != "" {
+		t.Errorf("%s = %q, want empty on error", stackNameHeader, got)
 	}
 }
 
@@ -222,8 +238,8 @@ func noIdleResolveWithCookie(fallback []string, reqHeaders map[string]string, se
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return nil, store.ErrNoIdleRunner
 		},
-	}, fallback)
-	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
+	}, fallback, "ap-northeast-1")
+	req := httptest.NewRequest(http.MethodGet, "/resolve/session", nil)
 	for k, v := range reqHeaders {
 		req.Header.Set(k, v)
 	}
@@ -235,74 +251,74 @@ func noIdleResolveWithCookie(fallback []string, reqHeaders map[string]string, se
 	return rec
 }
 
-// TestGetResolve_FallbackOrigin は origin の枯渇で先頭を X-Fallback-Stack、残りを X-Fallback-Remaining に出すことを検証する。
-func TestGetResolve_FallbackOrigin(t *testing.T) {
+// TestGetResolveSession_FallbackOrigin は origin の枯渇で先頭を X-Fallback-Stack、残りを X-Fallback-Remaining に出すことを検証する。
+func TestGetResolveSession_FallbackOrigin(t *testing.T) {
 	t.Parallel()
 	rec := noIdleResolve([]string{"ap-northeast-3", "ap-northeast-2"}, nil)
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
 	}
-	if got := rec.Header().Get("X-Fallback-Stack"); got != "ap-northeast-3" {
-		t.Errorf("X-Fallback-Stack = %q, want %q", got, "ap-northeast-3")
+	if got := rec.Header().Get(fallbackStackHeader); got != "ap-northeast-3" {
+		t.Errorf("%s = %q, want %q", fallbackStackHeader, got, "ap-northeast-3")
 	}
-	if got := rec.Header().Get("X-Fallback-Remaining"); got != "ap-northeast-2" {
-		t.Errorf("X-Fallback-Remaining = %q, want %q", got, "ap-northeast-2")
+	if got := rec.Header().Get(fallbackRemainingHeader); got != "ap-northeast-2" {
+		t.Errorf("%s = %q, want %q", fallbackRemainingHeader, got, "ap-northeast-2")
 	}
 }
 
-// TestGetResolve_FallbackForwarded は転送済みで残りがある場合、remaining の先頭を次の forward にすることを検証する。
-func TestGetResolve_FallbackForwarded(t *testing.T) {
+// TestGetResolveSession_FallbackForwarded は転送済みで残りがある場合、remaining の先頭を次の forward にすることを検証する。
+func TestGetResolveSession_FallbackForwarded(t *testing.T) {
 	t.Parallel()
 	rec := noIdleResolve([]string{}, map[string]string{
-		"X-Fallback-Stack":     "ap-northeast-3",
-		"X-Fallback-Remaining": "ap-northeast-2",
+		fallbackStackHeader:     "ap-northeast-3",
+		fallbackRemainingHeader: "ap-northeast-2",
 	})
-	if got := rec.Header().Get("X-Fallback-Stack"); got != "ap-northeast-2" {
-		t.Errorf("X-Fallback-Stack = %q, want %q", got, "ap-northeast-2")
+	if got := rec.Header().Get(fallbackStackHeader); got != "ap-northeast-2" {
+		t.Errorf("%s = %q, want %q", fallbackStackHeader, got, "ap-northeast-2")
 	}
-	if got := rec.Header().Get("X-Fallback-Remaining"); got != "" {
-		t.Errorf("X-Fallback-Remaining = %q, want empty", got)
+	if got := rec.Header().Get(fallbackRemainingHeader); got != "" {
+		t.Errorf("%s = %q, want empty", fallbackRemainingHeader, got)
 	}
 }
 
-// TestGetResolve_FallbackForwardedKeepsTail は remaining が複数のとき先頭を pop し残りを維持することを検証する。
-func TestGetResolve_FallbackForwardedKeepsTail(t *testing.T) {
+// TestGetResolveSession_FallbackForwardedKeepsTail は remaining が複数のとき先頭を pop し残りを維持することを検証する。
+func TestGetResolveSession_FallbackForwardedKeepsTail(t *testing.T) {
 	t.Parallel()
 	rec := noIdleResolve([]string{}, map[string]string{
-		"X-Fallback-Stack":     "ap-northeast-3",
-		"X-Fallback-Remaining": "ap-northeast-2,us-east-1",
+		fallbackStackHeader:     "ap-northeast-3",
+		fallbackRemainingHeader: "ap-northeast-2,us-east-1",
 	})
-	if got := rec.Header().Get("X-Fallback-Stack"); got != "ap-northeast-2" {
-		t.Errorf("X-Fallback-Stack = %q, want %q", got, "ap-northeast-2")
+	if got := rec.Header().Get(fallbackStackHeader); got != "ap-northeast-2" {
+		t.Errorf("%s = %q, want %q", fallbackStackHeader, got, "ap-northeast-2")
 	}
-	if got := rec.Header().Get("X-Fallback-Remaining"); got != "us-east-1" {
-		t.Errorf("X-Fallback-Remaining = %q, want %q", got, "us-east-1")
+	if got := rec.Header().Get(fallbackRemainingHeader); got != "us-east-1" {
+		t.Errorf("%s = %q, want %q", fallbackRemainingHeader, got, "us-east-1")
 	}
 }
 
-// TestGetResolve_FallbackLastStack は転送済みで残りが無い(最後の stack)場合に forward を出さないことを検証する。
-func TestGetResolve_FallbackLastStack(t *testing.T) {
+// TestGetResolveSession_FallbackLastStack は転送済みで残りが無い(最後の stack)場合に forward を出さないことを検証する。
+func TestGetResolveSession_FallbackLastStack(t *testing.T) {
 	t.Parallel()
-	rec := noIdleResolve([]string{}, map[string]string{"X-Fallback-Stack": "ap-northeast-2"})
+	rec := noIdleResolve([]string{}, map[string]string{fallbackStackHeader: "ap-northeast-2"})
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
 	}
-	if got := rec.Header().Get("X-Fallback-Stack"); got != "" {
-		t.Errorf("X-Fallback-Stack = %q, want empty for last stack", got)
+	if got := rec.Header().Get(fallbackStackHeader); got != "" {
+		t.Errorf("%s = %q, want empty for last stack", fallbackStackHeader, got)
 	}
 }
 
-// TestGetResolve_InternalError は内部エラー時に 500 を返すことを検証する。
-func TestGetResolve_InternalError(t *testing.T) {
+// TestGetResolveSession_InternalError は内部エラー時に 500 を返すことを検証する。
+func TestGetResolveSession_InternalError(t *testing.T) {
 	t.Parallel()
 	h := NewHandler(&mockService{
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return nil, errors.New("unexpected")
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
-	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
+	req := httptest.NewRequest(http.MethodGet, "/resolve/session", nil)
 	req.AddCookie(&http.Cookie{Name: "session_id", Value: "sess-abc"})
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
@@ -310,25 +326,31 @@ func TestGetResolve_InternalError(t *testing.T) {
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
 	}
+	if got := rec.Header().Get(sessionHexHeader); got != "" {
+		t.Errorf("%s = %q, want empty on error", sessionHexHeader, got)
+	}
+	if got := rec.Header().Get(stackNameHeader); got != "" {
+		t.Errorf("%s = %q, want empty on error", stackNameHeader, got)
+	}
 }
 
 // TestPostRegister_Success は runner 登録の成功を検証する。
 func TestPostRegister_Success(t *testing.T) {
 	t.Parallel()
 	h := NewHandler(&mockService{
-		registerRunnerFn: func(_ context.Context, runnerID, privateURL string) error {
+		registerRunnerFn: func(_ context.Context, runnerID, privateHost string) error {
 			if runnerID != "r1" {
 				t.Errorf("runnerID = %q, want %q", runnerID, "r1")
 			}
-			if privateURL != "http://10.0.0.1:8080" {
-				t.Errorf("privateURL = %q, want %q", privateURL, "http://10.0.0.1:8080")
+			if privateHost != "10.0.0.1" {
+				t.Errorf("privateHost = %q, want %q", privateHost, "10.0.0.1")
 			}
 			return nil
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
-	body := strings.NewReader(`{"runnerId":"r1","privateUrl":"http://10.0.0.1:8080"}`)
+	body := strings.NewReader(`{"runnerId":"r1","privateHost":"10.0.0.1"}`)
 	req := httptest.NewRequest(http.MethodPost, "/internal/runners/register", body)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -342,7 +364,7 @@ func TestPostRegister_Success(t *testing.T) {
 // TestPostRegister_InvalidBody はリクエストボディが不正な場合に 400 を返すことを検証する。
 func TestPostRegister_InvalidBody(t *testing.T) {
 	t.Parallel()
-	h := NewHandler(&mockService{}, []string{})
+	h := NewHandler(&mockService{}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
 	body := strings.NewReader(`{}`)
@@ -363,10 +385,10 @@ func TestPostRegister_InternalError(t *testing.T) {
 		registerRunnerFn: func(_ context.Context, _, _ string) error {
 			return errors.New("unexpected")
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
-	body := strings.NewReader(`{"runnerId":"r1","privateUrl":"http://10.0.0.1:8080"}`)
+	body := strings.NewReader(`{"runnerId":"r1","privateHost":"10.0.0.1"}`)
 	req := httptest.NewRequest(http.MethodPost, "/internal/runners/register", body)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -384,10 +406,10 @@ func TestPostRegister_Conflict(t *testing.T) {
 		registerRunnerFn: func(_ context.Context, _, _ string) error {
 			return store.ErrConflict
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
-	body := strings.NewReader(`{"runnerId":"r1","privateUrl":"http://10.0.0.1:8080"}`)
+	body := strings.NewReader(`{"runnerId":"r1","privateHost":"10.0.0.1"}`)
 	req := httptest.NewRequest(http.MethodPost, "/internal/runners/register", body)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -408,7 +430,7 @@ func TestDeleteRunner_Success(t *testing.T) {
 			}
 			return nil
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodDelete, "/internal/runners/r1", nil)
@@ -427,7 +449,7 @@ func TestDeleteRunner_InternalError(t *testing.T) {
 		deregisterRunnerFn: func(_ context.Context, _ string) error {
 			return errors.New("unexpected")
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodDelete, "/internal/runners/r1", nil)
@@ -446,10 +468,10 @@ func TestWriteError_IncludesRequestID(t *testing.T) {
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return nil, errors.New("unexpected")
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
-	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
+	req := httptest.NewRequest(http.MethodGet, "/resolve/session", nil)
 	req.AddCookie(&http.Cookie{Name: "session_id", Value: "sess-missing"})
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
@@ -463,9 +485,12 @@ func TestWriteError_IncludesRequestID(t *testing.T) {
 func TestNewHandler(t *testing.T) {
 	t.Parallel()
 	svc := &mockService{}
-	h := NewHandler(svc, []string{})
+	h := NewHandler(svc, []string{}, "ap-northeast-1")
 	if h.svc != svc {
 		t.Error("svc mismatch")
+	}
+	if h.stackSelf != "ap-northeast-1" {
+		t.Errorf("stackSelf = %q, want %q", h.stackSelf, "ap-northeast-1")
 	}
 }
 
@@ -477,93 +502,102 @@ func TestNewHandler_NilPanics(t *testing.T) {
 			t.Fatal("expected panic for nil service")
 		}
 	}()
-	NewHandler(nil, []string{})
+	NewHandler(nil, []string{}, "ap-northeast-1")
 }
 
-// TestPostRegister_InvalidURL は不正な URL 形式の場合に 400 を返すことを検証する。
-func TestPostRegister_InvalidURL(t *testing.T) {
+// TestNewHandler_EmptyStackPanicsはNewHandlerに空stackSelfを渡すとpanicすることを検証する。
+func TestNewHandler_EmptyStackPanics(t *testing.T) {
+	t.Parallel()
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic for empty stackSelf")
+		}
+	}()
+	NewHandler(&mockService{}, []string{}, "")
+}
+
+// TestPostRegister_InvalidHost は host label 形式ではない privateHost に対して 400 を返すことを検証する。
+func TestPostRegister_InvalidHost(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name string
-		url  string
+		host string
 	}{
-		{"no scheme", "10.0.0.1:8080"},
-		{"ftp scheme", "ftp://10.0.0.1:8080"},
-		{"no host", "http://"},
-		{"relative path", "/runner"},
+		{"has colon", "10.0.0.1:8080"},
+		{"has scheme prefix", "http://10.0.0.1"},
+		{"has slash", "runner-1/"},
+		{"underscore", "runner_01"},
+		{"has space", "run ner"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			h := NewHandler(&mockService{
 				registerRunnerFn: func(_ context.Context, _, _ string) error {
-					t.Fatal("service should not be called for invalid URL")
+					t.Fatal("service should not be called for invalid host")
 					return nil
 				},
-			}, []string{})
+			}, []string{}, "ap-northeast-1")
 			r := newTestRouter(h)
 
-			body := strings.NewReader(`{"runnerId":"r1","privateUrl":"` + tt.url + `"}`)
+			body := strings.NewReader(`{"runnerId":"r1","privateHost":"` + tt.host + `"}`)
 			req := httptest.NewRequest(http.MethodPost, "/internal/runners/register", body)
 			req.Header.Set("Content-Type", "application/json")
 			rec := httptest.NewRecorder()
 			r.ServeHTTP(rec, req)
 
 			if rec.Code != http.StatusBadRequest {
-				t.Errorf("status = %d, want %d for url %q", rec.Code, http.StatusBadRequest, tt.url)
+				t.Errorf("status = %d, want %d for host %q", rec.Code, http.StatusBadRequest, tt.host)
 			}
 		})
 	}
 }
 
-// TestValidateRunnerURL は validateRunnerURL の境界値を検証する。
-func TestValidateRunnerURL(t *testing.T) {
+// TestValidateRunnerHost は validateRunnerHost の境界値を検証する。
+// port / scheme を含まない host label のみを許可する。
+func TestValidateRunnerHost(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name    string
-		url     string
+		host    string
 		wantErr bool
 	}{
-		{"valid http", "http://10.0.0.1:3000", false},
-		{"valid http no port", "http://runner.local", false},
-		{"trailing slash", "http://runner.local:3000/", true},
-		{"https scheme", "https://runner.local:3000", true},
-		{"no scheme", "10.0.0.1:3000", true},
-		{"ftp scheme", "ftp://10.0.0.1:3000", true},
-		{"empty host", "http://", true},
-		{"relative", "/path", true},
-		{"with path", "http://10.0.0.1:3000/base", true},
-		{"with query", "http://10.0.0.1:3000?x=1", true},
-		{"with fragment", "http://10.0.0.1:3000#frag", true},
-		{"userinfo", "http://user:pass@runner.local:3000", true},
-		{"underscore host", "http://runner_01:3000", true},
-		{"ipv6 host", "http://[::1]:3000", true},
-		{"port zero", "http://runner.local:0", true},
-		{"port too large", "http://runner.local:99999", true},
-		{"non-numeric port", "http://runner.local:abc", true},
+		{"ipv4", "10.0.0.1", false},
+		{"dns hostname", "runner.local", false},
+		{"runner with hyphen", "runner-1", false},
+		{"digits mixed", "runner01.internal.example", false},
+		{"empty", "", true},
+		{"colon", "runner:3000", true},
+		{"scheme", "http://runner", true},
+		{"slash", "runner/", true},
+		{"userinfo", "user@runner", true},
+		{"space", "run ner", true},
+		{"underscore", "runner_01", true},
+		{"query", "runner?x=1", true},
+		{"ipv6 brackets", "[::1]", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := validateRunnerURL(tt.url)
+			err := validateRunnerHost(tt.host)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("validateRunnerURL(%q) error = %v, wantErr %v", tt.url, err, tt.wantErr)
+				t.Errorf("validateRunnerHost(%q) error = %v, wantErr %v", tt.host, err, tt.wantErr)
 			}
 		})
 	}
 }
 
-// TestGetResolve_CookieSecure はセッション新規作成時の session_id cookie が Secure=true であることを検証する。
-func TestGetResolve_CookieSecure(t *testing.T) {
+// TestGetResolveSession_CookieSecure はセッション新規作成時の session_id cookie が Secure=true であることを検証する。
+func TestGetResolveSession_CookieSecure(t *testing.T) {
 	t.Parallel()
 	h := NewHandler(&mockService{
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
-			return &service.ResolveResult{SessionID: "new-sess", RunnerURL: "http://10.0.0.1:8080", Created: true}, nil
+			return &service.ResolveResult{SessionID: "ap-northeast-1_new-sess", SessionHex: "new-sess", RunnerHost: "10.0.0.1", Created: true}, nil
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
-	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
+	req := httptest.NewRequest(http.MethodGet, "/resolve/session", nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -584,22 +618,78 @@ func TestGetResolve_CookieSecure(t *testing.T) {
 	t.Error("session_id cookie not found")
 }
 
-// TestGetResolve_Reassigned はセッション再割当て時に X-Session-Reassigned ヘッダーが設定されることを検証する。
-func TestGetResolve_Reassigned(t *testing.T) {
+// TestGetResolveSession_SessionHexHeaderは新規・既存どちらのセッションでも
+// X-Session-Hexヘッダーにserviceが返したhexがそのまま設定されることを検証する。
+func TestGetResolveSession_SessionHexHeader(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		result  *service.ResolveResult
+		wantHex string
+	}{
+		{
+			name: "created session",
+			result: &service.ResolveResult{
+				SessionHex: "0123456789abcdef0123456789abcdef",
+				RunnerHost: "10.0.0.1",
+				Created:    true,
+			},
+			wantHex: "0123456789abcdef0123456789abcdef",
+		},
+		{
+			name: "existing session",
+			result: &service.ResolveResult{
+				SessionHex: "fedcba9876543210fedcba9876543210",
+				RunnerHost: "10.0.0.2",
+				Created:    false,
+			},
+			wantHex: "fedcba9876543210fedcba9876543210",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			h := NewHandler(&mockService{
+				resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
+					return tt.result, nil
+				},
+			}, []string{}, "ap-northeast-1")
+			r := newTestRouter(h)
+
+			req := httptest.NewRequest(http.MethodGet, "/resolve/session", nil)
+			rec := httptest.NewRecorder()
+			r.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+			}
+			if got := rec.Header().Get(sessionHexHeader); got != tt.wantHex {
+				t.Errorf("%s = %q, want %q", sessionHexHeader, got, tt.wantHex)
+			}
+			if got := rec.Header().Get(stackNameHeader); got != "ap-northeast-1" {
+				t.Errorf("%s = %q, want %q", stackNameHeader, got, "ap-northeast-1")
+			}
+		})
+	}
+}
+
+// TestGetResolveSession_Reassigned はセッション再割当て時に X-Session-Reassigned ヘッダーが設定されることを検証する。
+func TestGetResolveSession_Reassigned(t *testing.T) {
 	t.Parallel()
 	h := NewHandler(&mockService{
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return &service.ResolveResult{
-				SessionID:  "new-sess",
-				RunnerURL:  "http://10.0.0.2:8080",
+				SessionID:  "ap-northeast-1_new-sess",
+				SessionHex: "new-sess",
+				RunnerHost: "10.0.0.2",
 				Created:    true,
 				Reassigned: true,
 			}, nil
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
-	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
+	req := httptest.NewRequest(http.MethodGet, "/resolve/session", nil)
 	req.AddCookie(&http.Cookie{Name: "session_id", Value: "old-sess"})
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
@@ -607,39 +697,42 @@ func TestGetResolve_Reassigned(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
-	if got := rec.Header().Get("X-Session-Reassigned"); got != "true" {
-		t.Errorf("X-Session-Reassigned = %q, want %q", got, "true")
+	if got := rec.Header().Get(reassignedHeader); got != "true" {
+		t.Errorf("%s = %q, want %q", reassignedHeader, got, "true")
 	}
-	if got := rec.Header().Get("X-Runner-Url"); got != "http://10.0.0.2:8080" {
-		t.Errorf("X-Runner-Url = %q, want %q", got, "http://10.0.0.2:8080")
+	if got := rec.Header().Get(runnerHostHeader); got != "10.0.0.2" {
+		t.Errorf("%s = %q, want %q", runnerHostHeader, got, "10.0.0.2")
+	}
+	if got := rec.Header().Get(sessionHexHeader); got != "new-sess" {
+		t.Errorf("%s = %q, want %q", sessionHexHeader, got, "new-sess")
 	}
 }
 
-// TestGetResolve_NotReassigned はセッション再割当てなしの場合に X-Session-Reassigned ヘッダーが設定されないことを検証する。
-func TestGetResolve_NotReassigned(t *testing.T) {
+// TestGetResolveSession_NotReassigned はセッション再割当てなしの場合に X-Session-Reassigned ヘッダーが設定されないことを検証する。
+func TestGetResolveSession_NotReassigned(t *testing.T) {
 	t.Parallel()
 	h := NewHandler(&mockService{
 		resolveSessionFn: func(_ context.Context, _ string) (*service.ResolveResult, error) {
 			return &service.ResolveResult{
-				SessionID:  "sess-1",
-				RunnerURL:  "http://10.0.0.1:8080",
+				SessionHex: "sess-1",
+				RunnerHost: "10.0.0.1",
 				Created:    false,
 				Reassigned: false,
 			}, nil
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	r := newTestRouter(h)
 
-	req := httptest.NewRequest(http.MethodGet, "/resolve", nil)
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: "sess-1"})
+	req := httptest.NewRequest(http.MethodGet, "/resolve/session", nil)
+	req.AddCookie(&http.Cookie{Name: "session_id", Value: "ap-northeast-1_sess-1"})
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
-	if got := rec.Header().Get("X-Session-Reassigned"); got != "" {
-		t.Errorf("X-Session-Reassigned = %q, want empty", got)
+	if got := rec.Header().Get(reassignedHeader); got != "" {
+		t.Errorf("%s = %q, want empty", reassignedHeader, got)
 	}
-	if got := rec.Header().Get("X-Runner-Url"); got != "http://10.0.0.1:8080" {
-		t.Errorf("X-Runner-Url = %q, want %q", got, "http://10.0.0.1:8080")
+	if got := rec.Header().Get(runnerHostHeader); got != "10.0.0.1" {
+		t.Errorf("%s = %q, want %q", runnerHostHeader, got, "10.0.0.1")
 	}
 }
 
@@ -707,7 +800,7 @@ func TestGetListBusyRunners_Success(t *testing.T) {
 				{RunnerID: "r2", State: model.StateBusy, CurrentSessionID: "sess-2"},
 			}, nil
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	rec := httptest.NewRecorder()
 	newTestRouter(h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runners/busy", nil))
 
@@ -743,7 +836,7 @@ func TestGetListBusyRunners_Empty(t *testing.T) {
 		listBusyRunnersFn: func(context.Context) ([]model.Runner, error) {
 			return nil, nil
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	rec := httptest.NewRecorder()
 	newTestRouter(h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runners/busy", nil))
 
@@ -762,11 +855,124 @@ func TestGetListBusyRunners_ServiceError(t *testing.T) {
 		listBusyRunnersFn: func(context.Context) ([]model.Runner, error) {
 			return nil, errors.New("boom")
 		},
-	}, []string{})
+	}, []string{}, "ap-northeast-1")
 	rec := httptest.NewRecorder()
 	newTestRouter(h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runners/busy", nil))
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+}
+
+// TestGetResolveApp_Existing は既存 session の Host 先頭 hex ラベルから runner host を返すことを検証する。
+func TestGetResolveApp_Existing(t *testing.T) {
+	t.Parallel()
+	h := NewHandler(&mockService{
+		lookupSessionFn: func(_ context.Context, hex string) (*service.LookupResult, error) {
+			if hex != "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" {
+				t.Errorf("hex = %q, want %q", hex, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+			}
+			return &service.LookupResult{RunnerHost: "10.0.0.1"}, nil
+		},
+	}, []string{}, "ap-northeast-1")
+	req := httptest.NewRequest(http.MethodGet, "/resolve/app", nil)
+	req.Host = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.ap-northeast-1.internal.example.com"
+	rec := httptest.NewRecorder()
+	newTestRouter(h).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got := rec.Header().Get(runnerHostHeader); got != "10.0.0.1" {
+		t.Errorf("%s = %q, want %q", runnerHostHeader, got, "10.0.0.1")
+	}
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "session_id" {
+			t.Errorf("lookup must not set session_id cookie")
+		}
+	}
+}
+
+// TestGetResolveApp_NotFound は不在 hex が 404 SESSION_NOT_FOUND を返すことを検証する。
+func TestGetResolveApp_NotFound(t *testing.T) {
+	t.Parallel()
+	h := NewHandler(&mockService{
+		lookupSessionFn: func(context.Context, string) (*service.LookupResult, error) {
+			return nil, store.ErrNotFound
+		},
+	}, []string{}, "ap-northeast-1")
+	req := httptest.NewRequest(http.MethodGet, "/resolve/app", nil)
+	req.Host = "00112233445566778899aabbccddeeff.ap-northeast-1.internal.example.com"
+	rec := httptest.NewRecorder()
+	newTestRouter(h).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+	if !strings.Contains(rec.Body.String(), `"code":"SESSION_NOT_FOUND"`) {
+		t.Errorf("body = %q, want SESSION_NOT_FOUND", rec.Body.String())
+	}
+	if got := rec.Header().Get(runnerHostHeader); got != "" {
+		t.Errorf("%s = %q, want empty", runnerHostHeader, got)
+	}
+}
+
+// TestGetResolveApp_InvalidHost は Host の先頭 hex ラベルが 32 lowercase hex + dot ではない場合に
+// 400 INVALID_REQUEST を返し LookupSession を呼ばないことを検証する。
+func TestGetResolveApp_InvalidHost(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		host string
+	}{
+		{"no dot", strings.Repeat("a", 32)},
+		{"too short label", "aaaa.ap-northeast-1.internal.example.com"},
+		{"too long label", strings.Repeat("a", 33) + ".ap-northeast-1.internal.example.com"},
+		{"uppercase label", strings.Repeat("A", 32) + ".ap-northeast-1.internal.example.com"},
+		{"non hex label", strings.Repeat("g", 32) + ".ap-northeast-1.internal.example.com"},
+		{"non hex first", "broker.internal.example.com"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			h := NewHandler(&mockService{
+				lookupSessionFn: func(context.Context, string) (*service.LookupResult, error) {
+					t.Error("LookupSession must not be called for invalid host")
+					return nil, nil
+				},
+			}, []string{}, "ap-northeast-1")
+			req := httptest.NewRequest(http.MethodGet, "/resolve/app", nil)
+			req.Host = tc.host
+			rec := httptest.NewRecorder()
+			newTestRouter(h).ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+			}
+			if !strings.Contains(rec.Body.String(), `"code":"INVALID_REQUEST"`) {
+				t.Errorf("body = %q, want INVALID_REQUEST", rec.Body.String())
+			}
+		})
+	}
+}
+
+// TestGetResolveApp_ServiceError は LookupSession のエラーが 500 INTERNAL_ERROR を返すことを検証する。
+func TestGetResolveApp_ServiceError(t *testing.T) {
+	t.Parallel()
+	h := NewHandler(&mockService{
+		lookupSessionFn: func(context.Context, string) (*service.LookupResult, error) {
+			return nil, errors.New("boom")
+		},
+	}, []string{}, "ap-northeast-1")
+	req := httptest.NewRequest(http.MethodGet, "/resolve/app", nil)
+	req.Host = "00112233445566778899aabbccddeeff.ap-northeast-1.internal.example.com"
+	rec := httptest.NewRecorder()
+	newTestRouter(h).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+	if !strings.Contains(rec.Body.String(), `"code":"INTERNAL_ERROR"`) {
+		t.Errorf("body = %q, want INTERNAL_ERROR", rec.Body.String())
 	}
 }

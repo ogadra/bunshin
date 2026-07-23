@@ -2,7 +2,12 @@ import { TokenType, tokenizePerl } from "./highlight/perl";
 
 const INDENT = "    ";
 
-export const createPerlEditor = (container: HTMLElement, initialCode: string): void => {
+export interface PerlEditorHandle {
+  readonly value: string;
+  onChange(listener: (code: string) => void): void;
+}
+
+export const createPerlEditor = (container: HTMLElement, initialCode: string): PerlEditorHandle => {
   const highlight = document.createElement("pre");
   highlight.className = "editor-highlight";
   highlight.setAttribute("aria-hidden", "true");
@@ -68,9 +73,23 @@ export const createPerlEditor = (container: HTMLElement, initialCode: string): v
     tabMovesFocus = false;
   });
 
-  input.addEventListener("input", render);
+  let listener: ((code: string) => void) | null = null;
+
+  input.addEventListener("input", () => {
+    render();
+    listener?.(input.value);
+  });
   input.addEventListener("scroll", syncScroll);
 
   render();
   container.append(highlight, input);
+
+  return {
+    get value(): string {
+      return input.value;
+    },
+    onChange(cb: (code: string) => void) {
+      listener = cb;
+    },
+  };
 };

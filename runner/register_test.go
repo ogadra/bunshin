@@ -33,7 +33,7 @@ func TestRegisterSuccess(t *testing.T) {
 	var logged string
 	deps := registerDeps{
 		brokerURL: ts.URL,
-		identity:  Identity{RunnerID: "r1", PrivateURL: "http://10.0.0.1:3000"},
+		identity:  Identity{RunnerID: "r1", PrivateHost: "10.0.0.1"},
 		httpPost:  defaultHTTPPost,
 		afterFunc: immediateAfter,
 		logf:      func(f string, a ...any) { logged = f },
@@ -46,10 +46,10 @@ func TestRegisterSuccess(t *testing.T) {
 	if gotBody.RunnerID != "r1" {
 		t.Errorf("runnerId = %q, want %q", gotBody.RunnerID, "r1")
 	}
-	if gotBody.PrivateURL != "http://10.0.0.1:3000" {
-		t.Errorf("privateUrl = %q, want %q", gotBody.PrivateURL, "http://10.0.0.1:3000")
+	if gotBody.PrivateHost != "10.0.0.1" {
+		t.Errorf("privateHost = %q, want %q", gotBody.PrivateHost, "10.0.0.1")
 	}
-	if logged != "registered with broker: id=%s url=%s" {
+	if logged != "registered with broker: id=%s host=%s" {
 		t.Errorf("unexpected log format: %q", logged)
 	}
 }
@@ -69,7 +69,7 @@ func TestRegisterRetryThenSuccess(t *testing.T) {
 
 	deps := registerDeps{
 		brokerURL: ts.URL,
-		identity:  Identity{RunnerID: "r1", PrivateURL: "http://10.0.0.1:3000"},
+		identity:  Identity{RunnerID: "r1", PrivateHost: "10.0.0.1"},
 		httpPost:  defaultHTTPPost,
 		afterFunc: immediateAfter,
 		logf:      func(f string, a ...any) {},
@@ -90,7 +90,7 @@ func TestRegisterHTTPErrorRetry(t *testing.T) {
 	var callCount atomic.Int32
 	deps := registerDeps{
 		brokerURL: "http://broker:8080",
-		identity:  Identity{RunnerID: "r1", PrivateURL: "http://10.0.0.1:3000"},
+		identity:  Identity{RunnerID: "r1", PrivateHost: "10.0.0.1"},
 		httpPost: func(ctx context.Context, url string, contentType string, body io.Reader) (*http.Response, error) {
 			if callCount.Add(1) == 1 {
 				return nil, errors.New("connection refused")
@@ -117,7 +117,7 @@ func TestRegisterContextCanceledBeforeWait(t *testing.T) {
 
 	deps := registerDeps{
 		brokerURL: "http://broker:8080",
-		identity:  Identity{RunnerID: "r1", PrivateURL: "http://10.0.0.1:3000"},
+		identity:  Identity{RunnerID: "r1", PrivateHost: "10.0.0.1"},
 		httpPost: func(ctx context.Context, url string, contentType string, body io.Reader) (*http.Response, error) {
 			cancel()
 			return &http.Response{StatusCode: http.StatusInternalServerError, Body: io.NopCloser(nil)}, nil
@@ -140,7 +140,7 @@ func TestRegisterContextCanceledDuringWait(t *testing.T) {
 
 	deps := registerDeps{
 		brokerURL: "http://broker:8080",
-		identity:  Identity{RunnerID: "r1", PrivateURL: "http://10.0.0.1:3000"},
+		identity:  Identity{RunnerID: "r1", PrivateHost: "10.0.0.1"},
 		httpPost: func(ctx context.Context, url string, contentType string, body io.Reader) (*http.Response, error) {
 			callCount.Add(1)
 			return &http.Response{StatusCode: http.StatusInternalServerError, Body: io.NopCloser(nil)}, nil
@@ -173,7 +173,7 @@ func TestRegisterRequestBody(t *testing.T) {
 
 	deps := registerDeps{
 		brokerURL: ts.URL,
-		identity:  Identity{RunnerID: "test-runner", PrivateURL: "http://10.0.0.5:3000"},
+		identity:  Identity{RunnerID: "test-runner", PrivateHost: "10.0.0.5"},
 		httpPost:  defaultHTTPPost,
 		afterFunc: immediateAfter,
 		logf:      func(f string, a ...any) {},
@@ -193,8 +193,8 @@ func TestRegisterRequestBody(t *testing.T) {
 	if req.RunnerID != "test-runner" {
 		t.Errorf("runnerId = %q, want %q", req.RunnerID, "test-runner")
 	}
-	if req.PrivateURL != "http://10.0.0.5:3000" {
-		t.Errorf("privateUrl = %q, want %q", req.PrivateURL, "http://10.0.0.5:3000")
+	if req.PrivateHost != "10.0.0.5" {
+		t.Errorf("privateHost = %q, want %q", req.PrivateHost, "10.0.0.5")
 	}
 }
 

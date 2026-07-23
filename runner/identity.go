@@ -10,7 +10,7 @@ import (
 	"net/http"
 )
 
-// stackName values for privateURL resolution. There is intentionally no
+// stackName values for privateHost resolution. There is intentionally no
 // default: an unset or unrecognized STACK_NAME must fail startup rather than
 // silently pick a resolution strategy.
 const (
@@ -25,8 +25,9 @@ const (
 type Identity struct {
 	// RunnerID is the unique identifier for this runner.
 	RunnerID string
-	// PrivateURL is the URL that the broker uses to reach this runner.
-	PrivateURL string
+	// PrivateHost is the hostname (without port) that the broker uses to reach this runner.
+	// port は broker と nginx がそれぞれ持つ用途別 port (RUNNER_API_PORT / RUNNER_APP_PORT) から貼る。
+	PrivateHost string
 }
 
 // identityDeps holds injectable dependencies for identity resolution.
@@ -36,7 +37,6 @@ type identityDeps struct {
 	httpGet        func(ctx context.Context, url string) ([]byte, error)
 	interfaceAddrs func() ([]net.Addr, error)
 	randRead       func([]byte) (int, error)
-	port           string
 }
 
 // ecsNetwork represents a single network attachment in ECS container metadata.
@@ -56,11 +56,11 @@ func resolveIdentity(ctx context.Context, deps identityDeps) (Identity, error) {
 	if err != nil {
 		return Identity{}, err
 	}
-	privateURL, err := resolvePrivateURL(ctx, deps)
+	privateHost, err := resolvePrivateHost(ctx, deps)
 	if err != nil {
 		return Identity{}, err
 	}
-	return Identity{RunnerID: runnerID, PrivateURL: privateURL}, nil
+	return Identity{RunnerID: runnerID, PrivateHost: privateHost}, nil
 }
 
 func generateRunnerID(randRead func([]byte) (int, error)) (string, error) {
@@ -78,21 +78,21 @@ func generateRunnerID(randRead func([]byte) (int, error)) (string, error) {
 	return hex.EncodeToString(buf[:]), nil
 }
 
-func resolvePrivateURL(ctx context.Context, deps identityDeps) (string, error) {
+func resolvePrivateHost(ctx context.Context, deps identityDeps) (string, error) {
 	stackName := deps.getenv("STACK_NAME")
 	switch stackName {
 	case stackAPNortheast1, stackAPNortheast3:
-		return privateURLFromECS(ctx, deps)
+		return privateHostFromECS(ctx, deps)
 	case stackAsiaNortheast1, stackAsiaNortheast2:
-		return privateURLFromPodIP(deps)
+		return privateHostFromPodIP(deps)
 	case stackLocal:
-		return privateURLFromHostname(deps)
+		return privateHostFromHostname(deps)
 	default:
 		return "", fmt.Errorf("unsupported STACK_NAME: %q", stackName)
 	}
 }
 
-func privateURLFromECS(ctx context.Context, deps identityDeps) (string, error) {
+func privateHostFromECS(ctx context.Context, deps identityDeps) (string, error) {
 	ecsURI := deps.getenv("ECS_CONTAINER_METADATA_URI_V4")
 	if ecsURI == "" {
 		return "", fmt.Errorf("missing required environment variable: ECS_CONTAINER_METADATA_URI_V4")
@@ -108,13 +108,13 @@ func privateURLFromECS(ctx context.Context, deps identityDeps) (string, error) {
 	if len(container.Networks) == 0 || len(container.Networks[0].IPv4Addresses) == 0 {
 		return "", fmt.Errorf("no IPv4 address in ECS container metadata")
 	}
-	return "http://" + container.Networks[0].IPv4Addresses[0] + ":" + deps.port, nil
+	return container.Networks[0].IPv4Addresses[0], nil
 }
 
-// privateURLFromPodIP resolves the runner's own address on GKE, where there is
+// privateHostFromPodIP resolves the runner's own address on GKE, where there is
 // no metadata endpoint analogous to ECS: the Pod's IP is only observable from
 // inside the container via its network interfaces.
-func privateURLFromPodIP(deps identityDeps) (string, error) {
+func privateHostFromPodIP(deps identityDeps) (string, error) {
 	addrs, err := deps.interfaceAddrs()
 	if err != nil {
 		return "", fmt.Errorf("get interface addresses: %w", err)
@@ -125,18 +125,18 @@ func privateURLFromPodIP(deps identityDeps) (string, error) {
 			continue
 		}
 		if ip4 := ipNet.IP.To4(); ip4 != nil {
-			return "http://" + ip4.String() + ":" + deps.port, nil
+			return ip4.String(), nil
 		}
 	}
 	return "", fmt.Errorf("no non-loopback IPv4 address found")
 }
 
-func privateURLFromHostname(deps identityDeps) (string, error) {
+func privateHostFromHostname(deps identityDeps) (string, error) {
 	host, err := deps.hostname()
 	if err != nil {
 		return "", fmt.Errorf("get hostname: %w", err)
 	}
-	return "http://" + host + ":" + deps.port, nil
+	return host, nil
 }
 
 // defaultHTTPGet performs an HTTP GET request and returns the response body.

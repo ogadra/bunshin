@@ -117,10 +117,13 @@ wait_rollout() {
 deploy_front() {
     local system_json="${1:?}"
     local bucket
+    local domain
     bucket="$(read_system_field "${system_json}" .static_bucket)"
+    domain="$(read_system_field "${system_json}" .domain_name)"
 
     echo "[front] building via pnpm"
-    pnpm --dir "${ROOT_DIR}/front" build
+    VITE_PERL_ORIGIN_TEMPLATE="https://{hex}.{stack}.${domain}/" \
+        pnpm --dir "${ROOT_DIR}/front" build
 
     echo "[front] syncing to gs://${bucket}/"
     gcloud storage rsync -r \

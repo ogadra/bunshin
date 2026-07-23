@@ -75,6 +75,26 @@ describe("createPerlEditor", () => {
     expect(input.spellcheck).toBe(false);
     expect(input.wrap).toBe("off");
   });
+
+  test("returns a handle exposing the current value", () => {
+    const container = document.createElement("div");
+    const handle = createPerlEditor(container, "my $x;");
+    expect(handle.value).toBe("my $x;");
+    const input = container.querySelector("textarea.editor-input") as HTMLTextAreaElement;
+    type(input, "print 1;");
+    expect(handle.value).toBe("print 1;");
+  });
+
+  test("onChange listeners fire on input events", () => {
+    const container = document.createElement("div");
+    const handle = createPerlEditor(container, "");
+    const seen: string[] = [];
+    handle.onChange((code) => seen.push(code));
+    const input = container.querySelector("textarea.editor-input") as HTMLTextAreaElement;
+    type(input, "foo");
+    type(input, "foobar");
+    expect(seen).toEqual(["foo", "foobar"]);
+  });
 });
 
 describe("Tab handling", () => {

@@ -5,11 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -26,6 +30,19 @@ type Shell interface {
 const shellIDCookie = "shell_id"
 
 const clientAddressHeader = "X-Bunshin-Client-Address"
+
+// handlerUpdateClass is the audit-log class recorded for PUT /api/app/handler
+// so handler edits show up alongside /api/execute in the log stream.
+const handlerUpdateClass = "handler-update"
+
+// handlerAppFilePath is the perl demo handler that server.pl re-loads per
+// request. Kept as a var so tests can point it at a temp file.
+var handlerAppFilePath = "/app/DaiKichijoji.pm"
+
+// handlerAppMaxSize caps PUT /api/app/handler body length; the demo handler is
+// a page or two of Perl, so 1 MiB is well above any legitimate edit. Kept as
+// a var so tests can lower it without allocating megabyte bodies.
+var handlerAppMaxSize int64 = 1 << 20
 
 // errMissingShellCookie is the error message returned when the shell_id cookie is absent.
 const errMissingShellCookie = "missing shell_id cookie"
@@ -62,7 +79,71 @@ func newHandler(sm *ShellManager) *gin.Engine {
 	r.POST("/api/shell", handleCreateShell(sm))
 	r.DELETE("/api/shell", handleDeleteShell(sm))
 	r.POST("/api/execute", handleExecute(sm))
+	r.GET("/api/app/handler", handleGetAppHandler())
+	r.PUT("/api/app/handler", handlePutAppHandler())
 	return r
+}
+
+// handleGetAppHandler returns a gin handler for GET /api/app/handler.
+// It reads /app/DaiKichijoji.pm and returns the current contents so the front
+// editor can seed itself without shell state.
+func handleGetAppHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		data, err := os.ReadFile(handlerAppFilePath)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, errorResponse{Error: err.Error()})
+			return
+		}
+		c.Data(http.StatusOK, "text/plain; charset=utf-8", data)
+	}
+}
+
+// handlePutAppHandler returns a gin handler for PUT /api/app/handler.
+// It writes the raw request body to /app/DaiKichijoji.pm atomically (tmp + rename)
+// so server.pl never `do`'s a half-written file. Requires
+// X-Bunshin-Client-Address and records an audit-log line, same shape as
+// /api/execute.
+func handlePutAppHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		remote, err := clientAddress(c)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
+			return
+		}
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, handlerAppMaxSize)
+		body, err := io.ReadAll(c.Request.Body)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, errorResponse{Error: fmt.Sprintf("read body: %s", err.Error())})
+			return
+		}
+		if err := writeHandlerAtomically(handlerAppFilePath, body); err != nil {
+			c.JSON(http.StatusInternalServerError, errorResponse{Error: err.Error()})
+			return
+		}
+		auditLog("", remote, handlerUpdateClass, string(body), nil, nil)
+		c.Status(http.StatusNoContent)
+	}
+}
+
+// writeHandlerTmpCounterは並行PUTがそれぞれ独立したtmp pathを持てるよう単調に増える。
+// PIDと組み合わせて十分ユニークになり、fixed nameによるwriter競合を防ぐ。
+var writeHandlerTmpCounter atomic.Uint64
+
+// writeHandlerAtomically writes data to a unique sibling temp file and renames
+// it over the target so a concurrent server.pl re-load never observes a partial
+// file. Rename is atomic on POSIX. gin per-request goroutinesは同じhandlerを並行実行するため
+// 固定tmp名では書き込みが交錯して破損したファイルがrenameで確定される。counter + PIDでunique化する。
+func writeHandlerAtomically(path string, data []byte) error {
+	dir, base := filepath.Dir(path), filepath.Base(path)
+	tmp := filepath.Join(dir, fmt.Sprintf(".%s.%d.%d.tmp", base, os.Getpid(), writeHandlerTmpCounter.Add(1)))
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // handleHealth returns a gin handler for GET /health.

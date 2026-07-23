@@ -9,29 +9,34 @@ import (
 
 // Checker は runner が到達可能かどうかをテストするインターフェース。
 type Checker interface {
-	// Check は指定された privateURL の runner にヘルスチェックを実行する。
+	// Check は指定された privateHost の runner に GET http://<privateHost>:<port>/health を実行する。
 	// runner が正常であれば nil を、到達不能または異常であればエラーを返す。
-	Check(ctx context.Context, privateURL string) error
+	Check(ctx context.Context, privateHost string) error
 }
 
 // HTTPChecker は HTTP ベースの Checker 実装。
 type HTTPChecker struct {
 	client *http.Client
+	port   int
 }
 
-// NewHTTPChecker は指定された http.Client を使用する HTTPChecker を生成する。
-// client が nil の場合は http.DefaultClient を使用する。
-func NewHTTPChecker(client *http.Client) *HTTPChecker {
+// NewHTTPChecker は runner の管理 API port を固定した HTTPChecker を返す。
+// client が nil、port が範囲外の場合は panic する (fallback を作らず起動時に落とす)。
+func NewHTTPChecker(client *http.Client, port int) *HTTPChecker {
 	if client == nil {
-		client = http.DefaultClient
+		panic("healthcheck: client must not be nil")
 	}
-	return &HTTPChecker{client: client}
+	if port <= 0 || port > 65535 {
+		panic("healthcheck: port must be between 1 and 65535")
+	}
+	return &HTTPChecker{client: client, port: port}
 }
 
-// Check は GET {privateURL}/health を実行し、200 であれば nil を返す。
+// Check は GET http://{privateHost}:{port}/health を実行し、200 であれば nil を返す。
 // 200 以外のステータスコードまたはリクエストエラーの場合はエラーを返す。
-func (c *HTTPChecker) Check(ctx context.Context, privateURL string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, privateURL+"/health", nil)
+func (c *HTTPChecker) Check(ctx context.Context, privateHost string) error {
+	url := fmt.Sprintf("http://%s:%d/health", privateHost, c.port)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return fmt.Errorf("healthcheck: create request: %w", err)
 	}

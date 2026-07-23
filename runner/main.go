@@ -30,13 +30,13 @@ var registerFn = register
 // It defaults to deregister and can be replaced in tests.
 var deregisterFn = deregister
 
-// main reads the RUNNER_PORT environment variable and starts the HTTP server
+// main reads the RUNNER_API_PORT environment variable and starts the HTTP server
 // with graceful shutdown on SIGTERM/SIGINT.
 // The empty host binds to all interfaces, which is intentional for use inside a Docker container.
 func main() {
-	port := os.Getenv("RUNNER_PORT")
+	port := os.Getenv("RUNNER_API_PORT")
 	if port == "" {
-		fatalf("missing required environment variable: RUNNER_PORT")
+		fatalf("missing required environment variable: RUNNER_API_PORT")
 		return
 	}
 	if err := start(":" + port); err != nil {
@@ -48,12 +48,17 @@ func main() {
 // registers with the broker, and runs the server until a termination
 // signal is received. It returns any error from the server lifecycle.
 func start(addr string) error {
+	// listenより先にSIGTERMの受け口を作る。
+	// listen直後から接続は受け付くため、後からNotifyすると
+	// その隙間に届いたSIGTERMが既定動作でプロセスを落とす。
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
+	defer signal.Stop(sig)
+
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
-
-	_, port, _ := net.SplitHostPort(ln.Addr().String())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -63,23 +68,18 @@ func start(addr string) error {
 		httpGet:        defaultHTTPGet,
 		interfaceAddrs: net.InterfaceAddrs,
 		randRead:       rand.Read,
-		port:           port,
 	})
 	if err != nil {
 		ln.Close()
 		return fmt.Errorf("resolve identity: %w", err)
 	}
-	log.Printf("runner identity: id=%s url=%s", identity.RunnerID, identity.PrivateURL)
+	log.Printf("runner identity: id=%s host=%s", identity.RunnerID, identity.PrivateHost)
 
 	brokerURL := os.Getenv("BROKER_URL")
 	if brokerURL == "" {
 		ln.Close()
 		return fmt.Errorf("missing required environment variable: BROKER_URL")
 	}
-
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
-	defer signal.Stop(sig)
 
 	regCtx, regCancel := context.WithCancel(context.Background())
 	go func() {
@@ -108,6 +108,7 @@ func start(addr string) error {
 		shutdownTimeout: 10 * time.Second,
 		brokerURL:       brokerURL,
 		runnerID:        identity.RunnerID,
+		superviseFn:     runAppSupervisorFn,
 	}
 
 	return run(ln, sig, cfg)
@@ -121,6 +122,7 @@ type serverConfig struct {
 	handler         http.Handler
 	brokerURL       string
 	runnerID        string
+	superviseFn     func(ctx context.Context)
 }
 
 // run starts the HTTP server on the given listener and blocks until a signal is
@@ -131,6 +133,14 @@ func run(ln net.Listener, sigCh <-chan os.Signal, cfg serverConfig) error {
 	if h == nil {
 		h = newHandler(cfg.sm)
 	}
+
+	supCtx, supCancel := context.WithCancel(context.Background())
+	supDone := make(chan struct{})
+	go func() {
+		defer close(supDone)
+		cfg.superviseFn(supCtx)
+	}()
+
 	srv := &http.Server{
 		Handler: h,
 	}
@@ -145,11 +155,15 @@ func run(ln net.Listener, sigCh <-chan os.Signal, cfg serverConfig) error {
 
 	select {
 	case err := <-serveErr:
+		supCancel()
+		<-supDone
 		return fmt.Errorf("serve: %w", err)
 	case <-sigCh:
 	}
 
 	log.Println("shutting down...")
+
+	supCancel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.shutdownTimeout)
 	defer cancel()
@@ -177,6 +191,8 @@ func run(ln net.Listener, sigCh <-chan os.Signal, cfg serverConfig) error {
 			firstErr = err
 		}
 	}
+
+	<-supDone
 
 	log.Println("shutdown complete")
 	return firstErr

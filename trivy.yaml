@@ -7,7 +7,6 @@ scan:
   skip-dirs:
     - .claude
     - .worktrees
-    - /nix/store/*-source
 severity:
   - LOW
   - MEDIUM

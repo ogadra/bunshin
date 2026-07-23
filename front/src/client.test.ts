@@ -1,5 +1,13 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { createShell, deleteShell, execute, SseEventType } from "./client";
+import {
+  createShell,
+  deleteShell,
+  execute,
+  getAppHandler,
+  putAppHandler,
+  SseEventType,
+} from "./client";
+import { AppError } from "./errors/AppError";
 import { SessionReassignedError } from "./errors/SessionReassignedError";
 
 const mockFetch = vi.fn();
@@ -32,6 +40,129 @@ const sseBody = (lines: string[]) => {
     },
   };
 };
+
+const HEX = "0123456789abcdef0123456789abcdef";
+
+const STACK = "ap-northeast-1";
+
+const jsonErrorResponse = (status: number, body: unknown) => ({
+  ok: false,
+  status,
+  headers: responseHeaders(),
+  clone() {
+    return { json: async () => body };
+  },
+});
+
+describe("getAppHandler", () => {
+  test("GET /api/app/handler returns text body, session hex and stack name", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: responseHeaders({ "X-Session-Hex": HEX, "X-Stack-Name": STACK }),
+      text: async () => "sub { };",
+    });
+    await expect(getAppHandler()).resolves.toEqual({
+      source: "sub { };",
+      sessionHex: HEX,
+      stackName: STACK,
+    });
+    expect(mockFetch).toHaveBeenCalledWith("/api/app/handler");
+  });
+
+  test("throws internal error when X-Session-Hex is absent", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: responseHeaders({ "X-Stack-Name": STACK }),
+      text: async () => "sub { };",
+    });
+    const err = await getAppHandler().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).key).toBe("errorInternal");
+  });
+
+  test("throws internal error when X-Stack-Name is absent", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: responseHeaders({ "X-Session-Hex": HEX }),
+      text: async () => "sub { };",
+    });
+    const err = await getAppHandler().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).key).toBe("errorInternal");
+  });
+
+  test("throws AppError classified from response body on non-ok", async () => {
+    mockFetch.mockResolvedValue(
+      jsonErrorResponse(503, { code: "NO_IDLE_RUNNER", message: "no idle runner available" }),
+    );
+    const err = await getAppHandler().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).key).toBe("errorNoIdleRunner");
+  });
+});
+
+describe("putAppHandler", () => {
+  test("PUT /api/app/handler returns hex, stack, and reassigned=false by default", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: responseHeaders({ "X-Session-Hex": HEX, "X-Stack-Name": STACK }),
+    });
+    await expect(putAppHandler("sub { return (200, 'text/plain', 'ok'); };")).resolves.toEqual({
+      sessionHex: HEX,
+      stackName: STACK,
+      reassigned: false,
+    });
+    expect(mockFetch).toHaveBeenCalledWith("/api/app/handler", {
+      method: "PUT",
+      body: "sub { return (200, 'text/plain', 'ok'); };",
+    });
+  });
+
+  test("reassigned is true when X-Session-Reassigned header is 'true'", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: responseHeaders({
+        "X-Session-Hex": HEX,
+        "X-Stack-Name": STACK,
+        "X-Session-Reassigned": "true",
+      }),
+    });
+    await expect(putAppHandler("body")).resolves.toEqual({
+      sessionHex: HEX,
+      stackName: STACK,
+      reassigned: true,
+    });
+  });
+
+  test("throws internal error when X-Session-Hex is absent", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: responseHeaders({ "X-Stack-Name": STACK }),
+    });
+    const err = await putAppHandler("body").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).key).toBe("errorInternal");
+  });
+
+  test("throws internal error when X-Stack-Name is absent", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: responseHeaders({ "X-Session-Hex": HEX }),
+    });
+    const err = await putAppHandler("body").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).key).toBe("errorInternal");
+  });
+
+  test("throws AppError classified from runner body-too-large error", async () => {
+    mockFetch.mockResolvedValue(
+      jsonErrorResponse(400, { error: "read body: http: request body too large" }),
+    );
+    const err = await putAppHandler("body").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).key).toBe("errorEditTooLarge");
+  });
+});
 
 describe("createShell", () => {
   test("POST /api/shell", async () => {

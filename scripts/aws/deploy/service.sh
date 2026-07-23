@@ -75,7 +75,7 @@ main() {
     local pid
     local exit_code=0
 
-    : "${TF_BACKEND_BUCKET:?TF_BACKEND_BUCKET must be set (tfstate bucket for ecspresso plugin)}"
+    : "${TFSTATE_PATH:?TFSTATE_PATH must be set (local tfstate for ecspresso plugin)}"
 
     platform="$(platform_for_service "${service}")"
     image_tag="$(git -C "${ROOT_DIR}" rev-parse HEAD)"
@@ -98,7 +98,6 @@ main() {
     wait_for_replication "${service}" "${env_name}" "${digest}"
 
     export AWS_PROFILE="${env_name}"
-    export ENV="${env_name}"
     export IMAGE_TAG="${image_tag}"
 
     for region_dir in "${REGION_DIRS[@]}"; do

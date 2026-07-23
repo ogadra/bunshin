@@ -16,8 +16,8 @@ func TestRunner_IsIdle(t *testing.T) {
 			want:   true,
 		},
 		{
-			name:   "idle when state is idle with privateURL",
-			runner: Runner{RunnerID: "r1", State: StateIdle, PrivateURL: "http://10.0.0.1:8080"},
+			name:   "idle when state is idle with privateHost",
+			runner: Runner{RunnerID: "r1", State: StateIdle, PrivateHost: "10.0.0.1"},
 			want:   true,
 		},
 		{
@@ -54,8 +54,8 @@ func TestRunner_IsBusy(t *testing.T) {
 			want:   true,
 		},
 		{
-			name:   "busy when state is busy with privateURL",
-			runner: Runner{RunnerID: "r1", State: StateBusy, CurrentSessionID: "sess-1", PrivateURL: "http://10.0.0.1:8080"},
+			name:   "busy when state is busy with privateHost",
+			runner: Runner{RunnerID: "r1", State: StateBusy, CurrentSessionID: "sess-1", PrivateHost: "10.0.0.1"},
 			want:   true,
 		},
 		{

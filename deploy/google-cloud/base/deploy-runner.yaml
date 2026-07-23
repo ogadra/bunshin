@@ -37,6 +37,8 @@ spec:
           ports:
             - containerPort: 3000
               protocol: TCP
+            - containerPort: 5000
+              protocol: TCP
           livenessProbe:
             httpGet:
               path: /health
@@ -56,7 +58,7 @@ spec:
           env:
             - name: STACK_NAME
               value: ${REGION}
-            - name: RUNNER_PORT
+            - name: RUNNER_API_PORT
               value: "3000"
             - name: BROKER_URL
               value: http://broker.bunshin.svc.cluster.local:8080
@@ -64,8 +66,8 @@ spec:
             requests:
               cpu: 250m
               memory: 512Mi
-              ephemeral-storage: 1Gi
+              ephemeral-storage: 256Mi
             limits:
               cpu: 250m
               memory: 512Mi
-              ephemeral-storage: 1Gi
+              ephemeral-storage: 256Mi
