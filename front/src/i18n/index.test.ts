@@ -48,6 +48,10 @@ describe("translate", () => {
     stackInfoRegion: { en: "Region", ja: "リージョン" },
     stackInfoCloud: { en: "Cloud", ja: "クラウド" },
     stackInfoClose: { en: "Close", ja: "閉じる" },
+    stackRegionTokyo: { en: "Tokyo", ja: "東京" },
+    stackRegionOsaka: { en: "Osaka", ja: "大阪" },
+    stackCloudGoogleCloud: { en: "Google Cloud", ja: "Google Cloud" },
+    stackCloudAws: { en: "AWS", ja: "AWS" },
   };
 
   test.each(Object.values(MessageKey))("%s resolves to expected en/ja", (key) => {

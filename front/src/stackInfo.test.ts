@@ -1,12 +1,12 @@
 import { describe, test, expect } from "vitest";
-import { classifyStack } from "./stackInfo";
+import { Cloud, Region, classifyStack } from "./stackInfo";
 
 describe("classifyStack", () => {
   test.each([
-    ["asia-northeast1", "東京", "Google Cloud"],
-    ["asia-northeast2", "大阪", "Google Cloud"],
-    ["ap-northeast-1", "東京", "AWS"],
-    ["ap-northeast-3", "大阪", "AWS"],
+    ["asia-northeast1", Region.TOKYO, Cloud.GOOGLE_CLOUD],
+    ["asia-northeast2", Region.OSAKA, Cloud.GOOGLE_CLOUD],
+    ["ap-northeast-1", Region.TOKYO, Cloud.AWS],
+    ["ap-northeast-3", Region.OSAKA, Cloud.AWS],
   ])("%s → %s / %s", (stack, region, cloud) => {
     expect(classifyStack(stack)).toEqual({ region, cloud });
   });

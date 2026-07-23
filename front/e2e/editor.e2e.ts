@@ -131,7 +131,7 @@ test.describe("pane overlays", () => {
     await page.locator("#stack-info-button").click();
     await expect(dialog).toBeVisible();
     const values = dialog.locator("dd");
-    await expect(values).toHaveText(["東京", "Google Cloud"]);
+    await expect(values).toHaveText(["Tokyo", "Google Cloud"]);
   });
 
   test("clicking the backdrop outside the modal dismisses it", async ({ page }) => {
@@ -144,12 +144,15 @@ test.describe("pane overlays", () => {
     await expect(dialog).toBeHidden();
   });
 
-  test("the stack info button label follows the browser locale", async ({ browser }) => {
+  test("the stack info button and modal follow the browser locale", async ({ browser }) => {
     const context = await browser.newContext({ locale: "ja" });
     const page = await context.newPage();
     await stubHandlerApi(page, samplePerl);
     await page.goto("/");
     await expect(page.locator("#stack-info-button")).toHaveText("接続先");
+    await page.locator("#stack-info-button").click();
+    const values = page.locator("#stack-info-dialog dd");
+    await expect(values).toHaveText(["東京", "Google Cloud"]);
     await context.close();
   });
 });

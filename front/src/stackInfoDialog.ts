@@ -1,8 +1,18 @@
-import { translate, type Lang } from "./i18n";
-import { classifyStack, type StackInfo } from "./stackInfo";
+import { translate, type Lang, type MessageKey } from "./i18n";
+import { Cloud, Region, classifyStack, type StackInfo } from "./stackInfo";
 
 export type StackInfoDialogController = {
   setStack: (stack: string) => void;
+};
+
+const REGION_KEY: Record<Region, MessageKey> = {
+  [Region.TOKYO]: "stackRegionTokyo",
+  [Region.OSAKA]: "stackRegionOsaka",
+};
+
+const CLOUD_KEY: Record<Cloud, MessageKey> = {
+  [Cloud.GOOGLE_CLOUD]: "stackCloudGoogleCloud",
+  [Cloud.AWS]: "stackCloudAws",
 };
 
 export const createStackInfoDialog = (
@@ -44,8 +54,8 @@ export const createStackInfoDialog = (
   closeButton.textContent = translate(lang, "stackInfoClose");
 
   const refresh = (): void => {
-    regionValue.textContent = currentStack.region;
-    cloudValue.textContent = currentStack.cloud;
+    regionValue.textContent = translate(lang, REGION_KEY[currentStack.region]);
+    cloudValue.textContent = translate(lang, CLOUD_KEY[currentStack.cloud]);
   };
 
   button.textContent = translate(lang, "stackInfoOpen");
