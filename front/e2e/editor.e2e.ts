@@ -129,7 +129,7 @@ test("Tab right after Escape keeps its forward focus move", async ({ page }) => 
   expect(await input(page).inputValue()).toBe(before);
 });
 
-// 縦横どちらもスクロールさせるため、長い行を大量に流し込む
+// 折り返しモードでも縦スクロールと折り返し高さの検証ができるだけの分量を流し込む
 const OVERFLOWING_CODE = `my $line = "${"x".repeat(500)}";\n`.repeat(200);
 
 test("the highlight layer tracks textarea scrolling", async ({ page }) => {
@@ -137,14 +137,10 @@ test("the highlight layer tracks textarea scrolling", async ({ page }) => {
     el.value = code;
     el.dispatchEvent(new Event("input"));
     el.scrollTop = 60;
-    el.scrollLeft = 15;
     el.dispatchEvent(new Event("scroll"));
   }, OVERFLOWING_CODE);
-  const scroll = await highlight(page).evaluate((el) => ({
-    top: el.scrollTop,
-    left: el.scrollLeft,
-  }));
-  expect(scroll).toEqual({ top: 60, left: 15 });
+  const scrollTop = await highlight(page).evaluate((el) => el.scrollTop);
+  expect(scrollTop).toBe(60);
 });
 
 test("both layers lay out lines at the same vertical extent", async ({ page }) => {
@@ -152,9 +148,8 @@ test("both layers lay out lines at the same vertical extent", async ({ page }) =
     el.value = code;
     el.dispatchEvent(new Event("input"));
   }, OVERFLOWING_CODE);
-  // 行の縦位置がずれるとキャレットと色付き文字が合わなくなるため scrollHeight の一致を確認する。
-  // scrollWidth は textarea の縦スクロールバー分だけ差が出るが、各グリフの x 座標は
-  // padding と scrollLeft から決まりレイヤ間で一致するので、横のずれには繋がらない
+  // 折り返し位置がずれるとキャレットと色付き文字が合わなくなるため、scrollHeight の一致で
+  // 両レイヤが同じ幅で折り返していることを確認する
   const height = await page.evaluate(() => {
     const ta = document.querySelector<HTMLTextAreaElement>(".editor-input");
     const hl = document.querySelector<HTMLElement>(".editor-highlight");

@@ -44,7 +44,6 @@ export const createPerlEditor = (container: HTMLElement, initialCode: string): P
 
   const syncScroll = (): void => {
     highlight.scrollTop = input.scrollTop;
-    highlight.scrollLeft = input.scrollLeft;
   };
 
   const insertIndent = (): void => {
