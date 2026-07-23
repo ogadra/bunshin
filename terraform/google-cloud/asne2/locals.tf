@@ -21,8 +21,5 @@ locals {
   internal_lb_name     = "bunshin-internal-${local.region}"
   internal_lb_hostname = "${local.region}.${var.domain_name}"
 
-  # Autopilot が Pod を 3-zone spread で配置する前提で、NEG lookup zone を固定する
-  # data.google_compute_zones は未使用 zone まで返し NEG 未生成 zone で plan が落ちるため使わない
-  nginx_neg_name  = "bunshin-nginx-${local.region}"
-  nginx_neg_zones = ["${local.region}-a", "${local.region}-b", "${local.region}-c"]
+  nginx_neg_name = "bunshin-nginx-${local.region}"
 }
