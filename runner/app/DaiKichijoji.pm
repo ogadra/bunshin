@@ -26,7 +26,7 @@ sub counter {
 }
 
 sub content {
-    return qr{吉祥寺|大井町};
+    return qr{(...)(?=.*\1)}s;
 }
 
 1;
