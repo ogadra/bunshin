@@ -5,9 +5,9 @@ locals {
   }
 }
 
-resource "aws_route53_resolver_rule" "apne1_to_gcp" {
+resource "aws_route53_resolver_rule" "apne1_to_google_cloud" {
   provider = aws.apne1
-  for_each = local.gcp_regions
+  for_each = local.google_cloud_regions
 
   name                 = "bunshin-apne1-to-${each.key}"
   domain_name          = "${each.value}.${var.domain_name}"
@@ -15,7 +15,7 @@ resource "aws_route53_resolver_rule" "apne1_to_gcp" {
   resolver_endpoint_id = data.aws_route53_resolver_endpoint.apne1_outbound.id
 
   dynamic "target_ip" {
-    for_each = data.google_compute_addresses.gcp_inbound_forwarder[each.key].addresses
+    for_each = data.google_compute_addresses.google_cloud_inbound_forwarder[each.key].addresses
     content {
       ip = target_ip.value.address
     }
@@ -26,9 +26,9 @@ resource "aws_route53_resolver_rule" "apne1_to_gcp" {
   })
 }
 
-resource "aws_route53_resolver_rule" "apne3_to_gcp" {
+resource "aws_route53_resolver_rule" "apne3_to_google_cloud" {
   provider = aws.apne3
-  for_each = local.gcp_regions
+  for_each = local.google_cloud_regions
 
   name                 = "bunshin-apne3-to-${each.key}"
   domain_name          = "${each.value}.${var.domain_name}"
@@ -36,7 +36,7 @@ resource "aws_route53_resolver_rule" "apne3_to_gcp" {
   resolver_endpoint_id = data.aws_route53_resolver_endpoint.apne3_outbound.id
 
   dynamic "target_ip" {
-    for_each = data.google_compute_addresses.gcp_inbound_forwarder[each.key].addresses
+    for_each = data.google_compute_addresses.google_cloud_inbound_forwarder[each.key].addresses
     content {
       ip = target_ip.value.address
     }
@@ -50,20 +50,20 @@ resource "aws_route53_resolver_rule" "apne3_to_gcp" {
 resource "aws_route53_resolver_rule_association" "apne1" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   provider = aws.apne1
-  for_each = local.gcp_regions
+  for_each = local.google_cloud_regions
 
   name             = "bunshin-apne1-to-${each.key}"
-  resolver_rule_id = aws_route53_resolver_rule.apne1_to_gcp[each.key].id
+  resolver_rule_id = aws_route53_resolver_rule.apne1_to_google_cloud[each.key].id
   vpc_id           = data.aws_vpc.apne1.id
 }
 
 resource "aws_route53_resolver_rule_association" "apne3" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   provider = aws.apne3
-  for_each = local.gcp_regions
+  for_each = local.google_cloud_regions
 
   name             = "bunshin-apne3-to-${each.key}"
-  resolver_rule_id = aws_route53_resolver_rule.apne3_to_gcp[each.key].id
+  resolver_rule_id = aws_route53_resolver_rule.apne3_to_google_cloud[each.key].id
   vpc_id           = data.aws_vpc.apne3.id
 }
 
@@ -79,10 +79,10 @@ resource "google_dns_managed_zone" "aws_forwarding" {
 
   private_visibility_config {
     networks {
-      network_url = data.google_compute_network.gcp["asne1"].id
+      network_url = data.google_compute_network.google_cloud["asne1"].id
     }
     networks {
-      network_url = data.google_compute_network.gcp["asne2"].id
+      network_url = data.google_compute_network.google_cloud["asne2"].id
     }
   }
 
@@ -100,10 +100,10 @@ resource "google_dns_managed_zone" "aws_forwarding" {
 # 到達元 (AWS OUTBOUND ENI IP) がこの phase で確定するためここで作る
 resource "google_compute_firewall" "aws_outbound_dns" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
-  for_each = local.gcp_regions
+  for_each = local.google_cloud_regions
 
   name      = "bunshin-${each.key}-allow-aws-outbound-dns"
-  network   = data.google_compute_network.gcp[each.key].name
+  network   = data.google_compute_network.google_cloud[each.key].name
   direction = "INGRESS"
   priority  = 1000
 

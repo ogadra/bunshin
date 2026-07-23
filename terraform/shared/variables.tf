@@ -9,7 +9,7 @@ variable "aws_profile" {
 }
 
 variable "domain_name" {
-  description = "Apex domain composing the AWS/GCP region internal zones (<region>.<domain>) resolved across HA VPN"
+  description = "Apex domain composing the AWS / Google Cloud region internal zones (<region>.<domain>) resolved across HA VPN"
   type        = string
 
   validation {
