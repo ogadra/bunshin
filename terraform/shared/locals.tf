@@ -16,7 +16,7 @@ locals {
     apne3 = "ap-northeast-3"
   }
 
-  # AWS 側の return path 用に GCP Cloud Router で custom advertise する
+  # terraform/aws/locals.tf の gcp_dns_forwarder_source_range と一致させる
   gcp_dns_forwarder_source_range = "35.199.192.0/19"
 
   # AWS VGW default ASN (apne1/apne3 の aws_vpn_gateway は amazon_side_asn 未指定のため 64512)

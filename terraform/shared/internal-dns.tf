@@ -1,3 +1,10 @@
+locals {
+  aws_inbound_endpoint_ips = {
+    apne1 = data.aws_route53_resolver_endpoint.apne1_inbound.ip_addresses
+    apne3 = data.aws_route53_resolver_endpoint.apne3_inbound.ip_addresses
+  }
+}
+
 resource "aws_route53_resolver_rule" "apne1_to_gcp" {
   provider = aws.apne1
   for_each = local.gcp_regions
@@ -62,13 +69,13 @@ resource "aws_route53_resolver_rule_association" "apne3" {
 
 # forwarding_path=private で RFC1918 宛でも public path に fallback させず HA VPN 経由に固定する
 resource "google_dns_managed_zone" "aws_forwarding" {
-  # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   for_each = local.aws_regions
 
   name        = "bunshin-forward-${each.key}"
   dns_name    = "${each.value}.${var.domain_name}."
   description = "Forward AWS ${each.key} internal zone via HA VPN"
   visibility  = "private"
+  labels      = local.common_labels
 
   private_visibility_config {
     networks {
@@ -81,11 +88,7 @@ resource "google_dns_managed_zone" "aws_forwarding" {
 
   forwarding_config {
     dynamic "target_name_servers" {
-      for_each = each.key == "apne1" ? (
-        data.aws_route53_resolver_endpoint.apne1_inbound.ip_addresses
-        ) : (
-        data.aws_route53_resolver_endpoint.apne3_inbound.ip_addresses
-      )
+      for_each = local.aws_inbound_endpoint_ips[each.key]
       content {
         ipv4_address    = target_name_servers.value
         forwarding_path = "private"
