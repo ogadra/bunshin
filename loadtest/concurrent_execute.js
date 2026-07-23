@@ -25,49 +25,34 @@ export const options = {
   },
 };
 
+function executeCommand(cookie, command) {
+  const res = http.post(
+    `${BASE_URL}/api/execute`,
+    JSON.stringify({ command }),
+    {
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: cookie,
+      },
+      timeout: "30s",
+    },
+  );
+  check(res, {
+    [`POST /api/execute (${command}) returns 200`]: (r) => r.status === 200,
+    [`${command} response contains complete event`]: (r) =>
+      r.body.includes('"type":"complete"') ||
+      r.body.includes('"type": "complete"'),
+    [`${command} response contains exitCode 0`]: (r) =>
+      r.body.includes('"exitCode":0') || r.body.includes('"exitCode": 0'),
+  });
+}
+
 export default function () {
   const cookies = createSession();
   const cookie = cookieHeader(cookies);
 
-  const lsRes = http.post(
-    `${BASE_URL}/api/execute`,
-    JSON.stringify({ command: "ls" }),
-    {
-      headers: {
-        "Content-Type": "application/json",
-        Cookie: cookie,
-      },
-      timeout: "30s",
-    },
-  );
-  check(lsRes, {
-    "POST /api/execute (ls) returns 200": (r) => r.status === 200,
-    "ls response contains complete event": (r) =>
-      r.body.includes('"type":"complete"') ||
-      r.body.includes('"type": "complete"'),
-    "ls response contains exitCode 0": (r) =>
-      r.body.includes('"exitCode":0') || r.body.includes('"exitCode": 0'),
-  });
-
-  const echoRes = http.post(
-    `${BASE_URL}/api/execute`,
-    JSON.stringify({ command: "echo hello" }),
-    {
-      headers: {
-        "Content-Type": "application/json",
-        Cookie: cookie,
-      },
-      timeout: "30s",
-    },
-  );
-  check(echoRes, {
-    "POST /api/execute (echo) returns 200": (r) => r.status === 200,
-    "echo response contains complete event": (r) =>
-      r.body.includes('"type":"complete"') ||
-      r.body.includes('"type": "complete"'),
-    "echo response contains exitCode 0": (r) =>
-      r.body.includes('"exitCode":0') || r.body.includes('"exitCode": 0'),
-  });
+  executeCommand(cookie, "ls");
+  executeCommand(cookie, "echo hello");
 
   deleteShell(cookies);
 }

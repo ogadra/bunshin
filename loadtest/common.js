@@ -21,7 +21,7 @@ export function getCookie(res, name) {
   if (cookies && cookies[name] && cookies[name].length > 0) {
     return cookies[name][0].value;
   }
-  return "";
+  throw new Error(`cookie ${name} is missing`);
 }
 
 export function createSession() {
@@ -33,10 +33,6 @@ export function createSession() {
   });
   const sessionId = getCookie(res, "session_id");
   const shellId = getCookie(res, "shell_id");
-  check(null, {
-    "session_id cookie present": () => sessionId !== "",
-    "shell_id cookie present": () => shellId !== "",
-  });
   return { sessionId, shellId };
 }
 

@@ -36,8 +36,6 @@ export default function () {
     overflowSessionsCreated.add(1);
     const sessionId = getCookie(res, "session_id");
     const shellId = getCookie(res, "shell_id");
-    if (sessionId && shellId) {
-      console.log(`CLEANUP:${sessionId}:${shellId}`);
-    }
+    console.log(`CLEANUP:${sessionId}:${shellId}`);
   }
 }
