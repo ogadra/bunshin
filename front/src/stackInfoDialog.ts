@@ -25,7 +25,7 @@ export const createStackInfoDialog = (
 
   const t = document.createElement("template");
   t.innerHTML = `
-    <h2 data-role="title" class="stack-info-title"></h2>
+    <h2 data-role="title" id="stack-info-title" class="stack-info-title"></h2>
     <dl class="stack-info-list">
       <dt data-role="region-label"></dt><dd data-role="region-value"></dd>
       <dt data-role="cloud-label"></dt><dd data-role="cloud-value"></dd>
@@ -35,6 +35,7 @@ export const createStackInfoDialog = (
     </form>
   `;
   dialog.replaceChildren(t.content.cloneNode(true));
+  dialog.setAttribute("aria-labelledby", "stack-info-title");
 
   const pick = <T extends Element>(role: string): T => {
     const el = dialog.querySelector<T>(`[data-role="${role}"]`);

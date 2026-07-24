@@ -144,4 +144,26 @@ test.describe("save status indicator", () => {
     await expect(banner(page)).toHaveText("Previous execution environment was not found");
     await expect(indicator(page)).toHaveAttribute("data-status", "saved");
   });
+
+  test("still shows session-lost banner even when the reassigned stack name is unknown", async ({
+    page,
+  }) => {
+    await stubHandlerApi(page, async (route) => {
+      await route.fulfill({
+        status: 204,
+        headers: {
+          "X-Session-Hex": E2E_SESSION_HEX,
+          "X-Stack-Name": "unknown-stack",
+          "X-Session-Reassigned": "true",
+        },
+      });
+    });
+
+    await page.goto("/");
+    await page.locator(".editor-highlight span").first().waitFor();
+
+    await typeAppend(page, "\n# trigger reassign to unknown");
+
+    await expect(banner(page)).toHaveText("Previous execution environment was not found");
+  });
 });

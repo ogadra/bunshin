@@ -134,6 +134,17 @@ test.describe("pane overlays", () => {
     await expect(values).toHaveText(["Tokyo", "Google Cloud"]);
   });
 
+  test("the modal exposes its title as the accessible name via aria-labelledby", async ({
+    page,
+  }) => {
+    await page.locator("#stack-info-button").click();
+    const dialog = page.locator("#stack-info-dialog");
+    const labelledBy = await dialog.getAttribute("aria-labelledby");
+    if (labelledBy === null) throw new Error("dialog has no aria-labelledby");
+    const title = page.locator(`#${labelledBy}`);
+    await expect(title).toHaveText("Connected stack");
+  });
+
   test("clicking the backdrop outside the modal dismisses it", async ({ page }) => {
     const dialog = page.locator("#stack-info-dialog");
     await page.locator("#stack-info-button").click();

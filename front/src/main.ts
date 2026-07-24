@@ -94,8 +94,13 @@ const boot = async (): Promise<void> => {
     putHandler: async (next: string): Promise<void> => {
       const res = await putAppHandler(next);
       preview.setSession(res.sessionHex, res.stackName);
-      stackInfo.setStack(res.stackName);
       if (res.reassigned) showBanner("errorSessionLost");
+      try {
+        stackInfo.setStack(res.stackName);
+      } catch (err: unknown) {
+        // reassigned banner を errorInternal で上書きさせないため handlerSync まで throw を運ばない
+        console.error(err);
+      }
     },
     reloadPreview: preview.reload,
     debounceMs: DEBOUNCE_MS,
