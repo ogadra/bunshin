@@ -12,7 +12,8 @@ import (
 type StackConfig struct {
 	// Self は自 stack 名。session ID の prefix にも使われる。
 	Self string
-	// Fallbacks は BUNSHIN_STACKS から Self を除いた転送候補。空の場合は fallback を発行しない。
+	// Fallbacks は BUNSHIN_STACKS を Self 起点で周回し Self を除いた転送候補。
+	// 先頭が一発目の fallback 先。空の場合は fallback を発行しない。
 	Fallbacks []string
 }
 
