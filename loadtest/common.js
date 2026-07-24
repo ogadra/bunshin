@@ -9,8 +9,8 @@ if (!BASE_URL) {
 if (!__ENV.RUNNER_COUNT) {
   throw new Error("RUNNER_COUNT environment variable is required");
 }
-export const RUNNER_COUNT = parseInt(__ENV.RUNNER_COUNT, 10);
-if (Number.isNaN(RUNNER_COUNT) || RUNNER_COUNT <= 0) {
+export const RUNNER_COUNT = Number(__ENV.RUNNER_COUNT);
+if (!Number.isSafeInteger(RUNNER_COUNT) || RUNNER_COUNT <= 0) {
   throw new Error(
     `RUNNER_COUNT must be a positive integer, got: ${__ENV.RUNNER_COUNT}`,
   );
