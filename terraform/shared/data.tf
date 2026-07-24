@@ -117,6 +117,7 @@ data "google_compute_address" "google_cloud_internal_lb" {
 
 data "aws_security_group" "apne1_nginx" {
   provider = aws.apne1
+  vpc_id   = data.aws_vpc.apne1.id
 
   filter {
     name   = "tag:Name"
@@ -126,6 +127,7 @@ data "aws_security_group" "apne1_nginx" {
 
 data "aws_security_group" "apne3_nginx" {
   provider = aws.apne3
+  vpc_id   = data.aws_vpc.apne3.id
 
   filter {
     name   = "tag:Name"
@@ -135,6 +137,7 @@ data "aws_security_group" "apne3_nginx" {
 
 data "aws_security_group" "apne1_internal_alb" {
   provider = aws.apne1
+  vpc_id   = data.aws_vpc.apne1.id
 
   filter {
     name   = "tag:Name"
@@ -144,6 +147,7 @@ data "aws_security_group" "apne1_internal_alb" {
 
 data "aws_security_group" "apne3_internal_alb" {
   provider = aws.apne3
+  vpc_id   = data.aws_vpc.apne3.id
 
   filter {
     name   = "tag:Name"
