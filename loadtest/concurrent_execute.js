@@ -40,10 +40,9 @@ function executeCommand(cookie, command) {
   check(res, {
     [`POST /api/execute (${command}) returns 200`]: (r) => r.status === 200,
     [`${command} response contains complete event`]: (r) =>
-      r.body.includes('"type":"complete"') ||
-      r.body.includes('"type": "complete"'),
+      /"type"\s*:\s*"complete"/.test(r.body),
     [`${command} response contains exitCode 0`]: (r) =>
-      r.body.includes('"exitCode":0') || r.body.includes('"exitCode": 0'),
+      /"exitCode"\s*:\s*0\b/.test(r.body),
   });
 }
 
