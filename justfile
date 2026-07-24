@@ -11,7 +11,7 @@ _validate-tf-backend-bucket:
     @if [ -z "${TF_BACKEND_BUCKET:-}" ]; then echo "Error: TF_BACKEND_BUCKET must be set (see .env.example)"; exit 1; fi
 
 _validate-loadtest-scenario scenario:
-    @if [ "{{scenario}}" != "session_uniqueness" ] && [ "{{scenario}}" != "concurrent_execute" ] && [ "{{scenario}}" != "capacity_overflow" ]; then echo "Error: scenario must be 'session_uniqueness', 'concurrent_execute' or 'capacity_overflow', got '{{scenario}}'"; exit 1; fi
+    @if [ "{{scenario}}" != "session_uniqueness" ] && [ "{{scenario}}" != "concurrent_execute" ] && [ "{{scenario}}" != "capacity_overflow" ] && [ "{{scenario}}" != "concurrent_edit" ] && [ "{{scenario}}" != "perl_hot_reload" ]; then echo "Error: scenario must be 'session_uniqueness', 'concurrent_execute', 'capacity_overflow', 'concurrent_edit' or 'perl_hot_reload', got '{{scenario}}'"; exit 1; fi
 
 # Initialize terraform with environment-specific S3 backend config
 # Requires TF_BACKEND_BUCKET to be set (e.g. via direnv / .env)
@@ -35,10 +35,14 @@ destroy vendor env: (_validate-vendor vendor) (_validate-env env)
     scripts/{{vendor}}/destroy.sh {{env}}
 
 # Run a k6 load test scenario against the specified base URL
-# scenario must be one of: session_uniqueness, concurrent_execute, capacity_overflow
-loadtest base_url runner_count scenario: (_validate-loadtest-scenario scenario)
-    k6 run -e BASE_URL={{base_url}} -e RUNNER_COUNT={{runner_count}} loadtest/{{scenario}}.js 2>&1 | tee k6-output.log
+# preview_template is required by perl_hot_reload (e.g. 'https://{hex}.{stack}.example.com')
+loadtest base_url runner_count scenario preview_template="": (_validate-loadtest-scenario scenario)
+    k6 run -e BASE_URL={{base_url}} -e RUNNER_COUNT={{runner_count}} -e PREVIEW_ORIGIN_TEMPLATE='{{preview_template}}' loadtest/{{scenario}}.js 2>&1 | tee k6-output.log
 
 # Check for session_id duplicates in k6 output (empty output means no duplicates)
 loadtest-check-dup:
     grep 'SESSION_ID:' k6-output.log | sed 's/.*SESSION_ID://' | sort | uniq -d
+
+# Count sessions per stack from k6 output (session_id is prefixed with the owning stack)
+loadtest-stack-count:
+    grep 'SESSION_ID:' k6-output.log | sed 's/.*SESSION_ID://; s/_.*//' | sort | uniq -c
