@@ -2,6 +2,7 @@ import http from "k6/http";
 import { check, sleep } from "k6";
 import { Trend } from "k6/metrics";
 import {
+  RUNNER_COUNT,
   createSession,
   deleteShell,
   getHandler,
@@ -33,8 +34,8 @@ export const options = {
   scenarios: {
     perl_hot_reload: {
       executor: "shared-iterations",
-      vus: 5,
-      iterations: 20,
+      vus: RUNNER_COUNT,
+      iterations: RUNNER_COUNT,
       maxDuration: "300s",
       gracefulStop: "10s",
     },
