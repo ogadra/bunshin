@@ -13,15 +13,16 @@ namespace=$(jq -r '.namespace' <<<"${query}")
 service=$(jq -r '.service' <<<"${query}")
 neg_name=$(jq -r '.neg_name' <<<"${query}")
 
+KUBECONFIG="$(mktemp)"
+export KUBECONFIG
+trap 'rm -f "${KUBECONFIG}"' EXIT
+
 emit_empty() {
     jq -n '{zones: ""}'
     exit 0
 }
 
-if ! connect_gateway_fetch_credentials "${project}" "${membership}" 2>/dev/null; then
-    echo "nginx_neg_zones: fleet membership ${membership} unreachable; emitting empty zone list" >&2
-    emit_empty
-fi
+connect_gateway_fetch_credentials "${project}" "${membership}"
 
 context="$(connect_gateway_context "${project}" "${membership}")"
 

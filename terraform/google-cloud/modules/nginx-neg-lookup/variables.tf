@@ -13,8 +13,8 @@ variable "membership_id" {
   type        = string
 
   validation {
-    condition     = can(regex("^[a-z][a-z0-9-]{0,62}[a-z0-9]$", var.membership_id))
-    error_message = "membership_id must be a valid fleet membership ID (lowercase alphanumerics / hyphens)."
+    condition     = can(regex("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", var.membership_id)) && length(var.membership_id) <= 63
+    error_message = "membership_id must be a valid fleet membership ID (RFC 1123 label, 1-63 lowercase alphanumerics / hyphens)."
   }
 }
 
