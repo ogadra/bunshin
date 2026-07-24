@@ -175,6 +175,14 @@ deploy_region() {
 
     apply_manifests "${context}"
 
+    if [[ "${K8S_ONLY:-}" == "1" ]]; then
+        for service in "${container_services[@]}"; do
+            echo "[${membership}] rollout restart ${service}"
+            kubectl --context="${context}" -n "${NAMESPACE}" \
+                rollout restart "deployment/${service}"
+        done
+    fi
+
     for service in "${container_services[@]}"; do
         wait_rollout "${context}" "${service}"
     done
@@ -183,6 +191,7 @@ deploy_region() {
 main() {
     local env_name="${1:?Usage: scripts/google-cloud/deploy.sh <env> [service...]}"
     shift
+    local k8s_only="${K8S_ONLY:-}"
     local project
     local image_tag
     local deployer_email
@@ -202,22 +211,28 @@ main() {
     local status
     local failed=0
 
-    if [[ $# -eq 0 ]]; then
-        target_services=("${SERVICES[@]}")
+    if [[ "${k8s_only}" == "1" ]]; then
+        [[ $# -eq 0 ]] || die "K8S_ONLY mode does not accept service arguments"
+        container_services=(broker nginx runner)
+        include_front=false
     else
-        for service in "$@"; do
-            contains_service "${service}" || die "service must be one of: ${SERVICES[*]} (got '${service}')"
-            target_services+=("${service}")
+        if [[ $# -eq 0 ]]; then
+            target_services=("${SERVICES[@]}")
+        else
+            for service in "$@"; do
+                contains_service "${service}" || die "service must be one of: ${SERVICES[*]} (got '${service}')"
+                target_services+=("${service}")
+            done
+        fi
+
+        for service in "${target_services[@]}"; do
+            if is_static_only "${service}"; then
+                include_front=true
+            else
+                container_services+=("${service}")
+            fi
         done
     fi
-
-    for service in "${target_services[@]}"; do
-        if is_static_only "${service}"; then
-            include_front=true
-        else
-            container_services+=("${service}")
-        fi
-    done
 
     # shellcheck disable=SC1091
     source "${ROOT_DIR}/deploy/google-cloud/environments/${env_name}.env"
@@ -240,10 +255,12 @@ main() {
         return 0
     fi
 
-    configure_docker_auth
-    for service in "${container_services[@]}"; do
-        build_and_push "${service}" "${project}" "${image_tag}"
-    done
+    if [[ "${k8s_only}" != "1" ]]; then
+        configure_docker_auth
+        for service in "${container_services[@]}"; do
+            build_and_push "${service}" "${project}" "${image_tag}"
+        done
+    fi
 
     export IMAGE_TAG="${image_tag}"
     export INTERNAL_DOMAIN="${domain_name}"
