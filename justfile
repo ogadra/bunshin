@@ -32,10 +32,15 @@ destroy vendor env: (_validate-vendor vendor) (_validate-env env)
     scripts/{{vendor}}/destroy.sh {{env}}
 
 # Run a k6 load test scenario against the specified base URL
-# scenario must match a file under loadtest/ (e.g. session_uniqueness / concurrent_execute / capacity_overflow)
-loadtest base_url runner_count scenario:
-    k6 run -e BASE_URL={{base_url}} -e RUNNER_COUNT={{runner_count}} loadtest/{{scenario}}.js 2>&1 | tee k6-output.log
+# scenario must match a file under loadtest/ (e.g. session_uniqueness / concurrent_execute / capacity_overflow / concurrent_edit / perl_hot_reload)
+# preview_template is required by perl_hot_reload (e.g. 'https://{hex}.{stack}.example.com')
+loadtest base_url runner_count scenario preview_template="":
+    k6 run -e BASE_URL={{base_url}} -e RUNNER_COUNT={{runner_count}} -e PREVIEW_ORIGIN_TEMPLATE='{{preview_template}}' loadtest/{{scenario}}.js 2>&1 | tee k6-output.log
 
 # Check for session_id duplicates in k6 output (empty output means no duplicates)
 loadtest-check-dup:
     grep 'SESSION_ID:' k6-output.log | sed 's/.*SESSION_ID://' | sort | uniq -d
+
+# Count sessions per stack from k6 output (session_id is prefixed with the owning stack)
+loadtest-stack-count:
+    grep 'SESSION_ID:' k6-output.log | sed 's/.*SESSION_ID://; s/_.*//' | sort | uniq -c
