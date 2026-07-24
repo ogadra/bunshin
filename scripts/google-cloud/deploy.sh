@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
+# shellcheck source=lib/connect_gateway.sh
+source "${SCRIPT_DIR}/lib/connect_gateway.sh"
+
 SERVICES=(broker nginx runner front)
 REGIONS=(asia-northeast1 asia-northeast2)
 REGION_DIRS=(asne1 asne2)
@@ -132,6 +136,50 @@ deploy_front() {
         "gs://${bucket}/"
 }
 
+deploy_region() {
+    local project="${1:?}"
+    local region_dir="${2:?}"
+    local membership="${3:?}"
+    local system_json="${4:?}"
+    shift 4
+    local -a container_services=("$@")
+    local context
+    local nginx_resolver
+    local svc
+    local svc_upper
+    local replicas_var
+    local replicas_value
+    local service
+
+    context="$(connect_gateway_context "${project}" "${membership}")"
+
+    nginx_resolver="$(read_system_field "${system_json}" ".nginx_resolver.${region_dir}")"
+    export NGINX_RESOLVER="${nginx_resolver}"
+
+    set -a
+    # shellcheck disable=SC1090
+    source "${MANIFESTS_DIR}/regions/${region_dir}/region.env"
+    set +a
+
+    for svc in broker nginx runner; do
+        svc_upper="${svc^^}"
+        replicas_var="${svc_upper}_REPLICAS_${region_dir^^}"
+        replicas_value="${!replicas_var:-}"
+        [[ -n "${replicas_value}" ]] \
+            || die "${replicas_var} must be set (e.g. ${replicas_var}=1)"
+        export "${svc_upper}_REPLICAS=${replicas_value}"
+    done
+
+    echo "[${membership}] fetching Connect Gateway credentials"
+    connect_gateway_fetch_credentials "${project}" "${membership}"
+
+    apply_manifests "${context}"
+
+    for service in "${container_services[@]}"; do
+        wait_rollout "${context}" "${service}"
+    done
+}
+
 main() {
     local env_name="${1:?Usage: scripts/google-cloud/deploy.sh <env> [service...]}"
     shift
@@ -148,12 +196,11 @@ main() {
     local i
     local region_dir
     local membership
-    local context
-    local nginx_resolver
-    local svc
-    local svc_upper
-    local replicas_var
-    local replicas_value
+    local -a pids=()
+    local -a labels=()
+    local pid
+    local status
+    local failed=0
 
     if [[ $# -eq 0 ]]; then
         target_services=("${SERVICES[@]}")
@@ -214,35 +261,32 @@ main() {
     for i in "${!REGION_DIRS[@]}"; do
         region_dir="${REGION_DIRS[$i]}"
         membership="${MEMBERSHIPS[$i]}"
-        context="connectgateway_${project}_global_${membership}"
-
-        nginx_resolver="$(read_system_field "${system_json}" ".nginx_resolver.${region_dir}")"
-        export NGINX_RESOLVER="${nginx_resolver}"
-
-        set -a
-        # shellcheck disable=SC1090
-        source "${MANIFESTS_DIR}/regions/${region_dir}/region.env"
-        set +a
-
-        for svc in broker nginx runner; do
-            svc_upper="${svc^^}"
-            replicas_var="${svc_upper}_REPLICAS_${region_dir^^}"
-            replicas_value="${!replicas_var:-}"
-            [[ -n "${replicas_value}" ]] \
-                || die "${replicas_var} must be set (e.g. ${replicas_var}=1)"
-            export "${svc_upper}_REPLICAS=${replicas_value}"
-        done
-
-        echo "[${membership}] fetching Connect Gateway credentials"
-        gcloud container fleet memberships get-credentials "${membership}" \
-            --project="${project}" >/dev/null
-
-        apply_manifests "${context}"
-
-        for service in "${container_services[@]}"; do
-            wait_rollout "${context}" "${service}"
-        done
+        (
+            KUBECONFIG="$(mktemp)"
+            export KUBECONFIG
+            trap 'rm -f "${KUBECONFIG}"' EXIT
+            deploy_region \
+                "${project}" \
+                "${region_dir}" \
+                "${membership}" \
+                "${system_json}" \
+                "${container_services[@]}"
+        ) &
+        pids+=("$!")
+        labels+=("${membership}")
     done
+
+    for i in "${!pids[@]}"; do
+        pid="${pids[$i]}"
+        status=0
+        wait "${pid}" || status=$?
+        if [[ "${status}" -ne 0 ]]; then
+            echo "[${labels[$i]}] deploy failed (exit ${status})" >&2
+            failed=1
+        fi
+    done
+
+    [[ "${failed}" -eq 0 ]] || die "one or more regional deploys failed"
 }
 
 main "$@"

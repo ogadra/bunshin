@@ -84,7 +84,7 @@ resource "google_container_cluster" "bunshin" {
 }
 
 resource "google_gke_hub_membership" "bunshin" {
-  membership_id = "bunshin-asne2"
+  membership_id = local.gke_membership_id
 
   endpoint {
     gke_cluster {
