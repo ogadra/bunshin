@@ -2,7 +2,7 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 import { samplePerl } from "../src/samplePerl";
 
 const E2E_SESSION_HEX = "0123456789abcdef0123456789abcdef";
-const E2E_STACK_NAME = "preview";
+const E2E_STACK_NAME = "asia-northeast1";
 
 const apiHeaders = {
   "X-Session-Hex": E2E_SESSION_HEX,
@@ -36,7 +36,7 @@ async function stubHandlerApi(page: Page, put: PutHandler): Promise<void> {
     }
     await route.continue();
   });
-  await page.route("http://*.preview.test/**", async (route) => {
+  await page.route("http://*.asia-northeast1.test/**", async (route) => {
     await route.fulfill({ status: 200, body: "", contentType: "text/plain" });
   });
 }
@@ -143,5 +143,27 @@ test.describe("save status indicator", () => {
 
     await expect(banner(page)).toHaveText("Previous execution environment was not found");
     await expect(indicator(page)).toHaveAttribute("data-status", "saved");
+  });
+
+  test("still shows session-lost banner even when the reassigned stack name is unknown", async ({
+    page,
+  }) => {
+    await stubHandlerApi(page, async (route) => {
+      await route.fulfill({
+        status: 204,
+        headers: {
+          "X-Session-Hex": E2E_SESSION_HEX,
+          "X-Stack-Name": "unknown-stack",
+          "X-Session-Reassigned": "true",
+        },
+      });
+    });
+
+    await page.goto("/");
+    await page.locator(".editor-highlight span").first().waitFor();
+
+    await typeAppend(page, "\n# trigger reassign to unknown");
+
+    await expect(banner(page)).toHaveText("Previous execution environment was not found");
   });
 });

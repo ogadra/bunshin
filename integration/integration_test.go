@@ -891,7 +891,7 @@ func putHandler(t *testing.T, cookies sessionCookies, body string) {
 }
 
 func handlerModuleSource(contentBody string) string {
-	return fmt.Sprintf("package DaiKichijoji;\nuse strict;\nuse warnings;\nsub counter { return 1; }\nsub content { return qr/%s/; }\n1;\n", contentBody)
+	return fmt.Sprintf("package DaiKichijoji;\nuse strict;\nuse warnings;\nsub content { return qr/%s/; }\n1;\n", contentBody)
 }
 
 func getPerl(t *testing.T, host string) (int, string) {

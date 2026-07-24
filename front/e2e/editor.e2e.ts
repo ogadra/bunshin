@@ -8,7 +8,7 @@ const highlight = (page: Page) => page.locator(".editor-highlight");
 const E2E_SESSION_HEX = "0123456789abcdef0123456789abcdef";
 
 // brokerが/api応答に付けるX-Stack-Nameを模したテスト用のstack
-const E2E_STACK_NAME = "preview";
+const E2E_STACK_NAME = "asia-northeast1";
 
 // vite previewはSPA fallbackで/api/app/handlerにもindex.htmlを返してしまうので、
 // GETを明示的にモックしないとinitial codeがHTMLになってPerlのトークン検証が壊れる。
@@ -41,7 +41,7 @@ async function stubHandlerApi(page: Page, initialSource: string): Promise<{ puts
   });
   // preview先ドメインはpreviewサーバーからは到達不能なので、任意の200を返してDevToolsの
   // net::ERRノイズと視覚的な壊れ表示を抑える。webServer.envのVITE_PERL_ORIGIN_TEMPLATEと揃える
-  await page.route("http://*.preview.test/**", async (route) => {
+  await page.route("http://*.asia-northeast1.test/**", async (route) => {
     await route.fulfill({ status: 200, body: current, contentType: "text/plain" });
   });
   return { puts };
@@ -55,27 +55,117 @@ test.beforeEach(async ({ page }) => {
   await highlight(page).locator("span").first().waitFor();
 });
 
-test("editor and preview split the viewport vertically and the terminal UI is absent", async ({
-  page,
-}) => {
-  const geometry = await page.evaluate(() => ({
-    editorRect: document.querySelector(".editor")?.getBoundingClientRect(),
-    previewRect: document.querySelector(".preview")?.getBoundingClientRect(),
-    viewportWidth: window.innerWidth,
-    viewportHeight: window.innerHeight,
+test("no terminal UI is present", async ({ page }) => {
+  const dom = await page.evaluate(() => ({
     command: document.getElementById("command"),
     output: document.getElementById("output"),
   }));
-  const editor = geometry.editorRect;
-  const preview = geometry.previewRect;
-  if (editor === undefined || preview === undefined) throw new Error("panes are missing");
-  expect(editor.width).toBe(geometry.viewportWidth);
-  expect(preview.width).toBe(geometry.viewportWidth);
-  expect(editor.top).toBe(0);
-  expect(preview.top).toBeGreaterThan(editor.top);
-  expect(editor.height + preview.height).toBe(geometry.viewportHeight);
-  expect(geometry.command).toBeNull();
-  expect(geometry.output).toBeNull();
+  expect(dom.command).toBeNull();
+  expect(dom.output).toBeNull();
+});
+
+const paneGeometry = (page: Page) =>
+  page.evaluate(() => ({
+    editorRect: document.querySelector(".editor")?.getBoundingClientRect(),
+    previewRect: document.querySelector(".preview-pane")?.getBoundingClientRect(),
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+  }));
+
+test.describe("landscape viewport", () => {
+  test.use({ viewport: { width: 1280, height: 720 } });
+
+  test("splits the panes side-by-side", async ({ page }) => {
+    const g = await paneGeometry(page);
+    if (g.editorRect === undefined || g.previewRect === undefined)
+      throw new Error("panes are missing");
+    expect(g.editorRect.height).toBe(g.viewportHeight);
+    expect(g.previewRect.height).toBe(g.viewportHeight);
+    expect(g.editorRect.left).toBe(0);
+    expect(g.previewRect.left).toBeGreaterThan(g.editorRect.left);
+    expect(g.editorRect.width + g.previewRect.width).toBe(g.viewportWidth);
+  });
+});
+
+test.describe("portrait viewport", () => {
+  test.use({ viewport: { width: 480, height: 900 } });
+
+  test("stacks the panes vertically", async ({ page }) => {
+    const g = await paneGeometry(page);
+    if (g.editorRect === undefined || g.previewRect === undefined)
+      throw new Error("panes are missing");
+    expect(g.editorRect.width).toBe(g.viewportWidth);
+    expect(g.previewRect.width).toBe(g.viewportWidth);
+    expect(g.editorRect.top).toBe(0);
+    expect(g.previewRect.top).toBeGreaterThan(g.editorRect.top);
+    expect(g.editorRect.height + g.previewRect.height).toBe(g.viewportHeight);
+  });
+
+  test("gives the preview pane a taller share than the editor", async ({ page }) => {
+    const g = await paneGeometry(page);
+    if (g.editorRect === undefined || g.previewRect === undefined)
+      throw new Error("panes are missing");
+    expect(g.previewRect.height).toBeGreaterThan(g.editorRect.height * 1.5);
+  });
+});
+
+test.describe("pane overlays", () => {
+  test("the editor pane shows the DaiKichijoji.pm filename label", async ({ page }) => {
+    const label = page.locator(".editor-filename");
+    await expect(label).toHaveText("DaiKichijoji.pm");
+    const geometry = await page.evaluate(() => {
+      const editor = document.querySelector(".editor")?.getBoundingClientRect();
+      const label = document.querySelector(".editor-filename")?.getBoundingClientRect();
+      if (editor === undefined || label === undefined) throw new Error("label is missing");
+      return { editor, label };
+    });
+    expect(geometry.editor.right - geometry.label.right).toBeLessThan(20);
+    expect(geometry.label.top - geometry.editor.top).toBeLessThan(20);
+  });
+
+  test("clicking the stack info button opens a modal with the mapped region and cloud", async ({
+    page,
+  }) => {
+    const dialog = page.locator("#stack-info-dialog");
+    await expect(dialog).toBeHidden();
+    await page.locator("#stack-info-button").click();
+    await expect(dialog).toBeVisible();
+    const values = dialog.locator("dd");
+    await expect(values).toHaveText(["Tokyo", "Google Cloud"]);
+  });
+
+  test("the modal exposes its title as the accessible name via aria-labelledby", async ({
+    page,
+  }) => {
+    await page.locator("#stack-info-button").click();
+    const dialog = page.locator("#stack-info-dialog");
+    const labelledBy = await dialog.getAttribute("aria-labelledby");
+    if (labelledBy === null) throw new Error("dialog has no aria-labelledby");
+    const title = page.locator(`#${labelledBy}`);
+    await expect(title).toHaveText("Connected stack");
+  });
+
+  test("clicking the backdrop outside the modal dismisses it", async ({ page }) => {
+    const dialog = page.locator("#stack-info-dialog");
+    await page.locator("#stack-info-button").click();
+    await expect(dialog).toBeVisible();
+    const box = await dialog.boundingBox();
+    if (box === null) throw new Error("dialog has no bounding box");
+    await page.mouse.click(box.x - 20, box.y - 20);
+    await expect(dialog).toBeHidden();
+  });
+
+  test("the stack info button and modal follow the browser locale", async ({ browser }) => {
+    const context = await browser.newContext({ locale: "ja" });
+    const page = await context.newPage();
+    await stubHandlerApi(page, samplePerl);
+    await page.goto("/");
+    await expect(page.locator("#stack-info-button")).toHaveText("接続先");
+    await page.locator("#stack-info-button").click();
+    const values = page.locator("#stack-info-dialog dd");
+    await expect(values).toHaveText(["東京", "Google Cloud"]);
+    await context.close();
+  });
 });
 
 test("the initial sample renders every token kind", async ({ page }) => {
@@ -129,7 +219,7 @@ test("Tab right after Escape keeps its forward focus move", async ({ page }) => 
   expect(await input(page).inputValue()).toBe(before);
 });
 
-// 縦横どちらもスクロールさせるため、長い行を大量に流し込む
+// 折り返しモードでも縦スクロールと折り返し高さの検証ができるだけの分量を流し込む
 const OVERFLOWING_CODE = `my $line = "${"x".repeat(500)}";\n`.repeat(200);
 
 test("the highlight layer tracks textarea scrolling", async ({ page }) => {
@@ -137,14 +227,10 @@ test("the highlight layer tracks textarea scrolling", async ({ page }) => {
     el.value = code;
     el.dispatchEvent(new Event("input"));
     el.scrollTop = 60;
-    el.scrollLeft = 15;
     el.dispatchEvent(new Event("scroll"));
   }, OVERFLOWING_CODE);
-  const scroll = await highlight(page).evaluate((el) => ({
-    top: el.scrollTop,
-    left: el.scrollLeft,
-  }));
-  expect(scroll).toEqual({ top: 60, left: 15 });
+  const scrollTop = await highlight(page).evaluate((el) => el.scrollTop);
+  expect(scrollTop).toBe(60);
 });
 
 test("both layers lay out lines at the same vertical extent", async ({ page }) => {
@@ -152,9 +238,8 @@ test("both layers lay out lines at the same vertical extent", async ({ page }) =
     el.value = code;
     el.dispatchEvent(new Event("input"));
   }, OVERFLOWING_CODE);
-  // 行の縦位置がずれるとキャレットと色付き文字が合わなくなるため scrollHeight の一致を確認する。
-  // scrollWidth は textarea の縦スクロールバー分だけ差が出るが、各グリフの x 座標は
-  // padding と scrollLeft から決まりレイヤ間で一致するので、横のずれには繋がらない
+  // 折り返し位置がずれるとキャレットと色付き文字が合わなくなる。
+  // scrollHeight の一致で両レイヤが同じ幅で折り返していることを確認する
   const height = await page.evaluate(() => {
     const ta = document.querySelector<HTMLTextAreaElement>(".editor-input");
     const hl = document.querySelector<HTMLElement>(".editor-highlight");
@@ -162,6 +247,24 @@ test("both layers lay out lines at the same vertical extent", async ({ page }) =
     return [ta.scrollHeight, hl.scrollHeight];
   });
   expect(height[0]).toBe(height[1]);
+});
+
+test("wrap keeps both layers within their client width", async ({ page }) => {
+  await input(page).evaluate((el: HTMLTextAreaElement, code) => {
+    el.value = code;
+    el.dispatchEvent(new Event("input"));
+  }, OVERFLOWING_CODE);
+  const overflow = await page.evaluate(() => {
+    const ta = document.querySelector<HTMLTextAreaElement>(".editor-input");
+    const hl = document.querySelector<HTMLElement>(".editor-highlight");
+    if (ta === null || hl === null) throw new Error("editor layers are missing");
+    return {
+      input: ta.scrollWidth - ta.clientWidth,
+      highlight: hl.scrollWidth - hl.clientWidth,
+    };
+  });
+  expect(overflow.input).toBeLessThanOrEqual(0);
+  expect(overflow.highlight).toBeLessThanOrEqual(0);
 });
 
 test("both layers share identical geometry", async ({ page }) => {
@@ -203,7 +306,7 @@ test.describe("Perl HMR wiring", () => {
     page,
   }) => {
     const REASSIGNED_HEX = "fedcba9876543210fedcba9876543210";
-    const REASSIGNED_STACK = "reassigned-stack";
+    const REASSIGNED_STACK = "asia-northeast2";
     // beforeEachのPUT stubを、再割当てで別hex/stackが返る挙動に上書きする。
     // GETはfallthroughで元stub。
     await page.route("**/api/app/handler", async (route, req) => {

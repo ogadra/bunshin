@@ -81,12 +81,6 @@ sub highlight_map {
 }
 
 sub page {
-    my $counter_sub = DaiKichijoji->can('counter')
-        or die "DaiKichijoji::counter is not defined\n";
-    my $visits = $counter_sub->();
-    die "DaiKichijoji::counter must return a positive integer\n"
-        unless defined $visits && $visits =~ /\A\d+\z/ && $visits > 0;
-
     my $content_sub = DaiKichijoji->can('content')
         or die "DaiKichijoji::content is not defined\n";
     my $re = $content_sub->();
@@ -97,16 +91,12 @@ sub page {
     my $matches = evaluate(re => $re);
     my $judged  = judge(matches => $matches);
 
-    my $counter_html = sprintf('%07d', $visits);
     my $map_html = highlight_map(matches => $matches);
     my $re_html  = _esc($rd->{source});
     my $msg_html = _esc($judged->{message});
 
     return <<~"HTML";
         <h1>Perl正規表現クイズ!</h1>
-        <section class="counter">
-          <p>アクセス数: <strong>$counter_html</strong></p>
-        </section>
         <section class="quiz">
           <h2>問題</h2>
           <p>
