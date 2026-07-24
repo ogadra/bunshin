@@ -33,6 +33,12 @@ apply vendor env: (_validate-vendor vendor) (_validate-env env)
 deploy vendor env *service: (_validate-vendor vendor) (_validate-env env)
     scripts/{{vendor}}/deploy.sh {{env}} {{service}}
 
+# Re-apply k8s manifests and rollout-restart bunshin deployments (no image build)
+# Picks up replicas changes in deploy/google-cloud/{stacks,regions/*/region}.env and
+# resets pod state. Requires images for the current git HEAD already pushed.
+redeploy env: (_validate-env env)
+    K8S_ONLY=1 scripts/google-cloud/deploy.sh {{env}}
+
 # Destroy resources for the specified environment
 destroy vendor env: (_validate-vendor vendor) (_validate-env env)
     scripts/{{vendor}}/destroy.sh {{env}}
