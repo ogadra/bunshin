@@ -10,6 +10,9 @@ _validate-vendor vendor:
 _validate-tf-backend-bucket:
     @if [ -z "${TF_BACKEND_BUCKET:-}" ]; then echo "Error: TF_BACKEND_BUCKET must be set (see .env.example)"; exit 1; fi
 
+_validate-loadtest-scenario scenario:
+    @if [ "{{scenario}}" != "session_uniqueness" ] && [ "{{scenario}}" != "concurrent_execute" ] && [ "{{scenario}}" != "capacity_overflow" ]; then echo "Error: scenario must be 'session_uniqueness', 'concurrent_execute' or 'capacity_overflow', got '{{scenario}}'"; exit 1; fi
+
 # Initialize terraform with environment-specific S3 backend config
 # Requires TF_BACKEND_BUCKET to be set (e.g. via direnv / .env)
 init vendor env: (_validate-vendor vendor) (_validate-env env) _validate-tf-backend-bucket
@@ -32,8 +35,8 @@ destroy vendor env: (_validate-vendor vendor) (_validate-env env)
     scripts/{{vendor}}/destroy.sh {{env}}
 
 # Run a k6 load test scenario against the specified base URL
-# scenario must match a file under loadtest/ (e.g. session_uniqueness / concurrent_execute / capacity_overflow)
-loadtest base_url runner_count scenario:
+# scenario must be one of: session_uniqueness, concurrent_execute, capacity_overflow
+loadtest base_url runner_count scenario: (_validate-loadtest-scenario scenario)
     k6 run -e BASE_URL={{base_url}} -e RUNNER_COUNT={{runner_count}} loadtest/{{scenario}}.js 2>&1 | tee k6-output.log
 
 # Check for session_id duplicates in k6 output (empty output means no duplicates)
