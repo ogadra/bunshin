@@ -84,8 +84,6 @@ export function handlerModuleSource(marker) {
   return [
     "package DaiKichijoji;",
     "use strict;",
-    "use warnings;",
-    "sub counter { return 1; }",
     `sub content { return qr/${marker}/; }`,
     "1;",
     "",

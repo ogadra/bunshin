@@ -11,7 +11,7 @@ _validate-tf-backend-bucket:
     @if [ -z "${TF_BACKEND_BUCKET:-}" ]; then echo "Error: TF_BACKEND_BUCKET must be set (see .env.example)"; exit 1; fi
 
 _validate-loadtest-scenario scenario:
-    @if [ "{{scenario}}" != "session_uniqueness" ] && [ "{{scenario}}" != "concurrent_execute" ] && [ "{{scenario}}" != "capacity_overflow" ] && [ "{{scenario}}" != "concurrent_edit" ] && [ "{{scenario}}" != "perl_hot_reload" ]; then echo "Error: scenario must be 'session_uniqueness', 'concurrent_execute', 'capacity_overflow', 'concurrent_edit' or 'perl_hot_reload', got '{{scenario}}'"; exit 1; fi
+    @if [ "{{scenario}}" != "session_uniqueness" ] && [ "{{scenario}}" != "concurrent_execute" ] && [ "{{scenario}}" != "concurrent_edit" ] && [ "{{scenario}}" != "perl_hot_reload" ]; then echo "Error: scenario must be 'session_uniqueness', 'concurrent_execute', 'concurrent_edit' or 'perl_hot_reload', got '{{scenario}}'"; exit 1; fi
 
 _validate-loadtest-domain:
     @if [ -z "${LOADTEST_DOMAIN:-}" ]; then echo "Error: LOADTEST_DOMAIN must be set (see .env.example)"; exit 1; fi
