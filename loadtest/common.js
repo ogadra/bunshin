@@ -21,6 +21,7 @@ export function getCookie(res, name) {
   if (cookies && cookies[name] && cookies[name].length > 0) {
     return cookies[name][0].value;
   }
+  check(null, { [`cookie ${name} present`]: () => false });
   throw new Error(`cookie ${name} is missing`);
 }
 
