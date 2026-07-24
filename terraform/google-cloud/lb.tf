@@ -22,10 +22,10 @@ resource "google_compute_backend_service" "nginx" {
   timeout_sec           = 30
   enable_cdn            = false
 
-  # broker sessionIdはstackスコープのDynamoDB/Firestoreに保存され、他stackへの解決はrunner fallback
-  # 経路 (VPC Peering / HA VPN) を通る。CLIENT_IPで同一clientを近regionに固着させ、cross-stack転送を
-  # 減らす。AWS Global Acceleratorのclient_affinity=SOURCE_IPと対称
-  session_affinity = "CLIENT_IP"
+  # 会場内NAT配下から同一送信元IPで大量requestが来る前提のため、affinityを張らず全podに分散させる。
+  # 他stackセッションはnginx resolve.luaのbroker sub-request経由でfallbackさせる。
+  # AWS Global Acceleratorのclient_affinity (未設定=NONE) と対称
+  session_affinity = "NONE"
 
   security_policy      = google_compute_security_policy.backend.id
   edge_security_policy = google_compute_security_policy.edge.id
