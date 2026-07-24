@@ -22,5 +22,6 @@ locals {
   internal_lb_hostname = "${local.region}.${var.domain_name}"
 
   nginx_neg_name    = "bunshin-nginx-${local.region}"
+  nginx_neg_zones   = ["${local.region}-a", "${local.region}-b", "${local.region}-c"]
   gke_membership_id = "bunshin-asne2"
 }
