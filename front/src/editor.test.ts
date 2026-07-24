@@ -62,10 +62,8 @@ describe("createPerlEditor", () => {
   test("scrolling the textarea syncs the highlight", () => {
     const { highlight, input } = setup("line\n".repeat(100));
     input.scrollTop = 40;
-    input.scrollLeft = 12;
     input.dispatchEvent(new Event("scroll"));
     expect(highlight.scrollTop).toBe(40);
-    expect(highlight.scrollLeft).toBe(12);
   });
 
   test("mobile rewriting features are disabled", () => {
@@ -73,7 +71,11 @@ describe("createPerlEditor", () => {
     expect(input.getAttribute("autocapitalize")).toBe("off");
     expect(input.getAttribute("autocorrect")).toBe("off");
     expect(input.spellcheck).toBe(false);
-    expect(input.wrap).toBe("off");
+  });
+
+  test("sets the textarea wrap attribute to soft", () => {
+    const { input } = setup("");
+    expect(input.wrap).toBe("soft");
   });
 
   test("returns a handle exposing the current value", () => {

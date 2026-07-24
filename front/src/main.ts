@@ -5,6 +5,7 @@ import { classifyThrown } from "./errors/classify";
 import { SaveStatus, startHandlerSync } from "./handlerSync";
 import { detectLang, translate, type MessageKey } from "./i18n";
 import { previewUrl } from "./previewUrl";
+import { createStackInfoDialog } from "./stackInfoDialog";
 import "./style.css";
 
 const DEBOUNCE_MS = 1000;
@@ -13,6 +14,8 @@ const lang = detectLang(navigator.language);
 
 const editorEl = document.getElementById("editor") as HTMLElement;
 const iframe = document.getElementById("preview") as HTMLIFrameElement;
+const stackButton = document.getElementById("stack-info-button") as HTMLButtonElement;
+const stackDialog = document.getElementById("stack-info-dialog") as HTMLDialogElement;
 
 const bannerEl = document.createElement("div");
 bannerEl.className = "error-banner";
@@ -22,7 +25,7 @@ document.body.prepend(bannerEl);
 const indicatorEl = document.createElement("div");
 indicatorEl.className = "status-indicator";
 indicatorEl.hidden = true;
-// 縦分割でiframe側が白背景のため、暗いeditor pane内に配置する
+// iframeは白背景でindicatorが読めないので、body直下ではなく暗いeditor pane内に配置する
 editorEl.append(indicatorEl);
 
 const showBanner = (key: MessageKey): void => {
@@ -82,6 +85,7 @@ const boot = async (): Promise<void> => {
   const { source, sessionHex, stackName } = await getAppHandler();
   const editor = createPerlEditor(editorEl, source);
   const preview = createPreviewController(iframe, template, sessionHex, stackName);
+  const stackInfo = createStackInfoDialog(stackButton, stackDialog, lang, stackName);
   preview.reload();
 
   startHandlerSync({
@@ -91,6 +95,12 @@ const boot = async (): Promise<void> => {
       const res = await putAppHandler(next);
       preview.setSession(res.sessionHex, res.stackName);
       if (res.reassigned) showBanner("errorSessionLost");
+      try {
+        stackInfo.setStack(res.stackName);
+      } catch (err: unknown) {
+        // reassigned banner を errorInternal で上書きさせないため handlerSync まで throw を運ばない
+        console.error(err);
+      }
     },
     reloadPreview: preview.reload,
     debounceMs: DEBOUNCE_MS,
