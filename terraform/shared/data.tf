@@ -107,3 +107,50 @@ data "google_compute_addresses" "google_cloud_inbound_forwarder" {
   region = each.value
   filter = "purpose = DNS_RESOLVER"
 }
+
+data "google_compute_address" "google_cloud_internal_lb" {
+  for_each = local.google_cloud_regions
+
+  name   = "bunshin-internal-${each.value}"
+  region = each.value
+}
+
+data "aws_security_group" "apne1_nginx" {
+  provider = aws.apne1
+  vpc_id   = data.aws_vpc.apne1.id
+
+  filter {
+    name   = "tag:Name"
+    values = ["bunshin-apne1-nginx"]
+  }
+}
+
+data "aws_security_group" "apne3_nginx" {
+  provider = aws.apne3
+  vpc_id   = data.aws_vpc.apne3.id
+
+  filter {
+    name   = "tag:Name"
+    values = ["bunshin-apne3-nginx"]
+  }
+}
+
+data "aws_security_group" "apne1_internal_alb" {
+  provider = aws.apne1
+  vpc_id   = data.aws_vpc.apne1.id
+
+  filter {
+    name   = "tag:Name"
+    values = ["bunshin-apne1-internal-alb"]
+  }
+}
+
+data "aws_security_group" "apne3_internal_alb" {
+  provider = aws.apne3
+  vpc_id   = data.aws_vpc.apne3.id
+
+  filter {
+    name   = "tag:Name"
+    values = ["bunshin-apne3-internal-alb"]
+  }
+}
