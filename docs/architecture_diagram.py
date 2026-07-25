@@ -205,14 +205,18 @@ def main() -> None:
         ns1 >> Edge(label="AWS 50%") >> cloudfront
         ns1 >> Edge(label="GCP 50%") >> global_lb
 
-        vpn_edge = Edge(
-            label="HA VPN mesh\n(BGP, apne1/apne3 x asne1/asne2 = 4 tunnels)",
-            style="dashed",
-            color="#888888",
-            constraint="false",
-        )
-        apne1["vpn"] >> vpn_edge >> asne1["vpn"]
-        apne3["vpn"] >> Edge(style="dashed", color="#888888", constraint="false") >> asne2["vpn"]
+        def vpn_edge(labeled: bool = False) -> Edge:
+            return Edge(
+                label="HA VPN mesh\n(BGP, apne1/apne3 x asne1/asne2 = 4 tunnels)" if labeled else "",
+                style="dashed",
+                color="#888888",
+                constraint="false",
+            )
+
+        apne1["vpn"] >> vpn_edge(labeled=True) >> asne1["vpn"]
+        apne1["vpn"] >> vpn_edge() >> asne2["vpn"]
+        apne3["vpn"] >> vpn_edge() >> asne1["vpn"]
+        apne3["vpn"] >> vpn_edge() >> asne2["vpn"]
 
 
 if __name__ == "__main__":
