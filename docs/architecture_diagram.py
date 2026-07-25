@@ -77,13 +77,14 @@ def aws_region(name: str, cidr: str, azs: str) -> dict[str, object]:
                 private_dns >> internal_alb
                 nginx >> Edge(label="proxy") >> runner
                 nginx >> Edge(label="auth_request") >> broker
-                runner >> Edge(label="register") >> broker
+                runner >> Edge(label="register", constraint="false") >> broker
                 vpce_gateway >> Edge(style="invis") >> vpce_interface
                 vpce_interface >> Edge(style="invis") >> api_alb
                 api_alb >> Edge(style="invis") >> internal_alb
                 internal_alb >> Edge(style="invis") >> nginx
 
-        broker >> ddb
+        broker >> Edge(constraint="false") >> ddb
+        static >> Edge(style="invis") >> ddb
 
     return {
         "api_alb": api_alb,
@@ -118,7 +119,7 @@ def gcp_region(name: str, project_region: str) -> dict[str, object]:
                 private_dns >> rilb
                 nginx >> Edge(label="proxy") >> runner
                 nginx >> Edge(label="auth_request") >> broker
-                runner >> Edge(label="register") >> broker
+                runner >> Edge(label="register", constraint="false") >> broker
                 runner >> Edge(label="egress") >> nat
                 nat >> Edge(style="invis") >> rilb
                 rilb >> Edge(style="invis") >> private_dns
