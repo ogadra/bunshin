@@ -207,7 +207,7 @@ subtest 'real defaults: dispatches through the real ContentRunner and DaiKichijo
     my $r = roundtrip("GET / HTTP/1.1\r\n\r\n");
     like $r, qr{^HTTP/1\.1 200 OK\r\n};
     my $heading = Encode::encode('UTF-8', '大吉祥寺.pm');
-    my $question = Encode::encode('UTF-8', 'たかし君');
+    my $question = Encode::encode('UTF-8', 'Magnolia.Kさん');
     like $r, qr{\Q$heading\E},  'the quiz page heading is served';
     like $r, qr{\Q$question\E}, 'the quiz question copy is rendered';
 };
