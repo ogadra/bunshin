@@ -5,13 +5,20 @@ from pathlib import Path
 from diagrams import Cluster, Diagram, Edge
 from diagrams.aws.compute import ECS
 from diagrams.aws.database import Dynamodb
-from diagrams.aws.network import CloudFront, ELB, Endpoint, GlobalAccelerator, Route53
+from diagrams.aws.network import (
+    CloudFront,
+    ELB,
+    Endpoint,
+    GlobalAccelerator,
+    Route53,
+    SiteToSiteVpn,
+)
 from diagrams.aws.security import WAF
 from diagrams.aws.storage import S3
 from diagrams.custom import Custom
 from diagrams.gcp.compute import KubernetesEngine
 from diagrams.gcp.database import Firestore
-from diagrams.gcp.network import CDN, DNS, LoadBalancing, Armor, NAT
+from diagrams.gcp.network import CDN, DNS, LoadBalancing, Armor, NAT, VPN
 from diagrams.gcp.storage import GCS
 from diagrams.onprem.client import Users
 
@@ -41,7 +48,7 @@ EDGE_ATTR = {
 
 HERE = Path(__file__).parent
 OUTPUT_FILE = str(HERE / "bunshin_architecture")
-NS1_ICON = str(HERE / "ns1_icon.svg")
+NS1_ICON = str(HERE / "ns1_icon.png")
 
 
 def aws_region(name: str, cidr: str, azs: str) -> dict[str, object]:
@@ -50,6 +57,8 @@ def aws_region(name: str, cidr: str, azs: str) -> dict[str, object]:
         ddb = Dynamodb("DynamoDB\nbunshin-runners")
 
         with Cluster(f"VPC {cidr}", graph_attr={**CLUSTER_FONT, "margin": "16"}):
+            vpn = SiteToSiteVpn("Site-to-Site VPN\nVGW + BGP")
+
             with Cluster(f"Private Subnets ({azs})", graph_attr={**CLUSTER_FONT, "margin": "20"}):
                 api_alb = ELB("API Ingress ALB\ninternal HTTPS")
                 internal_alb = ELB("Internal ALB\nregional HTTPS")
@@ -84,6 +93,7 @@ def aws_region(name: str, cidr: str, azs: str) -> dict[str, object]:
         "runner": runner,
         "static": static,
         "private_dns": private_dns,
+        "vpn": vpn,
     }
 
 
@@ -92,6 +102,8 @@ def gcp_region(name: str, project_region: str) -> dict[str, object]:
         firestore = Firestore(f"Firestore Native\n{project_region}")
 
         with Cluster(f"VPC bunshin-{name}", graph_attr={**CLUSTER_FONT, "margin": "16"}):
+            vpn = VPN("HA VPN Gateway\n+ Cloud Router (BGP)")
+
             with Cluster("Private Subnet (workload + proxy-only)", graph_attr={**CLUSTER_FONT, "margin": "20"}):
                 rilb = LoadBalancing("Regional Internal LB\ngke-l7-rilb")
                 private_dns = DNS(f"Cloud DNS private\n{project_region}.domain")
@@ -119,6 +131,7 @@ def gcp_region(name: str, project_region: str) -> dict[str, object]:
         "broker": broker,
         "runner": runner,
         "private_dns": private_dns,
+        "vpn": vpn,
     }
 
 
@@ -191,8 +204,14 @@ def main() -> None:
         ns1 >> Edge(label="AWS 50%") >> cloudfront
         ns1 >> Edge(label="GCP 50%") >> global_lb
 
-        apne1["nginx"] >> Edge(label="cross-cloud fallback\n(HA VPN)", style="dashed", color="#888888", constraint="false") >> asne1["rilb"]
-        asne1["nginx"] >> Edge(label="cross-cloud fallback\n(HA VPN)", style="dashed", color="#888888", constraint="false") >> apne1["internal_alb"]
+        vpn_edge = Edge(
+            label="HA VPN mesh\n(BGP, apne1/apne3 x asne1/asne2 = 4 tunnels)",
+            style="dashed",
+            color="#888888",
+            constraint="false",
+        )
+        apne1["vpn"] >> vpn_edge >> asne1["vpn"]
+        apne3["vpn"] >> Edge(style="dashed", color="#888888", constraint="false") >> asne2["vpn"]
 
 
 if __name__ == "__main__":
