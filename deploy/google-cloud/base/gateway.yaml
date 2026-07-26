@@ -15,7 +15,7 @@ spec:
       tls:
         mode: Terminate
         options:
-          networking.gke.io/cert-manager-certs: ${INTERNAL_LB_CERT_NAME}
+          networking.gke.io/cert-manager-certs: ${INTERNAL_LB_NAME}
       allowedRoutes:
         namespaces:
           from: Same

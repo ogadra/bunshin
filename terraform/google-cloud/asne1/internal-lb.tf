@@ -1,29 +1,18 @@
-# Cert Manager は managed cert の domain を in-place 更新できない。
-# name を local.internal_lb_name から意図的にずらしている。
-# これにより domain 変更を「同名衝突なしに新規作成 → 旧削除」の順で通せる。
 resource "google_certificate_manager_dns_authorization" "internal" {
-  name     = "${local.internal_lb_name}-v2"
+  name     = local.internal_lb_name
   location = local.region
   domain   = local.internal_lb_hostname
   labels   = local.common_labels
-
-  lifecycle {
-    create_before_destroy = true
-  }
 }
 
 resource "google_certificate_manager_certificate" "internal" {
-  name     = "${local.internal_lb_name}-v2"
+  name     = local.internal_lb_name
   location = local.region
   labels   = local.common_labels
 
   managed {
     domains            = [local.internal_lb_hostname]
     dns_authorizations = [google_certificate_manager_dns_authorization.internal.id]
-  }
-
-  lifecycle {
-    create_before_destroy = true
   }
 }
 
