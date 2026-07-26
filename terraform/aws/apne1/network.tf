@@ -40,17 +40,6 @@ resource "aws_internet_gateway" "apne1" {
   })
 }
 
-resource "aws_nat_gateway" "apne1" {
-  vpc_id            = aws_vpc.apne1.id
-  availability_mode = "regional"
-
-  tags = merge(local.common_tags, {
-    Name = "bunshin-apne1-nat"
-  })
-
-  depends_on = [aws_internet_gateway.apne1]
-}
-
 resource "aws_route_table" "apne1_public" {
   vpc_id = aws_vpc.apne1.id
 
@@ -75,11 +64,6 @@ resource "aws_route_table_association" "apne1_public" {
 resource "aws_route_table" "apne1_private" {
   # checkov:skip=CKV2_AWS_44:VPC peering route is limited to the peer VPC CIDR
   vpc_id = aws_vpc.apne1.id
-
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.apne1.id
-  }
 
   route {
     cidr_block                = var.peer_vpc.cidr
