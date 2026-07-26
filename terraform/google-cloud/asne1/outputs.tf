@@ -5,7 +5,7 @@ output "network_self_link" {
 
 output "nginx_neg_ids" {
   description = "IDs of nginx standalone zonal NEGs backing the Global External ALB"
-  value       = module.nginx_neg.ids
+  value       = [for _, neg in data.google_compute_network_endpoint_group.nginx : neg.id]
 }
 
 output "nginx_resolver" {

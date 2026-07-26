@@ -179,7 +179,7 @@ subtest 'required opts: subs die when a critical arg is missing' => sub {
 subtest 'page: renders question and verdict from the content answer' => sub {
     with_content(qr{(...)(?=.*\1)}s, sub {
         my $html = Quiz::page();
-        like $html, qr{たかし君}, 'question copy present';
+        like $html, qr{Magnolia.Kさん}, 'question copy present';
         like $html, qr{verdict-correct}, 'verdict class reflects status';
     });
 };

@@ -29,7 +29,7 @@ func TestSplit(t *testing.T) {
 	}
 }
 
-// TestParse は fallback 抽出と self 検出を同時に検証する。
+// TestParse は self を pivot にした周回順の fallback 抽出と self 検出を同時に検証する。
 func TestParse(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -41,7 +41,9 @@ func TestParse(t *testing.T) {
 	}{
 		{"empty input", "", "ap-northeast-1", []string{}, false},
 		{"self absent", "ap-northeast-2,ap-northeast-3", "ap-northeast-1", []string{"ap-northeast-2", "ap-northeast-3"}, false},
-		{"self present once", " ap-northeast-1 , ,ap-northeast-3,ap-northeast-2", "ap-northeast-1", []string{"ap-northeast-3", "ap-northeast-2"}, true},
+		{"self at head", " ap-northeast-1 , ,ap-northeast-3,ap-northeast-2", "ap-northeast-1", []string{"ap-northeast-3", "ap-northeast-2"}, true},
+		{"self in middle rotates", "ap-northeast-1,ap-northeast-3,asia-northeast1,asia-northeast2", "ap-northeast-3", []string{"asia-northeast1", "asia-northeast2", "ap-northeast-1"}, true},
+		{"self at tail rotates", "ap-northeast-1,ap-northeast-3,asia-northeast1,asia-northeast2", "asia-northeast2", []string{"ap-northeast-1", "ap-northeast-3", "asia-northeast1"}, true},
 		{"self present multiple times", "ap-northeast-1,ap-northeast-3,ap-northeast-1", "ap-northeast-1", []string{"ap-northeast-3"}, true},
 		{"only self", "ap-northeast-1", "ap-northeast-1", []string{}, true},
 	}
