@@ -6,7 +6,6 @@ from diagrams import Cluster, Diagram, Edge
 from diagrams.aws.compute import ECS
 from diagrams.aws.database import Dynamodb
 from diagrams.aws.network import (
-    CloudFront,
     ELB,
     Endpoint,
     GlobalAccelerator,
@@ -14,7 +13,6 @@ from diagrams.aws.network import (
     SiteToSiteVpn,
 )
 from diagrams.aws.security import WAF
-from diagrams.aws.storage import S3
 from diagrams.custom import Custom
 from diagrams.gcp.compute import KubernetesEngine
 from diagrams.gcp.database import Firestore
@@ -53,7 +51,7 @@ NS1_ICON = str(HERE / "ns1_icon.png")
 
 def aws_region(name: str, cidr: str, azs: str) -> dict[str, object]:
     with Cluster(name, graph_attr={**CLUSTER_FONT, "margin": "20"}):
-        static = S3("S3 Static Assets")
+        waf = WAF("AWS WAF\nREGIONAL ACL\napi-ingress ALB")
         ddb = Dynamodb("DynamoDB\nbunshin-runners")
 
         with Cluster(f"VPC {cidr}", graph_attr={**CLUSTER_FONT, "margin": "16"}):
@@ -72,7 +70,7 @@ def aws_region(name: str, cidr: str, azs: str) -> dict[str, object]:
                 vpce_gateway = Endpoint("Gateway VPCE\nDynamoDB")
                 vpce_interface = Endpoint("Interface VPCE\nECR / Logs")
 
-                api_alb >> nginx
+                api_alb >> Edge(label="static + /api/*") >> nginx
                 internal_alb >> nginx
                 private_dns >> internal_alb
                 nginx >> Edge(label="proxy") >> runner
@@ -82,7 +80,7 @@ def aws_region(name: str, cidr: str, azs: str) -> dict[str, object]:
                 vpce_interface >> Edge(style="invis") >> internal_alb
 
         broker >> Edge(constraint="false") >> ddb
-        static >> Edge(style="invis") >> ddb
+        waf >> Edge(style="invis") >> ddb
 
     return {
         "api_alb": api_alb,
@@ -90,7 +88,6 @@ def aws_region(name: str, cidr: str, azs: str) -> dict[str, object]:
         "nginx": nginx,
         "broker": broker,
         "runner": runner,
-        "static": static,
         "private_dns": private_dns,
         "vpn": vpn,
     }
@@ -155,19 +152,10 @@ def main() -> None:
         users >> ns1
 
         with Cluster("AWS", graph_attr={**CLUSTER_FONT, "margin": "24", "bgcolor": "#FFF7EC"}):
-            waf = WAF("AWS WAF\nCloudFront ACL")
-            cloudfront = CloudFront("CloudFront")
-            accelerator = GlobalAccelerator("Global Accelerator\napi-ingress")
-
-            waf >> cloudfront
-            cloudfront >> Edge(xlabel="PATH: /api/*") >> accelerator
+            accelerator = GlobalAccelerator("Global Accelerator\napex static IPs")
 
             apne1 = aws_region("ap-northeast-1", "10.0.0.0/16", "1a / 1c / 1d")
             apne3 = aws_region("ap-northeast-3", "10.1.0.0/16", "3a / 3b / 3c")
-
-            cloudfront >> Edge(label="PATH: / primary") >> apne1["static"]
-            cloudfront >> Edge(label="PATH: / failover") >> apne3["static"]
-            apne1["static"] >> Edge(label="S3 replication", constraint="false") >> apne3["static"]
 
             accelerator >> Edge(label="weight 128") >> apne1["api_alb"]
             accelerator >> Edge(label="weight 128") >> apne3["api_alb"]
@@ -195,9 +183,9 @@ def main() -> None:
             asne2["nginx"] >> Edge(label="fallback (VPC Peering)", style="dashed", constraint="false") >> asne1["rilb"]
             asne1["private_dns"] >> Edge(label="cross-region DNS", style="dashed", constraint="false") >> asne2["private_dns"]
 
-        route53 >> Edge(label="AWS 50%") >> cloudfront
+        route53 >> Edge(label="AWS 50%") >> accelerator
         route53 >> Edge(label="GCP 50%") >> global_lb
-        ns1 >> Edge(label="AWS 50%") >> cloudfront
+        ns1 >> Edge(label="AWS 50%") >> accelerator
         ns1 >> Edge(label="GCP 50%") >> global_lb
 
         def vpn_edge(labeled: bool = False) -> Edge:

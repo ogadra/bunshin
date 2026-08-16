@@ -14,11 +14,6 @@ variable "domain_name" {
   type        = string
 }
 
-variable "cloudfront_distribution_arn" {
-  description = "CloudFront distribution ARN allowed to read static assets"
-  type        = string
-}
-
 variable "static_replication_destination_bucket_arn" {
   description = "ARN of the secondary static asset bucket"
   type        = string
