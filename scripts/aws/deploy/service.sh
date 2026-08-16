@@ -74,21 +74,36 @@ main() {
     local pids=()
     local pid
     local exit_code=0
+    local build_context
+    local domain
+    local build_args=()
 
     : "${TFSTATE_PATH:?TFSTATE_PATH must be set (local tfstate for ecspresso plugin)}"
 
     platform="$(platform_for_service "${service}")"
     image_tag="$(git -C "${ROOT_DIR}" rev-parse HEAD)"
     short_image_tag="$(git -C "${ROOT_DIR}" rev-parse --short=7 HEAD)"
+    build_context="${ROOT_DIR}/${service}"
+
+    # nginxはfront/distを同梱するため、contextがrepository rootになる。
+    if [[ "${service}" == "nginx" ]]; then
+        domain="$(jq -r '.outputs.domain_name.value' "${TFSTATE_PATH}")"
+        [[ -n "${domain}" && "${domain}" != "null" ]] \
+            || die "failed to read domain_name from ${TFSTATE_PATH}"
+        build_context="${ROOT_DIR}"
+        build_args+=(--build-arg "VITE_PERL_ORIGIN_TEMPLATE=https://{hex}.{stack}.${domain}/")
+    fi
 
     echo "Deploying ${service} to ${env_name}"
     echo "[${service}] building image"
     docker buildx build \
         --platform "${platform}" \
+        -f "${ROOT_DIR}/${service}/Dockerfile" \
+        "${build_args[@]}" \
         -t "${registry}/bunshin/${service}:${image_tag}" \
         -t "${registry}/bunshin/${service}:${short_image_tag}" \
         --push \
-        "${ROOT_DIR}/${service}"
+        "${build_context}"
     digest="$(aws --profile "${env_name}" --region "${ECR_REGION}" ecr describe-images \
         --repository-name "bunshin/${service}" \
         --image-ids "imageTag=${image_tag}" \

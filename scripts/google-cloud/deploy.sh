@@ -79,19 +79,30 @@ build_and_push() {
     local service="${1:?}"
     local project="${2:?}"
     local image_tag="${3:?}"
+    local domain="${4:?}"
     local tags=()
     local region
+    local build_context="${ROOT_DIR}/${service}"
+    local build_args=()
 
     for region in "${REGIONS[@]}"; do
         tags+=(--tag "${region}-docker.pkg.dev/${project}/${REPOSITORY}/${service}:${image_tag}")
     done
 
+    # nginxはfront/distを同梱するため、contextがrepository rootになる。
+    if [[ "${service}" == "nginx" ]]; then
+        build_context="${ROOT_DIR}"
+        build_args+=(--build-arg "VITE_PERL_ORIGIN_TEMPLATE=https://{hex}.{stack}.${domain}/")
+    fi
+
     echo "[${service}] building linux/amd64 and pushing to ${#REGIONS[@]} region(s)"
     docker buildx build \
         --platform linux/amd64 \
+        -f "${ROOT_DIR}/${service}/Dockerfile" \
+        "${build_args[@]}" \
         "${tags[@]}" \
         --push \
-        "${ROOT_DIR}/${service}"
+        "${build_context}"
 }
 
 apply_manifests() {
@@ -258,7 +269,7 @@ main() {
     if [[ "${k8s_only}" != "1" ]]; then
         configure_docker_auth
         for service in "${container_services[@]}"; do
-            build_and_push "${service}" "${project}" "${image_tag}"
+            build_and_push "${service}" "${project}" "${image_tag}" "${domain_name}"
         done
     fi
 

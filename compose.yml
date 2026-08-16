@@ -27,7 +27,10 @@ services:
   nginx:
     platform: ${IMAGE_PLATFORM}
     build:
-      context: nginx/
+      context: .
+      dockerfile: nginx/Dockerfile
+      args:
+        VITE_PERL_ORIGIN_TEMPLATE: "http://{hex}.{stack}.${INTERNAL_DOMAIN}/"
     ports:
       - "${NGINX_PORT}:8080"
     volumes:

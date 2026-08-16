@@ -442,6 +442,38 @@ func TestAPIHealthCheck(t *testing.T) {
 	}
 }
 
+// TestStaticIndex は default_server の / が image 同梱の front を返し、
+// 未知の URI は index.html に落とさず 404 になることを検証する。
+func TestStaticIndex(t *testing.T) {
+	resp, err := httpClient.Get(nginxBase + "/")
+	if err != nil {
+		t.Fatalf("GET /: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /: want 200, got %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("GET /: read body: %v", err)
+	}
+	if !strings.Contains(string(body), "<!doctype html") && !strings.Contains(string(body), "<!DOCTYPE html") {
+		t.Fatalf("GET /: want the built index.html, got %.120q", body)
+	}
+}
+
+// TestStaticUnknownPathNotFound は静的配信が SPA fallback を持たないことを検証する。
+func TestStaticUnknownPathNotFound(t *testing.T) {
+	resp, err := httpClient.Get(nginxBase + "/no-such-path")
+	if err != nil {
+		t.Fatalf("GET /no-such-path: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("GET /no-such-path: want 404, got %d", resp.StatusCode)
+	}
+}
+
 // TestCreateShellAndExecute はセッション作成からコマンド実行までの正常系フローを検証する。
 func TestCreateShellAndExecute(t *testing.T) {
 	cookies := setupSession(t)
@@ -1099,13 +1131,18 @@ func TestPortForwardUnknownStack404(t *testing.T) {
 	}
 }
 
-func TestPortForwardInvalidHexShapeFallsToCatchAll(t *testing.T) {
+// 32 hex に見えない Host を port-forward として扱わないことを検証する。
+// 落ちる先は Host の形で変わる: server_name の regex に外れれば catch-all の静的配信、
+// nginx が照合前に小文字化して regex に乗る大文字 hex は port-forward server の session 不在 404。
+// どちらの経路でも runner へ転送してはならない。
+func TestPortForwardInvalidHexShapeDoesNotForward(t *testing.T) {
 	cases := []struct {
-		name string
-		hex  string
+		name       string
+		hex        string
+		wantStatus int
 	}{
-		{"too short", strings.Repeat("a", 31)},
-		{"uppercase", strings.Repeat("A", 32)},
+		{"too short", strings.Repeat("a", 31), http.StatusOK},
+		{"uppercase", strings.Repeat("A", 32), http.StatusNotFound},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1119,8 +1156,8 @@ func TestPortForwardInvalidHexShapeFallsToCatchAll(t *testing.T) {
 				map[string]string{"Host": portForwardHost(tc.hex, perlHmrStack)},
 			)
 			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusNotFound {
-				t.Errorf("GET pf invalid hex %q: want 404, got %d", tc.hex, resp.StatusCode)
+			if resp.StatusCode != tc.wantStatus {
+				t.Errorf("GET pf invalid hex %q: want %d, got %d", tc.hex, tc.wantStatus, resp.StatusCode)
 			}
 			if got := lastForwardedRequestOrNil(t); got != nil {
 				t.Errorf("must not forward invalid hex %q, but forward-target recorded %+v", tc.hex, got)
