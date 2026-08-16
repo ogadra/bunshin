@@ -14,16 +14,6 @@ variable "domain_name" {
   type        = string
 }
 
-variable "static_replication_destination_bucket_arn" {
-  description = "ARN of the secondary static asset bucket"
-  type        = string
-}
-
-variable "static_replication_destination_bucket_versioning_status" {
-  description = "Versioning status of the secondary static asset bucket"
-  type        = string
-}
-
 variable "peer_vpc" {
   description = "Peer VPC for cross-region routing and internal DNS resolution"
   type = object({
