@@ -127,14 +127,30 @@ function _M.relay_if_internal(from_internal, value)
     return ""
 end
 
-function _M.client_address(from_internal, bunshin_header, cloudfront_header, edge_header, remote_addr, remote_port)
+-- ALB は client が送った X-Forwarded-For の後ろに自分が観測した IP:port を足す。
+-- 先頭側は client が詐称できるので、ALB が書いた末尾だけを採用する。
+function _M.last_forwarded_for(value)
+    if value == nil then
+        return nil
+    end
+    local last = value:match("([^,%s]+)%s*$")
+    if last == nil or last == "" then
+        return nil
+    end
+    return last
+end
+
+function _M.client_address(from_internal, bunshin_header, forwarded_for, edge_header, remote_addr, remote_port)
     if from_internal and bunshin_header ~= nil and bunshin_header ~= "" then
         return bunshin_header
     end
-    -- cloudfront_header は AWS ALB / edge_header は GCP LB でしか上書き保証がない。
+    -- forwarded_for は AWS ALB / edge_header は GCP LB でしか上書き保証がない。
     -- 経路と異なる方は client 詐称可能なので必ず無視する。
-    if cloud_name == "AWS" and cloudfront_header ~= nil and cloudfront_header ~= "" then
-        return cloudfront_header
+    if cloud_name == "AWS" then
+        local forwarded = _M.last_forwarded_for(forwarded_for)
+        if forwarded ~= nil then
+            return forwarded
+        end
     end
     if cloud_name == "GOOGLE_CLOUD" and edge_header ~= nil and edge_header ~= "" then
         return edge_header

@@ -588,12 +588,12 @@ func TestForeignSessionForward(t *testing.T) {
 	resetForwardTarget(t)
 
 	headers := map[string]string{
-		"CloudFront-Viewer-Address": "203.0.113.10:45678",
-		"X-Bunshin-Client-Address":  "198.51.100.10:11111",
-		"X-Fallback-Stack":          "client-stack",
-		"X-Fallback-Remaining":      "client-remaining",
-		"X-Forwarded-For":           "198.51.100.20",
-		"X-Forwarded-Port":          "22222",
+		"X-Bunshin-Client-Address": "198.51.100.10:11111",
+		"X-Fallback-Stack":         "client-stack",
+		"X-Fallback-Remaining":     "client-remaining",
+		// 先頭はclientが詰めた詐称値、末尾がALBの追記値。
+		"X-Forwarded-For":  "198.51.100.20, 203.0.113.10:45678",
+		"X-Forwarded-Port": "22222",
 	}
 	resp := doRequestWithHeaders(
 		t,
@@ -631,9 +631,9 @@ func TestForeignSessionForwardRelaysInternalClientAddress(t *testing.T) {
 	resetForwardTarget(t)
 
 	headers := map[string]string{
-		"Host":                      "ap-northeast-1.localhost",
-		"CloudFront-Viewer-Address": "203.0.113.70:45678",
-		"X-Bunshin-Client-Address":  "198.51.100.70:11111",
+		"Host":                     "ap-northeast-1.localhost",
+		"X-Forwarded-For":          "203.0.113.70:45678",
+		"X-Bunshin-Client-Address": "198.51.100.70:11111",
 	}
 	resp := doRequestWithHeaders(
 		t,
@@ -666,7 +666,7 @@ func TestForeignSessionOwnerUnavailableRecreatesSession(t *testing.T) {
 		nginxBase+"/api/shell",
 		"",
 		"session_id=ap-northeast-3_deadbeef; shell_id=shell-x",
-		map[string]string{"CloudFront-Viewer-Address": "203.0.113.80:45678"},
+		map[string]string{"X-Forwarded-For": "203.0.113.80:45678"},
 	)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
@@ -836,10 +836,10 @@ func TestNoIdleRunnerExecuteFallbackForward(t *testing.T) {
 	fakeCookies := sessionCookies{SessionID: "nonexistent", ShellID: "nonexistent"}
 	body := `{"command":"pwd"}`
 	headers := map[string]string{
-		"CloudFront-Viewer-Address": "203.0.113.30:45678",
-		"X-Bunshin-Client-Address":  "198.51.100.30:11111",
-		"X-Forwarded-For":           "198.51.100.40",
-		"X-Forwarded-Port":          "22222",
+		"X-Bunshin-Client-Address": "198.51.100.30:11111",
+		// 先頭はclientが詰めた詐称値、末尾がALBの追記値。
+		"X-Forwarded-For":  "198.51.100.40, 203.0.113.30:45678",
+		"X-Forwarded-Port": "22222",
 	}
 	resp := doRequestWithHeaders(t, http.MethodPost, nginxBase+"/api/execute", body, fakeCookies.cookieHeader(), headers)
 	defer resp.Body.Close()
@@ -913,10 +913,10 @@ func TestNoIdleRunner(t *testing.T) {
 	})
 
 	headers := map[string]string{
-		"CloudFront-Viewer-Address": "203.0.113.50:45678",
-		"X-Bunshin-Client-Address":  "198.51.100.50:11111",
-		"X-Forwarded-For":           "198.51.100.60",
-		"X-Forwarded-Port":          "22222",
+		"X-Bunshin-Client-Address": "198.51.100.50:11111",
+		// 先頭はclientが詰めた詐称値、末尾がALBの追記値。
+		"X-Forwarded-For":  "198.51.100.60, 203.0.113.50:45678",
+		"X-Forwarded-Port": "22222",
 	}
 	resp := doRequestWithHeaders(t, http.MethodPost, nginxBase+"/api/shell", "", "", headers)
 	defer resp.Body.Close()
@@ -1253,11 +1253,11 @@ func TestPortForwardInvalidHexShapeDoesNotForward(t *testing.T) {
 func TestPublicHostDoesNotRelayFallbackHeaders(t *testing.T) {
 	resetForwardTarget(t)
 	headers := map[string]string{
-		"Host":                      "aaaaaa111.ap-northeast-1.example.com",
-		"CloudFront-Viewer-Address": "203.0.113.90:45678",
-		"X-Fallback-Stack":          "attacker-stack",
-		"X-Fallback-Remaining":      "attacker-remaining",
-		"X-Bunshin-Client-Address":  "198.51.100.10:11111",
+		"Host":                     "aaaaaa111.ap-northeast-1.example.com",
+		"X-Forwarded-For":          "203.0.113.90:45678",
+		"X-Fallback-Stack":         "attacker-stack",
+		"X-Fallback-Remaining":     "attacker-remaining",
+		"X-Bunshin-Client-Address": "198.51.100.10:11111",
 	}
 	resp := doRequestWithHeaders(
 		t,

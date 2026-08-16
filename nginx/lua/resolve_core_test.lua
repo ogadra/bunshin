@@ -191,12 +191,21 @@ check("relay_if_internal returns empty when public", core.relay_if_internal(fals
 check("relay_if_internal returns empty when internal but header nil", core.relay_if_internal(true, nil) == "")
 check("relay_if_internal returns empty when public and header nil", core.relay_if_internal(false, nil) == "")
 
--- client_address: cloud=AWS は bunshin(内部転送)→cloudfront→remote_addr:port。GCP LB でしか上書きできない edge_header は無視する
+-- last_forwarded_for: ALBが末尾に足したIP:portだけを採り、client由来の先頭側は捨てる
+check("last_forwarded_for takes the last entry", core.last_forwarded_for("1.1.1.1:1, 9.9.9.9:99") == "9.9.9.9:99")
+check("last_forwarded_for takes the only entry", core.last_forwarded_for("9.9.9.9:99") == "9.9.9.9:99")
+check("last_forwarded_for ignores trailing space", core.last_forwarded_for("1.1.1.1:1 , 9.9.9.9:99 ") == "9.9.9.9:99")
+check("last_forwarded_for returns nil for empty", core.last_forwarded_for("") == nil)
+check("last_forwarded_for returns nil for nil", core.last_forwarded_for(nil) == nil)
+
+-- client_address: cloud=AWS は bunshin(内部転送)→X-Forwarded-For末尾→remote_addr:port。GCP LB でしか上書きできない edge_header は無視する
 core.configure("ap-northeast-1", "example.com", "ap-northeast-1,ap-northeast-3", 3000, 5000, "AWS")
 check("client_address AWS internal picks bunshin header",
     core.client_address(true, "1.2.3.4:5678", "9.9.9.9:1", "3.3.3.3:9", "10.0.0.1", "12345") == "1.2.3.4:5678")
-check("client_address AWS internal falls to cloudfront when bunshin empty",
+check("client_address AWS internal falls to forwarded-for when bunshin empty",
     core.client_address(true, "", "9.9.9.9:1", "3.3.3.3:9", "10.0.0.1", "12345") == "9.9.9.9:1")
+check("client_address AWS takes only the ALB appended entry",
+    core.client_address(false, "", "spoof:0, 9.9.9.9:1", "", "10.0.0.1", "12345") == "9.9.9.9:1")
 check("client_address AWS internal ignores spoofed edge and falls to remote",
     core.client_address(true, "", "", "3.3.3.3:9", "10.0.0.1", "12345") == "10.0.0.1:12345")
 check("client_address AWS internal falls to remote when all empty",
@@ -208,19 +217,19 @@ check("client_address AWS public ignores spoofed edge and falls to remote",
 check("client_address AWS public falls to remote when all headers nil",
     core.client_address(false, nil, nil, nil, "10.0.0.1", "12345") == "10.0.0.1:12345")
 
--- client_address: cloud=GOOGLE_CLOUD は bunshin(内部転送)→edge→remote_addr:port。AWS CloudFront でしか上書きできない cloudfront_header は無視する
+-- client_address: cloud=GOOGLE_CLOUD は bunshin(内部転送)→edge→remote_addr:port。AWS ALB でしか上書きできない forwarded_for は無視する
 core.configure("asia-northeast1", "example.com", "asia-northeast1,asia-northeast2", 3000, 5000, "GOOGLE_CLOUD")
 check("client_address GOOGLE_CLOUD internal picks bunshin header",
     core.client_address(true, "1.2.3.4:5678", "9.9.9.9:1", "3.3.3.3:9", "10.0.0.1", "12345") == "1.2.3.4:5678")
 check("client_address GOOGLE_CLOUD internal falls to edge when bunshin empty",
     core.client_address(true, "", "9.9.9.9:1", "3.3.3.3:9", "10.0.0.1", "12345") == "3.3.3.3:9")
-check("client_address GOOGLE_CLOUD internal ignores spoofed cloudfront and falls to remote",
+check("client_address GOOGLE_CLOUD internal ignores spoofed forwarded-for and falls to remote",
     core.client_address(true, "", "spoof:0", "", "10.0.0.1", "12345") == "10.0.0.1:12345")
 check("client_address GOOGLE_CLOUD internal falls to remote when all empty",
     core.client_address(true, "", "", "", "10.0.0.1", "12345") == "10.0.0.1:12345")
 check("client_address GOOGLE_CLOUD public ignores bunshin header",
     core.client_address(false, "1.2.3.4:5678", "9.9.9.9:1", "3.3.3.3:9", "10.0.0.1", "12345") == "3.3.3.3:9")
-check("client_address GOOGLE_CLOUD public ignores spoofed cloudfront and falls to remote",
+check("client_address GOOGLE_CLOUD public ignores spoofed forwarded-for and falls to remote",
     core.client_address(false, "spoof", "spoof:0", "", "10.0.0.1", "12345") == "10.0.0.1:12345")
 check("client_address GOOGLE_CLOUD public falls to remote when all headers nil",
     core.client_address(false, nil, nil, nil, "10.0.0.1", "12345") == "10.0.0.1:12345")

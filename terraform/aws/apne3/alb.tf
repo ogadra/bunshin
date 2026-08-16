@@ -56,9 +56,12 @@ resource "aws_lb" "api_ingress" {
   # checkov:skip=CKV2_AWS_20:CloudFront reaches this ALB through VPC origins over private networking
   drop_invalid_header_fields = true
   # checkov:skip=CKV_AWS_150:Deletion protection is not needed for initial deployment
-  name               = "bunshin-api-ingress"
-  internal           = true
-  load_balancer_type = "application"
+  name     = "bunshin-api-ingress"
+  internal = true
+  # nginxはX-Forwarded-For末尾からclientのIP:portを読む。
+  # Google CloudのX-Bunshin-Edge-Client-Addressと同じ形式に揃える。
+  enable_xff_client_port = true
+  load_balancer_type     = "application"
   security_groups = [
     aws_security_group.api_ingress_alb.id,
     aws_security_group.api_ingress_alb_port_forward.id,

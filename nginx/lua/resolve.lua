@@ -12,7 +12,7 @@ ngx.var.relay_fallback_remaining = relay_fallback_remaining
 ngx.var.bunshin_client_address = core.client_address(
     from_internal,
     ngx.var.http_x_bunshin_client_address,
-    ngx.var.http_cloudfront_viewer_address,
+    ngx.var.http_x_forwarded_for,
     ngx.var.http_x_bunshin_edge_client_address,
     ngx.var.remote_addr,
     ngx.var.remote_port
