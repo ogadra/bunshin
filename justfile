@@ -7,10 +7,6 @@ _validate-env env:
 _validate-vendor vendor:
     @if [ "{{vendor}}" != "aws" ] && [ "{{vendor}}" != "google-cloud" ] && [ "{{vendor}}" != "shared" ] && [ "{{vendor}}" != "archive" ]; then echo "Error: vendor must be 'aws', 'google-cloud', 'shared' or 'archive', got '{{vendor}}'"; exit 1; fi
 
-# archiveは保管したログごと失われるためdestroyの対象から外す
-_validate-destroyable-vendor vendor:
-    @if [ "{{vendor}}" != "aws" ] && [ "{{vendor}}" != "google-cloud" ] && [ "{{vendor}}" != "shared" ]; then echo "Error: vendor must be 'aws', 'google-cloud' or 'shared', got '{{vendor}}'"; exit 1; fi
-
 _validate-tf-backend-bucket:
     @if [ -z "${TF_BACKEND_BUCKET:-}" ]; then echo "Error: TF_BACKEND_BUCKET must be set (see .env.example)"; exit 1; fi
 
@@ -44,7 +40,7 @@ redeploy env: (_validate-env env)
     K8S_ONLY=1 scripts/google-cloud/deploy.sh {{env}}
 
 # Destroy resources for the specified environment
-destroy vendor env: (_validate-destroyable-vendor vendor) (_validate-env env)
+destroy vendor env: (_validate-vendor vendor) (_validate-env env)
     scripts/{{vendor}}/destroy.sh {{env}}
 
 # Run a k6 load test scenario against https://${LOADTEST_DOMAIN} (see .env.example)

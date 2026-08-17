@@ -10,7 +10,6 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 7.40"
     }
-    # google_project_service_identityはGA providerに無いbeta専用resource
     google-beta = {
       source  = "hashicorp/google-beta"
       version = "~> 7.40"
@@ -20,10 +19,21 @@ terraform {
 
 provider "aws" {
   region  = "ap-northeast-1"
-  profile = var.aws_profile
+  profile = "prd"
 }
 
-# project は gcloud ADC / GOOGLE_CLOUD_PROJECT の環境から解決させ、project ID を tfvars 化しない
+provider "aws" {
+  alias   = "apne1"
+  region  = "ap-northeast-1"
+  profile = "prd"
+}
+
+provider "aws" {
+  alias   = "apne3"
+  region  = "ap-northeast-3"
+  profile = "prd"
+}
+
 provider "google" {}
 
 provider "google-beta" {}

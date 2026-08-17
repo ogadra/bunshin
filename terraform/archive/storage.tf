@@ -1,4 +1,3 @@
-# service agentはproject作成時には存在しないため明示的に作る
 resource "google_project_service_identity" "logging" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   provider = google-beta
@@ -7,9 +6,9 @@ resource "google_project_service_identity" "logging" {
 }
 
 # trivy:ignore:AVD-GCP-0066 -- Google-managed encryption is sufficient for logs already retained in Cloud Logging
-resource "google_storage_bucket" "logs_export" {
+resource "google_storage_bucket" "logs" {
   # checkov:skip=CKV_GCP_62:Access logging on an archive bucket would itself generate logs to archive
-  name     = local.logs_export_bucket_name
+  name     = format("bunshin-logs-%s", data.google_project.current.project_id)
   location = "ASIA-NORTHEAST1"
 
   labels = local.common_labels
@@ -20,9 +19,15 @@ resource "google_storage_bucket" "logs_export" {
 
   uniform_bucket_level_access = true
   public_access_prevention    = "enforced"
+  deletion_policy             = "PREVENT"
 
   soft_delete_policy {
-    retention_duration_seconds = 0
+    retention_duration_seconds = 90 * 24 * 60 * 60
+  }
+
+  retention_policy {
+    retention_period = 365 * 24 * 60 * 60
+    is_locked        = false
   }
 
   lifecycle_rule {
@@ -33,11 +38,17 @@ resource "google_storage_bucket" "logs_export" {
       age = 1
     }
   }
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
-resource "google_storage_bucket_iam_member" "logs_export_logging_writer" {
+resource "google_storage_bucket_iam_member" "logs_logging_writer" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
-  bucket = google_storage_bucket.logs_export.name
+  bucket = google_storage_bucket.logs.name
   role   = "roles/storage.objectCreator"
-  member = "serviceAccount:${google_project_service_identity.logging.email}"
+  member = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-logging.iam.gserviceaccount.com"
+
+  depends_on = [google_project_service_identity.logging]
 }
