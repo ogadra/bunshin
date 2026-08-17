@@ -467,14 +467,20 @@ func TestStaticIndex(t *testing.T) {
 	}
 }
 
+// TestStaticUnknownPathNotFound はdist配下に無いURIが404になることを検証する。
+// /50x.htmlはopenresty同梱の既定ページで、html/をrootにした結果として公開され得る。
 func TestStaticUnknownPathNotFound(t *testing.T) {
-	resp, err := httpClient.Get(nginxBase + "/no-such-path")
-	if err != nil {
-		t.Fatalf("GET /no-such-path: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("GET /no-such-path: want 404, got %d", resp.StatusCode)
+	for _, path := range []string{"/no-such-path", "/50x.html"} {
+		t.Run(path, func(t *testing.T) {
+			resp, err := httpClient.Get(nginxBase + path)
+			if err != nil {
+				t.Fatalf("GET %s: %v", path, err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusNotFound {
+				t.Fatalf("GET %s: want 404, got %d", path, resp.StatusCode)
+			}
+		})
 	}
 }
 

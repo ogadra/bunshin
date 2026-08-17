@@ -31,8 +31,10 @@ USER nobody
 
 # checkov:skip=CKV_DOCKER_2:health check is managed by ECS task definition / Kubernetes probes
 FROM openresty/openresty:1.31.1.1-alpine@sha256:5f621903212ed7194a6bd31de7a76c1cfbe92e7b7a6fdb0f2b38626e97bd38c4
+# html/はrootとして公開するので、openresty同梱の50x.htmlごと捨ててdistだけを置く。
 RUN apk add --no-cache ca-certificates gettext \
     && adduser -D -H -s /sbin/nologin nginx \
+    && rm -rf /usr/local/openresty/nginx/html \
     && chown -R nginx:nginx /usr/local/openresty/nginx /run
 COPY --chown=nginx:nginx nginx/errors.conf /etc/nginx/errors.conf
 COPY --chown=nginx:nginx nginx/security-headers.conf /etc/nginx/security-headers.conf
