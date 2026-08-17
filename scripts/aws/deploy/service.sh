@@ -74,7 +74,6 @@ main() {
     local pids=()
     local pid
     local exit_code=0
-    local build_context
     local domain
     local build_args=()
 
@@ -83,13 +82,11 @@ main() {
     platform="$(platform_for_service "${service}")"
     image_tag="$(git -C "${ROOT_DIR}" rev-parse HEAD)"
     short_image_tag="$(git -C "${ROOT_DIR}" rev-parse --short=7 HEAD)"
-    build_context="${ROOT_DIR}/${service}"
 
     if [[ "${service}" == "nginx" ]]; then
         domain="$(jq -r '.outputs.domain_name.value' "${TFSTATE_PATH}")"
         [[ -n "${domain}" && "${domain}" != "null" ]] \
             || die "failed to read domain_name from ${TFSTATE_PATH}"
-        build_context="${ROOT_DIR}"
         build_args+=(--build-arg "VITE_PERL_ORIGIN_TEMPLATE=https://{hex}.{stack}.${domain}/")
     fi
 
@@ -102,7 +99,7 @@ main() {
         -t "${registry}/bunshin/${service}:${image_tag}" \
         -t "${registry}/bunshin/${service}:${short_image_tag}" \
         --push \
-        "${build_context}"
+        "${ROOT_DIR}"
     digest="$(aws --profile "${env_name}" --region "${ECR_REGION}" ecr describe-images \
         --repository-name "bunshin/${service}" \
         --image-ids "imageTag=${image_tag}" \

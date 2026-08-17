@@ -2,7 +2,8 @@ services:
   front:
     platform: ${IMAGE_PLATFORM}
     build:
-      context: front/
+      context: .
+      dockerfile: front/Dockerfile
     ports:
       - "${FRONT_PORT}:5173"
     env_file:
@@ -46,7 +47,8 @@ services:
   broker:
     platform: ${IMAGE_PLATFORM}
     build:
-      context: broker/
+      context: .
+      dockerfile: broker/Dockerfile
     ports:
       - "${BROKER_PORT}:8080"
     env_file:
@@ -65,7 +67,8 @@ services:
   broker-test-dynamodb:
     platform: ${IMAGE_PLATFORM}
     build:
-      context: broker/
+      context: .
+      dockerfile: broker/Dockerfile
       target: test-integration
     env_file:
       - broker/.env.dynamodb.example
@@ -78,7 +81,8 @@ services:
   broker-test-firestore:
     platform: ${IMAGE_PLATFORM}
     build:
-      context: broker/
+      context: .
+      dockerfile: broker/Dockerfile
       target: test-integration
     env_file:
       - broker/.env.firestore.example
@@ -91,7 +95,8 @@ services:
   runner-1:
     image: bunshin-runner
     build:
-      context: runner/
+      context: .
+      dockerfile: runner/Dockerfile
     env_file:
       - runner/.env.example
 
@@ -123,7 +128,8 @@ services:
   forward-cert:
     image: bunshin-integration
     build:
-      context: integration/
+      context: .
+      dockerfile: integration/Dockerfile
     command: ["go", "run", "./cmd/gen-forward-cert"]
     volumes:
       - forward-target-certs:/app/testdata

@@ -82,7 +82,6 @@ build_and_push() {
     local domain="${4:?}"
     local tags=()
     local region
-    local build_context="${ROOT_DIR}/${service}"
     local build_args=()
 
     for region in "${REGIONS[@]}"; do
@@ -90,7 +89,6 @@ build_and_push() {
     done
 
     if [[ "${service}" == "nginx" ]]; then
-        build_context="${ROOT_DIR}"
         build_args+=(--build-arg "VITE_PERL_ORIGIN_TEMPLATE=https://{hex}.{stack}.${domain}/")
     fi
 
@@ -101,7 +99,7 @@ build_and_push() {
         "${build_args[@]}" \
         "${tags[@]}" \
         --push \
-        "${build_context}"
+        "${ROOT_DIR}"
 }
 
 apply_manifests() {

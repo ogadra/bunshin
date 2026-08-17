@@ -49,7 +49,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Run tests and enforce 100% coverage
-        run: docker build --target test broker/
+        run: docker build --target test -f broker/Dockerfile .
 
   test-broker-race:
     strategy:
@@ -66,7 +66,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Run race detector
-        run: docker build --target test-race broker/
+        run: docker build --target test-race -f broker/Dockerfile .
 
   test-broker-integration:
     strategy:
@@ -109,7 +109,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Build
-        run: docker build -t broker broker/
+        run: docker build -t broker -f broker/Dockerfile .
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image

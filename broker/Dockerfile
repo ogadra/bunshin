@@ -1,9 +1,9 @@
 # checkov:skip=CKV_DOCKER_2:health check is managed by compose/orchestrator
 FROM golang:1.26.6-alpine@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS build
 WORKDIR /app
-COPY go.mod go.sum ./
+COPY broker/go.mod broker/go.sum ./
 RUN go mod download
-COPY . .
+COPY broker/ ./
 
 # broker/store/firestoreadapter は Firestore SDK 具象型を直接触るため unit test で mock 不能。
 # integration test で担保するため -coverpkg から除外する。
@@ -29,9 +29,9 @@ RUN apk add --no-cache gcc musl-dev \
 # not FROM build: that stage runs on the target platform, which puts the compiler under QEMU
 FROM --platform=$BUILDPLATFORM golang:1.26.6-alpine@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS binary
 WORKDIR /app
-COPY go.mod go.sum ./
+COPY broker/go.mod broker/go.sum ./
 RUN go mod download
-COPY . .
+COPY broker/ ./
 ARG TARGETOS TARGETARCH
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /server .
 
@@ -39,7 +39,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /server .
 FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 ARG TARGETARCH
 RUN adduser -D -H -s /sbin/nologin appuser
-COPY apk-checksums.${TARGETARCH}.sha256 /tmp/apks.sha256
+COPY broker/apk-checksums.${TARGETARCH}.sha256 /tmp/apks.sha256
 RUN set -euxo pipefail; \
     mkdir -p /tmp/apks; \
     apk update; \
