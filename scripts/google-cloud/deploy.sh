@@ -89,7 +89,6 @@ build_and_push() {
         tags+=(--tag "${region}-docker.pkg.dev/${project}/${REPOSITORY}/${service}:${image_tag}")
     done
 
-    # nginxはfront/distを同梱するため、contextがrepository rootになる。
     if [[ "${service}" == "nginx" ]]; then
         build_context="${ROOT_DIR}"
         build_args+=(--build-arg "VITE_PERL_ORIGIN_TEMPLATE=https://{hex}.{stack}.${domain}/")

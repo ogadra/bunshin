@@ -7,7 +7,6 @@ RUN chown -R node:node /app
 USER node
 RUN pnpm install --frozen-lockfile
 COPY --chown=node:node front/ ./
-# domainはenvごとに違うのでbuild時に確定させる。未指定のimageはpreviewのoriginを組めない。
 ARG VITE_PERL_ORIGIN_TEMPLATE
 RUN [ -n "${VITE_PERL_ORIGIN_TEMPLATE}" ] \
     || { echo "VITE_PERL_ORIGIN_TEMPLATE build-arg is required" >&2; exit 1; }; \

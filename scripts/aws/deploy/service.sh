@@ -85,7 +85,6 @@ main() {
     short_image_tag="$(git -C "${ROOT_DIR}" rev-parse --short=7 HEAD)"
     build_context="${ROOT_DIR}/${service}"
 
-    # nginxはfront/distを同梱するため、contextがrepository rootになる。
     if [[ "${service}" == "nginx" ]]; then
         domain="$(jq -r '.outputs.domain_name.value' "${TFSTATE_PATH}")"
         [[ -n "${domain}" && "${domain}" != "null" ]] \

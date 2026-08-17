@@ -442,8 +442,6 @@ func TestAPIHealthCheck(t *testing.T) {
 	}
 }
 
-// TestStaticIndex は default_server の / が image 同梱の front を返し、
-// 未知の URI は index.html に落とさず 404 になることを検証する。
 func TestStaticIndex(t *testing.T) {
 	resp, err := httpClient.Get(nginxBase + "/")
 	if err != nil {
@@ -462,7 +460,6 @@ func TestStaticIndex(t *testing.T) {
 	}
 }
 
-// TestStaticUnknownPathNotFound は静的配信が SPA fallback を持たないことを検証する。
 func TestStaticUnknownPathNotFound(t *testing.T) {
 	resp, err := httpClient.Get(nginxBase + "/no-such-path")
 	if err != nil {
@@ -1131,17 +1128,15 @@ func TestPortForwardUnknownStack404(t *testing.T) {
 	}
 }
 
-// 32 hex に見えない Host を port-forward として扱わないことを検証する。
-// 落ちる先は Host の形で変わる: server_name の regex に外れれば catch-all の静的配信、
-// nginx が照合前に小文字化して regex に乗る大文字 hex は port-forward server の session 不在 404。
-// どちらの経路でも runner へ転送してはならない。
 func TestPortForwardInvalidHexShapeDoesNotForward(t *testing.T) {
 	cases := []struct {
 		name       string
 		hex        string
 		wantStatus int
 	}{
+		// server_nameのregexに外れ、catch-allの静的配信に落ちる。
 		{"too short", strings.Repeat("a", 31), http.StatusOK},
+		// nginxが照合前にHostを小文字化するのでpf serverに入り、session不在で404になる。
 		{"uppercase", strings.Repeat("A", 32), http.StatusNotFound},
 	}
 	for _, tc := range cases {
