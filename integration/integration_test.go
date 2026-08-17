@@ -442,6 +442,8 @@ func TestAPIHealthCheck(t *testing.T) {
 	}
 }
 
+// TestStaticIndex は/がfront/distのindex.htmlを返すことを検証する。
+// doctypeでは判定しない。COPYが空振りしてもopenresty同梱の既定ページが200で返るため。
 func TestStaticIndex(t *testing.T) {
 	resp, err := httpClient.Get(nginxBase + "/")
 	if err != nil {
@@ -455,8 +457,13 @@ func TestStaticIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /: read body: %v", err)
 	}
-	if !strings.Contains(string(body), "<!doctype html") && !strings.Contains(string(body), "<!DOCTYPE html") {
-		t.Fatalf("GET /: want the built index.html, got %.120q", body)
+	for _, want := range []string{"<title>bunshin</title>", `id="stack-info-dialog"`} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("GET /: want the built index.html containing %q, got %.200q", want, body)
+		}
+	}
+	if strings.Contains(string(body), `src="/src/main.ts"`) {
+		t.Errorf("GET /: want the vite-plugin-singlefile bundle, got the unbundled entry point")
 	}
 }
 
@@ -468,6 +475,80 @@ func TestStaticUnknownPathNotFound(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("GET /no-such-path: want 404, got %d", resp.StatusCode)
+	}
+}
+
+// securityHeaders はnginx/security-headers.confがcatch-all serverに付けるheader。
+var securityHeaders = map[string]string{
+	"Strict-Transport-Security": "max-age=31536000",
+	"X-Content-Type-Options":    "nosniff",
+	"X-Frame-Options":           "SAMEORIGIN",
+	"Referrer-Policy":           "strict-origin-when-cross-origin",
+}
+
+func assertSecurityHeaders(t *testing.T, label string, resp *http.Response) {
+	t.Helper()
+	for name, want := range securityHeaders {
+		if got := resp.Header.Get(name); got != want {
+			t.Errorf("%s: %s: want %q, got %q", label, name, want, got)
+		}
+	}
+}
+
+// TestSecurityHeaders はcatch-all serverの静的配信とhealth系がsecurity headerを返すことを検証する。
+func TestSecurityHeaders(t *testing.T) {
+	cases := []struct {
+		path       string
+		wantStatus int
+	}{
+		{"/", http.StatusOK},
+		{"/health", http.StatusOK},
+		{"/api/health", http.StatusOK},
+		{"/no-such-path", http.StatusNotFound},
+	}
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			resp, err := httpClient.Get(nginxBase + tc.path)
+			if err != nil {
+				t.Fatalf("GET %s: %v", tc.path, err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != tc.wantStatus {
+				t.Fatalf("GET %s: want %d, got %d", tc.path, tc.wantStatus, resp.StatusCode)
+			}
+			assertSecurityHeaders(t, "GET "+tc.path, resp)
+		})
+	}
+}
+
+// TestSecurityHeadersOnAPI はsession解決を通るlocation /api/でもsecurity headerが付くことを検証する。
+// このlocationは自前のadd_headerを持つため、include漏れがここだけ他の経路と別の結果になる。
+func TestSecurityHeadersOnAPI(t *testing.T) {
+	cookies := setupSession(t)
+	resp := doRequest(t, http.MethodPost, nginxBase+"/api/execute", `{"command":"pwd"}`, cookies.cookieHeader())
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /api/execute: want 200, got %d", resp.StatusCode)
+	}
+	assertSecurityHeaders(t, "POST /api/execute", resp)
+}
+
+// TestSecurityHeadersAbsentOnPortForward はport-forward serverがsecurity headerを付けないことを検証する。
+// runner appのresponse headerはapp自身が持つ、という既存の判断を固定する。
+func TestSecurityHeadersAbsentOnPortForward(t *testing.T) {
+	resp := doRequestWithHeaders(
+		t,
+		http.MethodGet,
+		nginxBase+"/",
+		"",
+		"",
+		map[string]string{"Host": portForwardHost(strings.Repeat("0", 32), perlHmrStack)},
+	)
+	defer resp.Body.Close()
+	for name := range securityHeaders {
+		if got := resp.Header.Get(name); got != "" {
+			t.Errorf("GET pf /: %s: want absent, got %q", name, got)
+		}
 	}
 }
 

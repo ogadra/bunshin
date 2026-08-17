@@ -9,6 +9,7 @@ on:
       - "broker/**"
       - "compose.yml"
       - ".env.example"
+      - ".dockerignore"
       - ".github/workflows/broker.yml"
 
 permissions:

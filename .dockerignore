@@ -1,11 +1,14 @@
-.git
-.worktrees
+# build contextがリポジトリルートなので、拒否リストでは.terraformやdeploy/*/environments/*.envを取りこぼす。
+*
+!broker
+!front
+!integration
+!nginx
+!runner
+
 **/node_modules
 **/dist
 **/test-results
 **/playwright-report
 **/.env
 **/*.md
-logs
-*.tfstate
-*.log

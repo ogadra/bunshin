@@ -23,14 +23,6 @@ contains_service() {
     return 1
 }
 
-run_service() {
-    local service="${1:?}"
-    local env_name="${2:?}"
-    local aws_account_id="${3:?}"
-
-    "${ROOT_DIR}/scripts/aws/deploy/service.sh" "${service}" "${env_name}" "${aws_account_id}"
-}
-
 login_ecr() {
     local env_name="${1:?}"
     local aws_account_id="${2:?}"
@@ -88,7 +80,7 @@ main() {
     source "${ROOT_DIR}/deploy/aws/environments/${env_name}.env"
 
     for service in "${target_services[@]}"; do
-        run_service "${service}" "${env_name}" "${aws_account_id}" &
+        "${ROOT_DIR}/scripts/aws/deploy/service.sh" "${service}" "${env_name}" "${aws_account_id}" &
         pids+=("$!")
     done
 
