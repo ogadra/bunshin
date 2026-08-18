@@ -18,11 +18,6 @@ terraform {
 }
 
 provider "aws" {
-  region  = "ap-northeast-1"
-  profile = "prd"
-}
-
-provider "aws" {
   alias   = "apne1"
   region  = "ap-northeast-1"
   profile = "prd"

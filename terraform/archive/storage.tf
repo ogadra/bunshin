@@ -6,9 +6,10 @@ resource "google_project_service_identity" "logging" {
 }
 
 # trivy:ignore:AVD-GCP-0066 -- Google-managed encryption is sufficient for logs already retained in Cloud Logging
+# trivy:ignore:AVD-GCP-0077 -- Access logging on an archive bucket would itself generate logs to archive
 resource "google_storage_bucket" "logs" {
   # checkov:skip=CKV_GCP_62:Access logging on an archive bucket would itself generate logs to archive
-  name     = format("bunshin-logs-%s", data.google_project.current.project_id)
+  name     = "bunshin-logs"
   location = "ASIA-NORTHEAST1"
 
   labels = local.common_labels

@@ -217,6 +217,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "logs_apne3" {
 }
 
 data "aws_iam_policy_document" "logs_apne1" {
+  provider = aws.apne1
+
   statement {
     principals {
       type        = "Service"
@@ -257,6 +259,8 @@ data "aws_iam_policy_document" "logs_apne1" {
 }
 
 data "aws_iam_policy_document" "logs_apne3" {
+  provider = aws.apne3
+
   statement {
     principals {
       type        = "Service"
