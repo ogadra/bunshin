@@ -18,7 +18,7 @@ from diagrams.aws.storage import S3
 from diagrams.custom import Custom
 from diagrams.gcp.compute import KubernetesEngine
 from diagrams.gcp.database import Firestore
-from diagrams.gcp.network import CDN, DNS, LoadBalancing, Armor, NAT, VPN
+from diagrams.gcp.network import CDN, DNS, LoadBalancing, Armor, VPN
 from diagrams.gcp.storage import GCS
 from diagrams.onprem.client import Users
 
@@ -78,10 +78,8 @@ def aws_region(name: str, cidr: str, azs: str) -> dict[str, object]:
                 nginx >> Edge(label="proxy") >> runner
                 nginx >> Edge(label="resolve") >> broker
                 runner >> Edge(label="register", constraint="false") >> broker
-                vpce_gateway >> Edge(style="invis") >> vpce_interface
-                vpce_interface >> Edge(style="invis") >> api_alb
-                api_alb >> Edge(style="invis") >> internal_alb
-                internal_alb >> Edge(style="invis") >> nginx
+                vpce_gateway >> Edge(style="invis") >> api_alb
+                vpce_interface >> Edge(style="invis") >> internal_alb
 
         broker >> Edge(constraint="false") >> ddb
         static >> Edge(style="invis") >> ddb
@@ -108,7 +106,6 @@ def gcp_region(name: str, project_region: str) -> dict[str, object]:
             with Cluster("Private Subnet (workload + proxy-only)", graph_attr={**CLUSTER_FONT, "margin": "20"}):
                 rilb = LoadBalancing("Regional Internal LB\ngke-l7-rilb")
                 private_dns = DNS(f"Cloud DNS private\n{project_region}.domain")
-                nat = NAT("Cloud NAT")
 
                 with Cluster("GKE Autopilot: bunshin", graph_attr={**CLUSTER_FONT, "margin": "24"}):
                     nginx = KubernetesEngine("nginx Pod\nx86_64")
@@ -120,8 +117,6 @@ def gcp_region(name: str, project_region: str) -> dict[str, object]:
                 nginx >> Edge(label="proxy") >> runner
                 nginx >> Edge(label="resolve") >> broker
                 runner >> Edge(label="register", constraint="false") >> broker
-                runner >> Edge(label="egress") >> nat
-                nat >> Edge(style="invis") >> rilb
                 rilb >> Edge(style="invis") >> private_dns
 
         broker >> firestore
