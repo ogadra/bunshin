@@ -78,10 +78,8 @@ def aws_region(name: str, cidr: str, azs: str) -> dict[str, object]:
                 nginx >> Edge(label="proxy") >> runner
                 nginx >> Edge(label="resolve") >> broker
                 runner >> Edge(label="register", constraint="false") >> broker
-                vpce_gateway >> Edge(style="invis") >> vpce_interface
-                vpce_interface >> Edge(style="invis") >> api_alb
-                api_alb >> Edge(style="invis") >> internal_alb
-                internal_alb >> Edge(style="invis") >> nginx
+                vpce_gateway >> Edge(style="invis") >> api_alb
+                vpce_interface >> Edge(style="invis") >> internal_alb
 
         broker >> Edge(constraint="false") >> ddb
         static >> Edge(style="invis") >> ddb
