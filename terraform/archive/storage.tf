@@ -49,7 +49,5 @@ resource "google_storage_bucket_iam_member" "logs_logging_writer" {
   # checkov:skip=CKV_BUNSHIN_2:Resource does not support labels
   bucket = google_storage_bucket.logs.name
   role   = "roles/storage.objectCreator"
-  member = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-logging.iam.gserviceaccount.com"
-
-  depends_on = [google_project_service_identity.logging]
+  member = google_project_service_identity.logging.member
 }

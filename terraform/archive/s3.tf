@@ -220,6 +220,33 @@ data "aws_iam_policy_document" "logs_apne1" {
   provider = aws.apne1
 
   statement {
+    effect = "Deny"
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+
+    actions = ["s3:*"]
+    resources = [
+      aws_s3_bucket.logs_apne1.arn,
+      "${aws_s3_bucket.logs_apne1.arn}/*",
+    ]
+
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+
+    condition {
+      test     = "Bool"
+      variable = "aws:PrincipalIsAWSService"
+      values   = ["false"]
+    }
+  }
+
+  statement {
     principals {
       type        = "Service"
       identifiers = ["logs.ap-northeast-1.amazonaws.com"]
@@ -260,6 +287,33 @@ data "aws_iam_policy_document" "logs_apne1" {
 
 data "aws_iam_policy_document" "logs_apne3" {
   provider = aws.apne3
+
+  statement {
+    effect = "Deny"
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+
+    actions = ["s3:*"]
+    resources = [
+      aws_s3_bucket.logs_apne3.arn,
+      "${aws_s3_bucket.logs_apne3.arn}/*",
+    ]
+
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+
+    condition {
+      test     = "Bool"
+      variable = "aws:PrincipalIsAWSService"
+      values   = ["false"]
+    }
+  }
 
   statement {
     principals {
