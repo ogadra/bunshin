@@ -5,12 +5,14 @@ on:
     branches:
       - main
     paths:
+      - "terraform/archive/**"
       - "terraform/aws/**"
       - "terraform/google-cloud/**"
       - "terraform/shared/**"
       - ".github/workflows/terraform.yml"
   pull_request:
     paths:
+      - "terraform/archive/**"
       - "terraform/aws/**"
       - "terraform/google-cloud/**"
       - "terraform/shared/**"
@@ -24,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        vendor: ["terraform/aws", "terraform/google-cloud", "terraform/shared"]
+        vendor: ["terraform/archive", "terraform/aws", "terraform/google-cloud", "terraform/shared"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -43,7 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        vendor: ["terraform/aws", "terraform/google-cloud", "terraform/shared"]
+        vendor: ["terraform/archive", "terraform/aws", "terraform/google-cloud", "terraform/shared"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

@@ -73,11 +73,15 @@ pre-commit:
       glob: "**/*.{ts,tsx,css,html}"
       run: pnpm check
     025_checkov:
-      run: checkov -d . --quiet --compact --external-checks-dir terraform/checkov
+      run: |
+        untracked=$(git ls-files --others --ignored --exclude-standard --directory | grep '/$' | sed 's|/$||;s|\.|\\.|g' | paste -sd'|')
+        checkov -d . --quiet --compact --external-checks-dir terraform/checkov --skip-path "($untracked)"
     041_nginx_config_test:
       glob: "nginx/**/*.conf"
       run: docker build --target config-test --build-arg CLOUD=AWS -f nginx/Dockerfile . && docker build --target config-test --build-arg CLOUD=GOOGLE_CLOUD -f nginx/Dockerfile .
     004_gitleaks:
       run: gitleaks protect --staged
     005_trivy:
-      run: trivy config .
+      run: |
+        untracked=$(git ls-files --others --ignored --exclude-standard --directory | grep '/$' | sed 's|/$||' | paste -sd,)
+        trivy config . --skip-dirs "$untracked"

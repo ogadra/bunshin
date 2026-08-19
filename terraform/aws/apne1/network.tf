@@ -1,4 +1,5 @@
 resource "aws_vpc" "apne1" {
+  # checkov:skip=CKV2_AWS_11:Flow logs are attached in the root module through the vpc_id output
   cidr_block           = local.vpc_cidr
   enable_dns_hostnames = true
   enable_dns_support   = true
