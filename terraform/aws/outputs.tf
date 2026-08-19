@@ -13,12 +13,13 @@ output "domain_name" {
 output "user_dns" {
   description = "DNS records to publish for var.domain_name in the external authoritative zone (NS1 + Route53 multi provider)"
   value = {
-    aliases = {
+    addresses = {
       main = {
-        name    = var.domain_name
-        target  = aws_cloudfront_distribution.main.domain_name
-        zone_id = aws_cloudfront_distribution.main.hosted_zone_id
+        name      = var.domain_name
+        addresses = aws_globalaccelerator_accelerator.api_ingress.ip_sets[0].ip_addresses
       }
+    }
+    aliases = {
       api_ingress_origin = {
         name    = local.api_ingress_origin_domain_name
         target  = aws_globalaccelerator_accelerator.api_ingress.dns_name

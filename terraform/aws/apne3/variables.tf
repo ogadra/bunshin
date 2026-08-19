@@ -14,11 +14,6 @@ variable "domain_name" {
   type        = string
 }
 
-variable "cloudfront_distribution_arn" {
-  description = "CloudFront distribution ARN allowed to read static assets"
-  type        = string
-}
-
 variable "peer_vpc" {
   description = "Peer VPC for cross-region routing and internal DNS resolution"
   type = object({

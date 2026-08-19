@@ -442,6 +442,122 @@ func TestAPIHealthCheck(t *testing.T) {
 	}
 }
 
+// TestStaticIndex は/がfront/distのindex.htmlを返すことを検証する。
+// doctypeでは判定しない。COPYが空振りしてもopenresty同梱の既定ページが200で返るため。
+func TestStaticIndex(t *testing.T) {
+	resp, err := httpClient.Get(nginxBase + "/")
+	if err != nil {
+		t.Fatalf("GET /: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /: want 200, got %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("GET /: read body: %v", err)
+	}
+	for _, want := range []string{"<title>bunshin</title>", `id="stack-info-dialog"`} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("GET /: want the built index.html containing %q, got %.200q", want, body)
+		}
+	}
+	if strings.Contains(string(body), `src="/src/main.ts"`) {
+		t.Errorf("GET /: want the vite-plugin-singlefile bundle, got the unbundled entry point")
+	}
+}
+
+// TestStaticUnknownPathNotFound はdist配下に無いURIが404になることを検証する。
+// /50x.htmlはopenresty同梱の既定ページで、html/をrootにした結果として公開され得る。
+func TestStaticUnknownPathNotFound(t *testing.T) {
+	for _, path := range []string{"/no-such-path", "/50x.html"} {
+		t.Run(path, func(t *testing.T) {
+			resp, err := httpClient.Get(nginxBase + path)
+			if err != nil {
+				t.Fatalf("GET %s: %v", path, err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusNotFound {
+				t.Fatalf("GET %s: want 404, got %d", path, resp.StatusCode)
+			}
+		})
+	}
+}
+
+// securityHeaders はnginx/security-headers.confがcatch-all serverに付けるheader。
+var securityHeaders = map[string]string{
+	"Strict-Transport-Security": "max-age=31536000",
+	"X-Content-Type-Options":    "nosniff",
+	"X-Frame-Options":           "SAMEORIGIN",
+	"Referrer-Policy":           "strict-origin-when-cross-origin",
+}
+
+func assertSecurityHeaders(t *testing.T, label string, resp *http.Response) {
+	t.Helper()
+	for name, want := range securityHeaders {
+		if got := resp.Header.Get(name); got != want {
+			t.Errorf("%s: %s: want %q, got %q", label, name, want, got)
+		}
+	}
+}
+
+// TestSecurityHeaders はcatch-all serverの静的配信とhealth系がsecurity headerを返すことを検証する。
+func TestSecurityHeaders(t *testing.T) {
+	cases := []struct {
+		path       string
+		wantStatus int
+	}{
+		{"/", http.StatusOK},
+		{"/health", http.StatusOK},
+		{"/api/health", http.StatusOK},
+		{"/no-such-path", http.StatusNotFound},
+	}
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			resp, err := httpClient.Get(nginxBase + tc.path)
+			if err != nil {
+				t.Fatalf("GET %s: %v", tc.path, err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != tc.wantStatus {
+				t.Fatalf("GET %s: want %d, got %d", tc.path, tc.wantStatus, resp.StatusCode)
+			}
+			assertSecurityHeaders(t, "GET "+tc.path, resp)
+		})
+	}
+}
+
+// TestSecurityHeadersOnAPI はsession解決を通るlocation /api/でもsecurity headerが付くことを検証する。
+// このlocationは自前のadd_headerを持つため、include漏れがここだけ他の経路と別の結果になる。
+func TestSecurityHeadersOnAPI(t *testing.T) {
+	cookies := setupSession(t)
+	resp := doRequest(t, http.MethodPost, nginxBase+"/api/execute", `{"command":"pwd"}`, cookies.cookieHeader())
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /api/execute: want 200, got %d", resp.StatusCode)
+	}
+	assertSecurityHeaders(t, "POST /api/execute", resp)
+}
+
+// TestSecurityHeadersAbsentOnPortForward はport-forward serverがsecurity headerを付けないことを検証する。
+// runner appのresponse headerはapp自身が持つ、という既存の判断を固定する。
+func TestSecurityHeadersAbsentOnPortForward(t *testing.T) {
+	resp := doRequestWithHeaders(
+		t,
+		http.MethodGet,
+		nginxBase+"/",
+		"",
+		"",
+		map[string]string{"Host": portForwardHost(strings.Repeat("0", 32), perlHmrStack)},
+	)
+	defer resp.Body.Close()
+	for name := range securityHeaders {
+		if got := resp.Header.Get(name); got != "" {
+			t.Errorf("GET pf /: %s: want absent, got %q", name, got)
+		}
+	}
+}
+
 // TestCreateShellAndExecute はセッション作成からコマンド実行までの正常系フローを検証する。
 func TestCreateShellAndExecute(t *testing.T) {
 	cookies := setupSession(t)
@@ -472,12 +588,12 @@ func TestForeignSessionForward(t *testing.T) {
 	resetForwardTarget(t)
 
 	headers := map[string]string{
-		"CloudFront-Viewer-Address": "203.0.113.10:45678",
-		"X-Bunshin-Client-Address":  "198.51.100.10:11111",
-		"X-Fallback-Stack":          "client-stack",
-		"X-Fallback-Remaining":      "client-remaining",
-		"X-Forwarded-For":           "198.51.100.20",
-		"X-Forwarded-Port":          "22222",
+		"X-Bunshin-Client-Address": "198.51.100.10:11111",
+		"X-Fallback-Stack":         "client-stack",
+		"X-Fallback-Remaining":     "client-remaining",
+		// 先頭はclientが詰めた詐称値、末尾がALBの追記値。
+		"X-Forwarded-For":  "198.51.100.20, 203.0.113.10:45678",
+		"X-Forwarded-Port": "22222",
 	}
 	resp := doRequestWithHeaders(
 		t,
@@ -515,9 +631,9 @@ func TestForeignSessionForwardRelaysInternalClientAddress(t *testing.T) {
 	resetForwardTarget(t)
 
 	headers := map[string]string{
-		"Host":                      "ap-northeast-1.localhost",
-		"CloudFront-Viewer-Address": "203.0.113.70:45678",
-		"X-Bunshin-Client-Address":  "198.51.100.70:11111",
+		"Host":                     "ap-northeast-1.localhost",
+		"X-Forwarded-For":          "203.0.113.70:45678",
+		"X-Bunshin-Client-Address": "198.51.100.70:11111",
 	}
 	resp := doRequestWithHeaders(
 		t,
@@ -550,7 +666,7 @@ func TestForeignSessionOwnerUnavailableRecreatesSession(t *testing.T) {
 		nginxBase+"/api/shell",
 		"",
 		"session_id=ap-northeast-3_deadbeef; shell_id=shell-x",
-		map[string]string{"CloudFront-Viewer-Address": "203.0.113.80:45678"},
+		map[string]string{"X-Forwarded-For": "203.0.113.80:45678"},
 	)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
@@ -720,10 +836,10 @@ func TestNoIdleRunnerExecuteFallbackForward(t *testing.T) {
 	fakeCookies := sessionCookies{SessionID: "nonexistent", ShellID: "nonexistent"}
 	body := `{"command":"pwd"}`
 	headers := map[string]string{
-		"CloudFront-Viewer-Address": "203.0.113.30:45678",
-		"X-Bunshin-Client-Address":  "198.51.100.30:11111",
-		"X-Forwarded-For":           "198.51.100.40",
-		"X-Forwarded-Port":          "22222",
+		"X-Bunshin-Client-Address": "198.51.100.30:11111",
+		// 先頭はclientが詰めた詐称値、末尾がALBの追記値。
+		"X-Forwarded-For":  "198.51.100.40, 203.0.113.30:45678",
+		"X-Forwarded-Port": "22222",
 	}
 	resp := doRequestWithHeaders(t, http.MethodPost, nginxBase+"/api/execute", body, fakeCookies.cookieHeader(), headers)
 	defer resp.Body.Close()
@@ -797,10 +913,10 @@ func TestNoIdleRunner(t *testing.T) {
 	})
 
 	headers := map[string]string{
-		"CloudFront-Viewer-Address": "203.0.113.50:45678",
-		"X-Bunshin-Client-Address":  "198.51.100.50:11111",
-		"X-Forwarded-For":           "198.51.100.60",
-		"X-Forwarded-Port":          "22222",
+		"X-Bunshin-Client-Address": "198.51.100.50:11111",
+		// 先頭はclientが詰めた詐称値、末尾がALBの追記値。
+		"X-Forwarded-For":  "198.51.100.60, 203.0.113.50:45678",
+		"X-Forwarded-Port": "22222",
 	}
 	resp := doRequestWithHeaders(t, http.MethodPost, nginxBase+"/api/shell", "", "", headers)
 	defer resp.Body.Close()
@@ -1099,13 +1215,16 @@ func TestPortForwardUnknownStack404(t *testing.T) {
 	}
 }
 
-func TestPortForwardInvalidHexShapeFallsToCatchAll(t *testing.T) {
+func TestPortForwardInvalidHexShapeDoesNotForward(t *testing.T) {
 	cases := []struct {
-		name string
-		hex  string
+		name       string
+		hex        string
+		wantStatus int
 	}{
-		{"too short", strings.Repeat("a", 31)},
-		{"uppercase", strings.Repeat("A", 32)},
+		// server_nameのregexに外れ、catch-allの静的配信に落ちる。
+		{"too short", strings.Repeat("a", 31), http.StatusOK},
+		// nginxが照合前にHostを小文字化するのでpf serverに入り、session不在で404になる。
+		{"uppercase", strings.Repeat("A", 32), http.StatusNotFound},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1119,8 +1238,8 @@ func TestPortForwardInvalidHexShapeFallsToCatchAll(t *testing.T) {
 				map[string]string{"Host": portForwardHost(tc.hex, perlHmrStack)},
 			)
 			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusNotFound {
-				t.Errorf("GET pf invalid hex %q: want 404, got %d", tc.hex, resp.StatusCode)
+			if resp.StatusCode != tc.wantStatus {
+				t.Errorf("GET pf invalid hex %q: want %d, got %d", tc.hex, tc.wantStatus, resp.StatusCode)
 			}
 			if got := lastForwardedRequestOrNil(t); got != nil {
 				t.Errorf("must not forward invalid hex %q, but forward-target recorded %+v", tc.hex, got)
@@ -1134,11 +1253,11 @@ func TestPortForwardInvalidHexShapeFallsToCatchAll(t *testing.T) {
 func TestPublicHostDoesNotRelayFallbackHeaders(t *testing.T) {
 	resetForwardTarget(t)
 	headers := map[string]string{
-		"Host":                      "aaaaaa111.ap-northeast-1.example.com",
-		"CloudFront-Viewer-Address": "203.0.113.90:45678",
-		"X-Fallback-Stack":          "attacker-stack",
-		"X-Fallback-Remaining":      "attacker-remaining",
-		"X-Bunshin-Client-Address":  "198.51.100.10:11111",
+		"Host":                     "aaaaaa111.ap-northeast-1.example.com",
+		"X-Forwarded-For":          "203.0.113.90:45678",
+		"X-Fallback-Stack":         "attacker-stack",
+		"X-Fallback-Remaining":     "attacker-remaining",
+		"X-Bunshin-Client-Address": "198.51.100.10:11111",
 	}
 	resp := doRequestWithHeaders(
 		t,

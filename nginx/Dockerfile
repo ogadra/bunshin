@@ -1,9 +1,24 @@
+# checkov:skip=CKV_DOCKER_2:health check is not needed for the front build stage
+FROM node:24-slim AS front-build
+RUN corepack enable
+WORKDIR /app
+COPY front/package.json front/pnpm-lock.yaml ./
+RUN chown -R node:node /app
+USER node
+RUN pnpm install --frozen-lockfile
+COPY --chown=node:node front/ ./
+ARG VITE_PERL_ORIGIN_TEMPLATE
+RUN [ -n "${VITE_PERL_ORIGIN_TEMPLATE}" ] \
+    || { echo "VITE_PERL_ORIGIN_TEMPLATE build-arg is required" >&2; exit 1; }; \
+    VITE_PERL_ORIGIN_TEMPLATE="${VITE_PERL_ORIGIN_TEMPLATE}" pnpm build
+
 # checkov:skip=CKV_DOCKER_2:health check is not needed for config test stage
 FROM openresty/openresty:1.31.1.1-alpine@sha256:5f621903212ed7194a6bd31de7a76c1cfbe92e7b7a6fdb0f2b38626e97bd38c4 AS config-test
 RUN apk add --no-cache ca-certificates gettext
-COPY errors.conf /etc/nginx/errors.conf
-COPY lua/ /usr/local/openresty/nginx/lua/
-COPY nginx.conf /etc/nginx/nginx.conf.template
+COPY nginx/errors.conf /etc/nginx/errors.conf
+COPY nginx/security-headers.conf /etc/nginx/security-headers.conf
+COPY nginx/lua/ /usr/local/openresty/nginx/lua/
+COPY nginx/nginx.conf /etc/nginx/nginx.conf.template
 ARG NGINX_RESOLVER=127.0.0.11
 ARG BROKER_HOST=broker
 ARG CLOUD
@@ -16,12 +31,16 @@ USER nobody
 
 # checkov:skip=CKV_DOCKER_2:health check is managed by ECS task definition / Kubernetes probes
 FROM openresty/openresty:1.31.1.1-alpine@sha256:5f621903212ed7194a6bd31de7a76c1cfbe92e7b7a6fdb0f2b38626e97bd38c4
+# html/はrootとして公開するので、openresty同梱の50x.htmlごと捨ててdistだけを置く。
 RUN apk add --no-cache ca-certificates gettext \
     && adduser -D -H -s /sbin/nologin nginx \
+    && rm -rf /usr/local/openresty/nginx/html \
     && chown -R nginx:nginx /usr/local/openresty/nginx /run
-COPY --chown=nginx:nginx errors.conf /etc/nginx/errors.conf
-COPY --chown=nginx:nginx lua/ /usr/local/openresty/nginx/lua/
-COPY --chown=nginx:nginx nginx.conf /etc/nginx/nginx.conf.template
+COPY --chown=nginx:nginx nginx/errors.conf /etc/nginx/errors.conf
+COPY --chown=nginx:nginx nginx/security-headers.conf /etc/nginx/security-headers.conf
+COPY --chown=nginx:nginx nginx/lua/ /usr/local/openresty/nginx/lua/
+COPY --chown=nginx:nginx nginx/nginx.conf /etc/nginx/nginx.conf.template
+COPY --from=front-build --chown=nginx:nginx /app/dist/ /usr/local/openresty/nginx/html/
 RUN rm -f /usr/local/openresty/nginx/lua/*_test.lua
 USER nginx
 CMD ["/bin/sh", "-c", "envsubst '${NGINX_RESOLVER} ${BROKER_HOST}' < /etc/nginx/nginx.conf.template > /usr/local/openresty/nginx/conf/nginx.conf && exec openresty -g 'daemon off;'"]

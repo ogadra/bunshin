@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
-SERVICES=(broker nginx runner front)
+SERVICES=(broker nginx runner)
 ECR_REGION="ap-northeast-1"
 
 die() {
@@ -21,24 +21,6 @@ contains_service() {
     done
 
     return 1
-}
-
-is_static_only() {
-    local service="${1:?}"
-
-    [[ "${service}" == "front" ]]
-}
-
-run_service() {
-    local service="${1:?}"
-    local env_name="${2:?}"
-    local aws_account_id="${3:?}"
-
-    if is_static_only "${service}"; then
-        "${ROOT_DIR}/scripts/aws/deploy/${service}.sh" "${env_name}" "${aws_account_id}"
-    else
-        "${ROOT_DIR}/scripts/aws/deploy/service.sh" "${service}" "${env_name}" "${aws_account_id}"
-    fi
 }
 
 login_ecr() {
@@ -72,7 +54,6 @@ main() {
     local pid
     local pids=()
     local status=0
-    local need_ecr_login=false
 
     if [[ $# -eq 0 ]]; then
         target_services=("${SERVICES[@]}")
@@ -89,17 +70,8 @@ main() {
         die "failed to resolve AWS account id for profile ${env_name}"
     fi
 
-    for service in "${target_services[@]}"; do
-        if ! is_static_only "${service}"; then
-            need_ecr_login=true
-            break
-        fi
-    done
-
-    if [[ "${need_ecr_login}" == "true" ]]; then
-        login_ecr "${env_name}" "${aws_account_id}"
-        fetch_tfstate "${env_name}"
-    fi
+    login_ecr "${env_name}" "${aws_account_id}"
+    fetch_tfstate "${env_name}"
 
     # shellcheck disable=SC1091
     source "${ROOT_DIR}/deploy/aws/stacks.env"
@@ -108,7 +80,7 @@ main() {
     source "${ROOT_DIR}/deploy/aws/environments/${env_name}.env"
 
     for service in "${target_services[@]}"; do
-        run_service "${service}" "${env_name}" "${aws_account_id}" &
+        "${ROOT_DIR}/scripts/aws/deploy/service.sh" "${service}" "${env_name}" "${aws_account_id}" &
         pids+=("$!")
     done
 

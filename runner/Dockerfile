@@ -2,9 +2,9 @@
 # checkov:skip=CKV_DOCKER_2:health check is managed by compose/orchestrator
 FROM golang:1.26.6-alpine@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS build
 WORKDIR /app
-COPY go.mod go.sum ./
+COPY runner/go.mod runner/go.sum ./
 RUN go mod download
-COPY *.go ./
+COPY runner/*.go ./
 
 # test stage
 FROM build AS test
@@ -34,7 +34,7 @@ ENV SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"
 # forces a base image bump rather than silently changing what ships.
 RUN apk add --no-cache bash=5.3.9-r1 libcrypto3=3.5.7-r0 libssl3=3.5.7-r0 perl=5.42.2-r0 perl-html-parser=3.85-r0 perl-module-refresh=0.18-r2
 
-COPY ./app/ /app/
+COPY runner/app/ /app/
 WORKDIR /app
 
 COPY --from=binary /server /server

@@ -14,6 +14,7 @@ on:
       - "compose.yml"
       - "init/**"
       - ".env.example"
+      - ".dockerignore"
       - ".github/workflows/integration.yml"
 
 permissions:

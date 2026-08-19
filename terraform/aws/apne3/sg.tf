@@ -111,15 +111,18 @@ resource "aws_security_group" "api_ingress_alb" {
   }
 }
 
+# Global Acceleratorがclient IPを保持したまま転送するため、送信元はclientの実IPになる。
+# edgeのIP rangeで絞る手段が無いので、WAFとALBのTLS終端で受ける。
+# trivy:ignore:AVD-AWS-0107 -- Global Accelerator preserves the client IP, so the source cannot be narrowed
 resource "aws_security_group_rule" "api_ingress_alb_ingress_https" {
   # checkov:skip=CKV_BUNSHIN_1:Resource does not support tags
   type              = "ingress"
   from_port         = 443
   to_port           = 443
   protocol          = "tcp"
-  prefix_list_ids   = [data.aws_ec2_managed_prefix_list.cloudfront_origin_facing.id]
+  cidr_blocks       = ["0.0.0.0/0"]
   security_group_id = aws_security_group.api_ingress_alb.id
-  description       = "HTTPS from CloudFront through Global Accelerator"
+  description       = "HTTPS from clients through Global Accelerator"
 }
 
 resource "aws_security_group" "api_ingress_alb_port_forward" {

@@ -75,9 +75,8 @@ pre-commit:
     025_checkov:
       run: checkov -d . --quiet --compact --external-checks-dir terraform/checkov
     041_nginx_config_test:
-      root: "nginx/"
-      glob: "**/*.conf"
-      run: docker build --target config-test --build-arg CLOUD=AWS . && docker build --target config-test --build-arg CLOUD=GOOGLE_CLOUD .
+      glob: "nginx/**/*.conf"
+      run: docker build --target config-test --build-arg CLOUD=AWS -f nginx/Dockerfile . && docker build --target config-test --build-arg CLOUD=GOOGLE_CLOUD -f nginx/Dockerfile .
     004_gitleaks:
       run: gitleaks protect --staged
     005_trivy:
