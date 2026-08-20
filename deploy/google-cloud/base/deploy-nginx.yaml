@@ -33,8 +33,6 @@ spec:
       serviceAccountName: nginx
       # node が居ない zone は topology domain として数えられない。
       # maxSkew だけだと Autopilot が 2 zone に寄せた配置も skew=1 で通る。
-      # terraform 側は region の 3 zone すべてに nginx NEG が出来る前提で待つ。
-      # よって minDomains で domain 数を強制する。
       topologySpreadConstraints:
         - maxSkew: 1
           minDomains: 3
