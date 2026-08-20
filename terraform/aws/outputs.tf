@@ -17,7 +17,8 @@ output "user_dns" {
       main = {
         name = var.domain_name
         # list型のまま出すとterraform outputがtolist([...])で表示し、権威zone側のtfvarsへそのまま貼れない。
-        addresses = [for ip in aws_globalaccelerator_accelerator.api_ingress.ip_sets[0].ip_addresses : ip]
+        a_records    = [for ip in local.api_ingress_ip_addresses["IPv4"] : ip]
+        aaaa_records = [for ip in local.api_ingress_ip_addresses["IPv6"] : ip]
       }
     }
     aliases = {

@@ -62,6 +62,7 @@ resource "aws_lb" "api_ingress" {
   # Google CloudのX-Bunshin-Edge-Client-Addressと同じ形式に揃える。
   enable_xff_client_port = true
   load_balancer_type     = "application"
+  ip_address_type        = "dualstack"
   security_groups = [
     aws_security_group.api_ingress_alb.id,
     aws_security_group.api_ingress_alb_port_forward.id,

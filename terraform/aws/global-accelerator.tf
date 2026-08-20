@@ -3,7 +3,7 @@ resource "aws_globalaccelerator_accelerator" "api_ingress" {
   name    = "bunshin-api-ingress"
   enabled = true
 
-  ip_address_type = "IPV4"
+  ip_address_type = "DUAL_STACK"
 
   tags = merge(local.common_tags, {
     Name    = "bunshin-api-ingress"
