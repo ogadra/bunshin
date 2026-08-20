@@ -31,8 +31,11 @@ spec:
         app: nginx
     spec:
       serviceAccountName: nginx
+      # node が居ない zone は topology domain として数えられない。
+      # maxSkew だけだと Autopilot が 2 zone に寄せた配置も skew=1 で通る。
       topologySpreadConstraints:
         - maxSkew: 1
+          minDomains: 3
           topologyKey: topology.kubernetes.io/zone
           whenUnsatisfiable: DoNotSchedule
           labelSelector:
