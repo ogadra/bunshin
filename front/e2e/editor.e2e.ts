@@ -142,7 +142,7 @@ test.describe("pane overlays", () => {
     const labelledBy = await dialog.getAttribute("aria-labelledby");
     if (labelledBy === null) throw new Error("dialog has no aria-labelledby");
     const title = page.locator(`#${labelledBy}`);
-    await expect(title).toHaveText("Connected stack");
+    await expect(title).toHaveText("Connected region and cloud");
   });
 
   test("clicking the backdrop outside the modal dismisses it", async ({ page }) => {
