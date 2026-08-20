@@ -121,6 +121,7 @@ resource "aws_security_group_rule" "api_ingress_alb_ingress_https" {
   to_port           = 443
   protocol          = "tcp"
   cidr_blocks       = ["0.0.0.0/0"]
+  ipv6_cidr_blocks  = ["::/0"]
   security_group_id = aws_security_group.api_ingress_alb.id
   description       = "HTTPS from clients through Global Accelerator"
 }
