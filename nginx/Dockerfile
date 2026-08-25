@@ -1,5 +1,5 @@
 # checkov:skip=CKV_DOCKER_2:health check is not needed for the front build stage
-FROM node:24-slim AS front-build
+FROM node:25-slim AS front-build
 RUN corepack enable
 WORKDIR /app
 COPY front/package.json front/pnpm-lock.yaml ./
