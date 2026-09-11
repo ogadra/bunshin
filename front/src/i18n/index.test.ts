@@ -26,7 +26,6 @@ describe("translate", () => {
       en: "Previous execution environment was not found",
       ja: "以前実行した環境が見つかりません",
     },
-    errorEditTooLarge: { en: "Edit content is too large", ja: "編集内容が大きすぎます" },
     errorGatewayTimeout: {
       en: "Server response timed out",
       ja: "サーバー応答がタイムアウトしました",
@@ -40,18 +39,12 @@ describe("translate", () => {
       en: "An internal server error occurred",
       ja: "サーバー内部エラーが発生しました",
     },
-    statusSaving: { en: "Saving…", ja: "保存中…" },
-    statusSaved: { en: "Saved", ja: "保存済み" },
-    statusError: { en: "Error", ja: "エラー" },
-    stackInfoOpen: { en: "Environment info", ja: "接続先" },
-    stackInfoTitle: { en: "Connected region and cloud", ja: "接続中の環境" },
-    stackInfoRegion: { en: "Region", ja: "リージョン" },
-    stackInfoCloud: { en: "Cloud", ja: "クラウド" },
-    stackInfoClose: { en: "Close", ja: "閉じる" },
-    stackRegionTokyo: { en: "Tokyo", ja: "東京" },
-    stackRegionOsaka: { en: "Osaka", ja: "大阪" },
-    stackCloudGoogleCloud: { en: "Google Cloud", ja: "Google Cloud" },
-    stackCloudAws: { en: "AWS", ja: "AWS" },
+    termConnecting: { en: "Connecting…", ja: "接続中…" },
+    termRetrying: { en: "Retrying…", ja: "再試行します…" },
+    termSessionRecreated: {
+      en: "Session recreated. Run the command again.",
+      ja: "セッションを作り直しました。もう一度実行してください。",
+    },
   };
 
   test.each(Object.values(MessageKey))("%s resolves to expected en/ja", (key) => {

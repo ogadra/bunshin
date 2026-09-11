@@ -42,11 +42,6 @@ describe("classifyResponse", () => {
       want: "errorBadGateway",
     },
     {
-      name: "runner 400 body too large",
-      res: jsonResponse(400, { error: "read body: http: request body too large" }),
-      want: "errorEditTooLarge",
-    },
-    {
       name: "nginx 401 UNAUTHORIZED folded to internal",
       res: jsonResponse(401, { code: "UNAUTHORIZED", message: "Session cookie required." }),
       want: "errorInternal",

@@ -6,20 +6,18 @@
     <title>bunshin</title>
   </head>
   <body>
-    <div id="editor" class="editor">
-      <span class="editor-filename">DaiKichijoji.pm</span>
-    </div>
-    <div id="preview-pane" class="preview-pane">
-      <iframe id="preview" class="preview" src="about:blank" title="Perl handler preview"></iframe>
-      <button
-        id="stack-info-button"
-        type="button"
-        class="stack-info-button"
-        aria-haspopup="dialog"
-        aria-controls="stack-info-dialog"
-      ></button>
-      <dialog id="stack-info-dialog" class="stack-info-dialog"></dialog>
-    </div>
+    <form id="input-bar" class="input-bar">
+      <input
+        type="text"
+        id="command"
+        placeholder="Enter command..."
+        aria-label="Command"
+        disabled
+      />
+      <button type="submit" disabled>Run</button>
+    </form>
+    <div id="status" class="status"></div>
+    <div id="terminal" class="terminal"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
