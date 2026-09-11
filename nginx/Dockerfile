@@ -7,10 +7,7 @@ RUN chown -R node:node /app
 USER node
 RUN pnpm install --frozen-lockfile
 COPY --chown=node:node front/ ./
-ARG VITE_PERL_ORIGIN_TEMPLATE
-RUN [ -n "${VITE_PERL_ORIGIN_TEMPLATE}" ] \
-    || { echo "VITE_PERL_ORIGIN_TEMPLATE build-arg is required" >&2; exit 1; }; \
-    VITE_PERL_ORIGIN_TEMPLATE="${VITE_PERL_ORIGIN_TEMPLATE}" pnpm build
+RUN pnpm build
 
 # checkov:skip=CKV_DOCKER_2:health check is not needed for config test stage
 FROM openresty/openresty:1.31.1.1-alpine@sha256:5f621903212ed7194a6bd31de7a76c1cfbe92e7b7a6fdb0f2b38626e97bd38c4 AS config-test
