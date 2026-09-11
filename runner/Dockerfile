@@ -2,7 +2,7 @@
 # checkov:skip=CKV_DOCKER_2:health check is managed by compose/orchestrator
 # The nix closure is pinned to x86_64-linux.
 # A build for another platform would mix architectures in the final image.
-FROM --platform=linux/amd64 golang:1.26.6-alpine@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS build
+FROM --platform=linux/amd64 golang:1.27.1-alpine@sha256:cf6fca6641884b8433441b2b0652976f975e1d0fdd26d177eaaf8596087f3125 AS build
 WORKDIR /app
 COPY runner/go.mod runner/go.sum ./
 RUN go mod download
