@@ -1,6 +1,8 @@
 # checkov:skip=CKV_DOCKER_3:runner executes user commands and requires root
 # checkov:skip=CKV_DOCKER_2:health check is managed by compose/orchestrator
-FROM golang:1.26.6-alpine@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS build
+# The nix closure is pinned to x86_64-linux.
+# A build for another platform would mix architectures in the final image.
+FROM --platform=linux/amd64 golang:1.26.6-alpine@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS build
 WORKDIR /app
 COPY runner/go.mod runner/go.sum ./
 RUN go mod download
@@ -24,7 +26,7 @@ RUN CGO_ENABLED=1 go test -race -v -count=1 ./...
 FROM build AS binary
 RUN CGO_ENABLED=0 go build -o /server .
 
-FROM nixos/nix:2.35.2@sha256:7a007c766426c1877758ddc5cb87a965ac131fc78c582ce0083d922d51ae945c AS nix-runtime
+FROM --platform=linux/amd64 nixos/nix:2.35.2@sha256:7a007c766426c1877758ddc5cb87a965ac131fc78c582ce0083d922d51ae945c AS nix-runtime
 
 ENV PATH="/usr/local/bin:${PATH}"
 
@@ -80,8 +82,8 @@ RUN nix build --no-link --print-out-paths --file /tmp/nix/prebuilt-tools.nix > /
     nix-store --add-root /nix/var/nix/gcroots/nixpkgs-source --indirect -r "$nixpkgs_src" && \
     printf '{"version":2,"flakes":[{"from":{"type":"indirect","id":"nixpkgs"},"to":{"type":"path","path":"%s"}}]}\n' "$nixpkgs_src" > /etc/nix/registry.json
 
-# Only the flake files. The Perl sources change often and would rebuild the
-# closure on every edit.
+# Only the flake files.
+# The Perl sources change often and would rebuild the closure on every edit.
 COPY runner/app/flake.nix runner/app/flake.lock /app/
 WORKDIR /app
 
@@ -96,7 +98,7 @@ RUN nix flake archive --json > /tmp/app-flake-archive.json && \
     done < /tmp/app-flake-paths.txt && \
     nix develop --profile /nix/var/nix/profiles/app-devshell --command true && \
     mkdir -p /nix/var/nix/gcroots/app-devshell-shell && \
-    nix build --no-link --print-out-paths --impure --expr '(builtins.getFlake (toString /app)).inputs.nixpkgs.legacyPackages.${builtins.currentSystem}.bashInteractive' > /tmp/app-devshell-shell-paths.txt && \
+    nix build --no-link --print-out-paths --impure --expr '(builtins.getFlake (toString /app)).inputs.nixpkgs.legacyPackages.x86_64-linux.bashInteractive' > /tmp/app-devshell-shell-paths.txt && \
     shell_index=0 && \
     while IFS= read -r shell_path || [ -n "$shell_path" ]; do \
       shell_index=$((shell_index + 1)); \
@@ -104,8 +106,8 @@ RUN nix flake archive --json > /tmp/app-flake-archive.json && \
     done < /tmp/app-devshell-shell-paths.txt
 
 # The news file is realised apart from the activation package.
-# Rooting only the generation leaves it to rebuild from source, which fails
-# offline.
+# Rooting only the generation leaves it to rebuild from source.
+# That rebuild fails offline.
 RUN unset NIX_PATH && HM_OUT="$(nix-build '<home-manager>' -A home-manager --no-out-link)" && \
     HM_REAL="$HM_OUT/bin/home-manager" && \
     NIX_REAL="$(readlink -f "$(command -v nix)")" && \
@@ -138,7 +140,7 @@ RUN unset NIX_PATH && HM_OUT="$(nix-build '<home-manager>' -A home-manager --no-
 # Not `-d`: it drops the home-manager generations that `--rollback` needs.
 
 # production image
-FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+FROM --platform=linux/amd64 alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 
 ENV PATH="/usr/local/bin:/root/.nix-profile/bin:/nix/var/nix/profiles/default/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin" \
     USER="root" \

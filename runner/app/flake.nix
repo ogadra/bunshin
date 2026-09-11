@@ -4,13 +4,10 @@
 
   outputs = { self, nixpkgs }:
     let
-      systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
-      forEachSystem = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
+      pkgs = nixpkgs.legacyPackages.x86_64-linux;
     in {
-      devShells = forEachSystem (pkgs: {
-        default = pkgs.mkShell {
-          packages = [ pkgs.figlet pkgs.cowsay pkgs.lolcat ];
-        };
-      });
+      devShells.x86_64-linux.default = pkgs.mkShell {
+        packages = with pkgs; [ figlet cowsay lolcat ];
+      };
     };
 }

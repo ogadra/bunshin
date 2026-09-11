@@ -1,7 +1,7 @@
 vulnerabilities:
   # Gems bundled with the lolcat closure.
-  # The runner already runs arbitrary user commands, so they sit outside its
-  # trust boundary.
+  # The runner already runs arbitrary user commands.
+  # These gems sit outside its trust boundary.
   - id: CVE-2026-41316
     paths:
       - "**/*ruby-3.4*/**"

@@ -1,19 +1,17 @@
-{ system ? "x86_64-linux" }:
-
 let
   pkgs = import (import ./nixpkgs-pin.nix) {
-    inherit system;
+    system = "x86_64-linux";
   };
 in
 pkgs.symlinkJoin {
   name = "runner-prebuilt-tools";
-  paths = [
-    pkgs.fastfetch
-    pkgs.cowsay
-    pkgs.pokemonsay
-    pkgs.lolcat
-    pkgs.figlet
-    pkgs.iproute2
-    pkgs.gawk
+  paths = with pkgs; [
+    fastfetch
+    cowsay
+    pokemonsay
+    lolcat
+    figlet
+    iproute2
+    gawk
   ];
 }
