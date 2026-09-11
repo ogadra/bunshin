@@ -1,6 +1,8 @@
 # checkov:skip=CKV_DOCKER_2:health check is not needed for the front build stage
-FROM node:24-slim AS front-build
-RUN corepack enable
+FROM node:26-slim AS front-build
+# Go through corepack instead of installing pnpm directly.
+# That keeps the pnpm version pinned by package.json's packageManager.
+RUN npm install -g corepack@0.36.0 && corepack enable
 WORKDIR /app
 COPY front/package.json front/pnpm-lock.yaml ./
 RUN chown -R node:node /app
