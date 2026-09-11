@@ -457,7 +457,7 @@ func TestStaticIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /: read body: %v", err)
 	}
-	for _, want := range []string{"<title>bunshin</title>", `id="stack-info-dialog"`} {
+	for _, want := range []string{"<title>bunshin</title>", `id="command"`, `id="terminal"`} {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("GET /: want the built index.html containing %q, got %.200q", want, body)
 		}
@@ -1038,7 +1038,7 @@ func waitPerlResponse(t *testing.T, host string, wantStatus int, wantBody string
 }
 
 // TestApiSessionHexHeaderは/api応答のX-Session-Hexがsession_id cookieのhex部と
-// 一致する32桁小文字hexであることを検証する。frontはこのヘッダーからpreview URLを組む。
+// 一致する32桁小文字hexであることを検証する。
 func TestApiSessionHexHeader(t *testing.T) {
 	cookies := setupSession(t)
 	resp := doRequest(t, http.MethodGet, nginxBase+"/api/app/handler", "", cookies.cookieHeader())
@@ -1063,7 +1063,6 @@ func TestApiSessionHexHeader(t *testing.T) {
 }
 
 // TestApiStackNameHeaderは/api応答のX-Stack-Nameにbroker自身のSTACK_NAMEが入ることを検証する。
-// frontはこのヘッダーからpreview URLのsubdomain部を組む。
 func TestApiStackNameHeader(t *testing.T) {
 	cookies := setupSession(t)
 	resp := doRequest(t, http.MethodGet, nginxBase+"/api/app/handler", "", cookies.cookieHeader())
@@ -1077,7 +1076,7 @@ func TestApiStackNameHeader(t *testing.T) {
 }
 
 // TestApiHandlerPutHeadersはPUT /api/app/handlerの応答にもX-Session-HexとX-Stack-Nameが付くことを検証する。
-// frontはPUTレスポンスからpreview URLを再計算するため、GETと同じ契約がPUTでも成立している必要がある。
+// GETと同じ契約がPUTでも成立している必要がある。
 func TestApiHandlerPutHeaders(t *testing.T) {
 	cookies := setupSession(t)
 	snapshotHandler(t, cookies)
