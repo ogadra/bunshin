@@ -711,6 +711,81 @@ func extractMarker(written string) string {
 	return ""
 }
 
+// TestStreamReSourcesHmSessionVars verifies that the script re-sources
+// hm-session-vars.sh before the command and after capturing the exit code.
+// A `home-manager switch` then takes effect without exiting the shell.
+func TestStreamReSourcesHmSessionVars(t *testing.T) {
+	stdinCapture := &markerCapturingWriter{}
+	stdoutR, stdoutW := io.Pipe()
+
+	s := &bashShell{
+		stdin:  stdinCapture,
+		stdout: bufio.NewScanner(stdoutR),
+		cmd:    &fakeCommander{},
+	}
+
+	ch := make(chan string, 10)
+	errCh := make(chan error, 1)
+	go func() {
+		_, _, err := s.ExecuteStream(context.Background(), "echo hello", ch)
+		errCh <- err
+	}()
+
+	go func() {
+		timeout := time.After(5 * time.Second)
+		for {
+			select {
+			case <-timeout:
+				stdoutW.Close()
+				return
+			default:
+			}
+			marker := extractMarker(stdinCapture.String())
+			if marker != "" {
+				// Close stderrDone so ExecuteStream does not block waiting for the stderr marker.
+				s.stderrMu.Lock()
+				if s.stderrDone != nil {
+					select {
+					case <-s.stderrDone:
+					default:
+						close(s.stderrDone)
+					}
+				}
+				s.stderrMu.Unlock()
+				stdoutW.Write([]byte("\n" + marker + "0\n"))
+				stdoutW.Close()
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+
+	select {
+	case <-errCh:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timeout waiting for ExecuteStream to return")
+	}
+
+	written := stdinCapture.String()
+	reloadSnippet := `unset __HM_SESS_VARS_SOURCED; . "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh" 2>/dev/null || true`
+	if count := strings.Count(written, reloadSnippet); count < 2 {
+		t.Errorf("expected reload snippet at least twice (before and after command), got %d.\nscript: %s", count, written)
+	}
+
+	firstReload := strings.Index(written, reloadSnippet)
+	cmdIdx := strings.Index(written, "echo hello")
+	ecIdx := strings.Index(written, "__ec=$?")
+	if firstReload < 0 || cmdIdx < 0 || ecIdx < 0 {
+		t.Fatalf("missing expected components in script.\nscript: %s", written)
+	}
+	if strings.Index(written[ecIdx:], reloadSnippet) < 0 {
+		t.Errorf("expected a reload snippet after __ec=$?.\nscript: %s", written)
+	}
+	if firstReload >= cmdIdx || cmdIdx >= ecIdx {
+		t.Errorf("expected reload before command before __ec=$?.\nscript: %s", written)
+	}
+}
+
 // TestStreamInvalidExitCode verifies that an unparseable exit code after the
 // marker is reported as an error.
 func TestStreamInvalidExitCode(t *testing.T) {
