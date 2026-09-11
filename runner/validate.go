@@ -21,6 +21,10 @@ var whitelistedExactCommands = map[string]bool{
 	"free":    true,
 	"ps":      true,
 	"history": true,
+	// Full commands with specific arguments.
+	"home-manager switch --rollback":                                     true,
+	"home-manager generations":                                           true,
+	`nix develop --command sh -c "figlet 'Nix' | cowsay -n | lolcat -f"`: true,
 }
 
 // whitelistedPrefixCommands is the set of commands classified as whitelisted
@@ -51,7 +55,8 @@ var shellMetaChars = regexp.MustCompile(`[;|&<>\t\n\r` + "`" + `]|\$\(`)
 // classifyCommand returns the classification of a command for audit logging.
 // It returns "whitelisted" for:
 //   - exact matches in whitelistedExactCommands,
-//   - prefix matches in whitelistedPrefixCommands (bare or with args, no shell metacharacters).
+//   - prefix matches in whitelistedPrefixCommands (bare or with args, no shell metacharacters),
+//   - "nix run nixpkgs#..." invocations without shell metacharacters.
 //
 // Otherwise it returns "unclassified".
 func classifyCommand(cmd string) string {
@@ -64,6 +69,9 @@ func classifyCommand(cmd string) string {
 			if trimmed == prefix || strings.HasPrefix(trimmed, prefix+" ") {
 				return "whitelisted"
 			}
+		}
+		if strings.HasPrefix(trimmed, "nix run nixpkgs#") {
+			return "whitelisted"
 		}
 	}
 	return "unclassified"
