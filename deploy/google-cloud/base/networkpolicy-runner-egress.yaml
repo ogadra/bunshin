@@ -23,8 +23,6 @@ spec:
       ports:
         - port: 53
           protocol: UDP
-    # nix run が prebuilt に無いパッケージを取りに行くための経路。
-    # link-local と RFC1918 は除外し、metadata server と VPC 内部へは出さない
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
