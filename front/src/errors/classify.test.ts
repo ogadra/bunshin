@@ -42,11 +42,6 @@ describe("classifyResponse", () => {
       want: "errorBadGateway",
     },
     {
-      name: "runner 400 body too large",
-      res: jsonResponse(400, { error: "read body: http: request body too large" }),
-      want: "errorEditTooLarge",
-    },
-    {
       name: "nginx 401 UNAUTHORIZED folded to internal",
       res: jsonResponse(401, { code: "UNAUTHORIZED", message: "Session cookie required." }),
       want: "errorInternal",
@@ -70,6 +65,11 @@ describe("classifyResponse", () => {
       name: "503 without body falls back to no-idle-runner by status",
       res: rawResponse(503, ""),
       want: "errorNoIdleRunner",
+    },
+    {
+      name: "nginx 413 over client_max_body_size, HTML body",
+      res: rawResponse(413, "<html>413 Request Entity Too Large</html>"),
+      want: "errorCommandTooLong",
     },
     {
       name: "unknown 418 folded to internal",

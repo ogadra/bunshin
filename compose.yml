@@ -8,10 +8,6 @@ services:
       - "${FRONT_PORT}:5173"
     env_file:
       - front/.env.compose.example
-    environment:
-      # top-level STACK_NAMEをfrontに伝播させるとbrokerとのdrift源になるため、
-      # ここではinterpolationしない。
-      VITE_PERL_ORIGIN_TEMPLATE: "http://{hex}.{stack}.${INTERNAL_DOMAIN}/"
     volumes:
       # node_modulesは匿名volumeに退避する。
       # host側の異なるarch向けtreeでbind mountされて上書きされないため。
@@ -30,8 +26,6 @@ services:
     build:
       context: .
       dockerfile: nginx/Dockerfile
-      args:
-        VITE_PERL_ORIGIN_TEMPLATE: "http://{hex}.{stack}.${INTERNAL_DOMAIN}/"
     ports:
       - "${NGINX_PORT}:8080"
     volumes:

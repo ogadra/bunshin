@@ -79,24 +79,17 @@ build_and_push() {
     local service="${1:?}"
     local project="${2:?}"
     local image_tag="${3:?}"
-    local domain="${4:?}"
     local tags=()
     local region
-    local build_args=()
 
     for region in "${REGIONS[@]}"; do
         tags+=(--tag "${region}-docker.pkg.dev/${project}/${REPOSITORY}/${service}:${image_tag}")
     done
 
-    if [[ "${service}" == "nginx" ]]; then
-        build_args+=(--build-arg "VITE_PERL_ORIGIN_TEMPLATE=https://{hex}.{stack}.${domain}/")
-    fi
-
     echo "[${service}] building linux/amd64 and pushing to ${#REGIONS[@]} region(s)"
     docker buildx build \
         --platform linux/amd64 \
         -f "${ROOT_DIR}/${service}/Dockerfile" \
-        "${build_args[@]}" \
         "${tags[@]}" \
         --push \
         "${ROOT_DIR}"
@@ -129,13 +122,10 @@ wait_rollout() {
 deploy_front() {
     local system_json="${1:?}"
     local bucket
-    local domain
     bucket="$(read_system_field "${system_json}" .static_bucket)"
-    domain="$(read_system_field "${system_json}" .domain_name)"
 
     echo "[front] building via pnpm"
-    VITE_PERL_ORIGIN_TEMPLATE="https://{hex}.{stack}.${domain}/" \
-        pnpm --dir "${ROOT_DIR}/front" build
+    pnpm --dir "${ROOT_DIR}/front" build
 
     echo "[front] syncing to gs://${bucket}/"
     gcloud storage rsync -r \
@@ -266,7 +256,7 @@ main() {
     if [[ "${k8s_only}" != "1" ]]; then
         configure_docker_auth
         for service in "${container_services[@]}"; do
-            build_and_push "${service}" "${project}" "${image_tag}" "${domain_name}"
+            build_and_push "${service}" "${project}" "${image_tag}"
         done
     fi
 
