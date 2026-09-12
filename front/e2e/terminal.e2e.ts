@@ -38,6 +38,22 @@ test("the prompt appears and the input is enabled once the shell is created", as
   await expect(screen(page)).toContainText("$");
 });
 
+test("the terminal refits when only its container resizes", async ({ page }) => {
+  await stubRunner(page, []);
+  await page.goto("/");
+  await expect(status(page)).toBeHidden();
+
+  const rows = page.locator(".xterm-rows > div");
+  const before = await rows.count();
+
+  // 接続完了で #status が消えるときと同じく、.terminal は window の resize なしに伸び縮みする
+  await page.evaluate(() => {
+    (document.getElementById("input-bar") as HTMLElement).style.display = "none";
+  });
+
+  await expect(rows).not.toHaveCount(before);
+});
+
 test("no editor UI is present", async ({ page }) => {
   await stubRunner(page, []);
   await page.goto("/");
