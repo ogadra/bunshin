@@ -67,6 +67,11 @@ describe("classifyResponse", () => {
       want: "errorNoIdleRunner",
     },
     {
+      name: "nginx 413 over client_max_body_size, HTML body",
+      res: rawResponse(413, "<html>413 Request Entity Too Large</html>"),
+      want: "errorCommandTooLong",
+    },
+    {
       name: "unknown 418 folded to internal",
       res: rawResponse(418, ""),
       want: "errorInternal",

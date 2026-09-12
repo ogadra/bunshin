@@ -20,6 +20,8 @@ const parseBody = async (res: Response): Promise<ErrorBody> => {
 };
 
 const keyFromStatus = (status: number): MessageKey => {
+  // nginx が client_max_body_size を超えた body を弾いた場合、JSON ではなく既定の HTML を返す
+  if (status === 413) return "errorCommandTooLong";
   if (status === 504) return "errorGatewayTimeout";
   if (status === 502) return "errorBadGateway";
   if (status === 503) return "errorNoIdleRunner";

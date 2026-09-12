@@ -34,6 +34,7 @@ describe("translate", () => {
       en: "Cannot reach the execution environment",
       ja: "実行環境に接続できません",
     },
+    errorCommandTooLong: { en: "The command is too long", ja: "コマンドが長すぎます" },
     errorNetwork: { en: "Cannot connect to the server", ja: "サーバーに接続できません" },
     errorInternal: {
       en: "An internal server error occurred",
