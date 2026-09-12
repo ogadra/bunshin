@@ -11,6 +11,14 @@ export const MessageKey = {
   termConnecting: "termConnecting",
   termRetrying: "termRetrying",
   termSessionRecreated: "termSessionRecreated",
+  stackInfoLabel: "stackInfoLabel",
+  stackInfoRegion: "stackInfoRegion",
+  stackInfoCloud: "stackInfoCloud",
+  stackInfoClose: "stackInfoClose",
+  stackRegionTokyo: "stackRegionTokyo",
+  stackRegionOsaka: "stackRegionOsaka",
+  stackCloudGoogleCloud: "stackCloudGoogleCloud",
+  stackCloudAws: "stackCloudAws",
 } as const;
 
 export type MessageKey = (typeof MessageKey)[keyof typeof MessageKey];
@@ -29,6 +37,14 @@ const MESSAGES: Messages = {
     termConnecting: "Connecting…",
     termRetrying: "Retrying…",
     termSessionRecreated: "Session recreated. Run the command again.",
+    stackInfoLabel: "Connection",
+    stackInfoRegion: "Region",
+    stackInfoCloud: "Cloud",
+    stackInfoClose: "Close",
+    stackRegionTokyo: "Tokyo",
+    stackRegionOsaka: "Osaka",
+    stackCloudGoogleCloud: "Google Cloud",
+    stackCloudAws: "AWS",
   },
   ja: {
     errorNoIdleRunner: "実行環境に空きがありません",
@@ -41,6 +57,14 @@ const MESSAGES: Messages = {
     termConnecting: "接続中…",
     termRetrying: "再試行します…",
     termSessionRecreated: "セッションを作り直しました。もう一度実行してください。",
+    stackInfoLabel: "接続先",
+    stackInfoRegion: "リージョン",
+    stackInfoCloud: "クラウド",
+    stackInfoClose: "閉じる",
+    stackRegionTokyo: "東京",
+    stackRegionOsaka: "大阪",
+    stackCloudGoogleCloud: "Google Cloud",
+    stackCloudAws: "AWS",
   },
 };
 

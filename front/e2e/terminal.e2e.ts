@@ -1,8 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
 
+const STACK = "ap-northeast-1";
+
 const command = (page: Page) => page.locator("#command");
 const status = (page: Page) => page.locator("#status");
-const screen = (page: Page) => page.locator(".xterm-screen");
+const cells = (page: Page) => page.locator(".cell");
+const lastCell = (page: Page) => cells(page).last();
 
 const sse = (events: unknown[]): string =>
   events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("");
@@ -11,13 +14,14 @@ const sse = (events: unknown[]): string =>
 async function stubRunner(page: Page, events: unknown[]): Promise<{ commands: string[] }> {
   const commands: string[] = [];
   await page.route("**/api/shell", async (route) => {
-    await route.fulfill({ status: 204 });
+    await route.fulfill({ status: 204, headers: { "X-Stack-Name": STACK } });
   });
   await page.route("**/api/execute", async (route, req) => {
     commands.push(JSON.parse(req.postData() ?? "{}").command);
     await route.fulfill({
       status: 200,
       contentType: "text/event-stream",
+      headers: { "X-Stack-Name": STACK },
       body: sse(events),
     });
   });
@@ -29,29 +33,13 @@ const run = async (page: Page, text: string): Promise<void> => {
   await command(page).press("Enter");
 };
 
-test("the prompt appears and the input is enabled once the shell is created", async ({ page }) => {
+test("the input is enabled once the shell is created", async ({ page }) => {
   await stubRunner(page, []);
   await page.goto("/");
 
   await expect(command(page)).toBeEnabled();
   await expect(status(page)).toBeHidden();
-  await expect(screen(page)).toContainText("$");
-});
-
-test("the terminal refits when only its container resizes", async ({ page }) => {
-  await stubRunner(page, []);
-  await page.goto("/");
-  await expect(status(page)).toBeHidden();
-
-  const rows = page.locator(".xterm-rows > div");
-  const before = await rows.count();
-
-  // 接続完了で #status が消えるときと同じく、.terminal は window の resize なしに伸び縮みする
-  await page.evaluate(() => {
-    (document.getElementById("input-bar") as HTMLElement).style.display = "none";
-  });
-
-  await expect(rows).not.toHaveCount(before);
+  await expect(cells(page)).toHaveCount(0);
 });
 
 test("no editor UI is present", async ({ page }) => {
@@ -61,14 +49,12 @@ test("no editor UI is present", async ({ page }) => {
   const dom = await page.evaluate(() => ({
     editor: document.getElementById("editor"),
     preview: document.getElementById("preview"),
-    stackInfo: document.getElementById("stack-info-button"),
   }));
   expect(dom.editor).toBeNull();
   expect(dom.preview).toBeNull();
-  expect(dom.stackInfo).toBeNull();
 });
 
-test("stdout is echoed into the terminal", async ({ page }) => {
+test("stdout is echoed into the cell opened for the command", async ({ page }) => {
   const stub = await stubRunner(page, [
     { type: "stdout", data: "2026-09-12\n" },
     { type: "complete", exitCode: 0 },
@@ -78,9 +64,83 @@ test("stdout is echoed into the terminal", async ({ page }) => {
 
   await run(page, "date");
 
-  await expect(screen(page)).toContainText("date");
-  await expect(screen(page)).toContainText("2026-09-12");
+  await expect(lastCell(page).locator("code")).toHaveText("date");
+  await expect(lastCell(page).locator(".cell-output")).toContainText("2026-09-12");
   expect(stub.commands).toEqual(["date"]);
+});
+
+test("each command stacks a new cell below the previous one", async ({ page }) => {
+  await stubRunner(page, [
+    { type: "stdout", data: "ok\n" },
+    { type: "complete", exitCode: 0 },
+  ]);
+  await page.goto("/");
+  await expect(command(page)).toBeEnabled();
+
+  await run(page, "date");
+  await expect(cells(page)).toHaveCount(1);
+  await expect(command(page)).toBeEnabled();
+  await run(page, "whoami");
+
+  await expect(cells(page)).toHaveCount(2);
+  await expect(cells(page).locator("code")).toHaveText(["date", "whoami"]);
+
+  const [first, second] = await cells(page).all();
+  const firstBox = await first.boundingBox();
+  const secondBox = await second.boundingBox();
+  expect(secondBox!.y).toBeGreaterThan(firstBox!.y);
+});
+
+test("an output block is as tall as the lines it holds", async ({ page }) => {
+  const lines = Array.from({ length: 12 }, (_, i) => ({
+    type: "stdout",
+    data: `line ${String(i)}\n`,
+  }));
+  await stubRunner(page, [...lines, { type: "complete", exitCode: 0 }]);
+  await page.goto("/");
+  await expect(command(page)).toBeEnabled();
+
+  await run(page, "cowsay");
+
+  const rows = lastCell(page).locator(".xterm-rows > div");
+  await expect(rows).toHaveCount(12);
+  await expect(lastCell(page).locator(".cell-output")).toContainText("line 11");
+  // ブロックは内側にスクロールを持たず、ページと一緒に縦へ伸びる
+  const overflow = await lastCell(page)
+    .locator(".cell-output")
+    .evaluate((el) => el.scrollHeight - el.clientHeight);
+  expect(overflow).toBeLessThanOrEqual(1);
+});
+
+test("a narrower window reflows a finished block without losing it", async ({ page }) => {
+  const text = "0123456789".repeat(6);
+  await stubRunner(page, [
+    { type: "stdout", data: `${text}\n` },
+    { type: "complete", exitCode: 0 },
+  ]);
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await page.goto("/");
+  await expect(command(page)).toBeEnabled();
+
+  await run(page, "echo");
+  const output = lastCell(page).locator(".cell-output");
+  await expect(output).toContainText(text);
+
+  await page.setViewportSize({ width: 400, height: 800 });
+
+  await expect(output).toContainText(text);
+  const overflow = await output.evaluate((el) => el.scrollHeight - el.clientHeight);
+  expect(overflow).toBeLessThanOrEqual(1);
+});
+
+test("a command with no output leaves no empty block", async ({ page }) => {
+  await stubRunner(page, [{ type: "complete", exitCode: 0 }]);
+  await page.goto("/");
+  await expect(command(page)).toBeEnabled();
+
+  await run(page, "true");
+
+  await expect(lastCell(page).locator(".cell-output")).toBeHidden();
 });
 
 test("a non-zero exit code is reported", async ({ page }) => {
@@ -93,8 +153,8 @@ test("a non-zero exit code is reported", async ({ page }) => {
 
   await run(page, "nope");
 
-  await expect(screen(page)).toContainText("not found");
-  await expect(screen(page)).toContainText("exit code: 127");
+  await expect(lastCell(page)).toContainText("not found");
+  await expect(lastCell(page)).toContainText("exit code: 127");
 });
 
 test("ANSI colour from the command survives into the DOM", async ({ page }) => {
@@ -109,7 +169,7 @@ test("ANSI colour from the command survives into the DOM", async ({ page }) => {
 
   // lolcat と pokemonsay は 256 色を使う。
   // xterm が色付きの span を起こすことを確認する
-  await expect(screen(page).locator("span.xterm-fg-198").first()).toHaveText("Nix");
+  await expect(lastCell(page).locator("span.xterm-fg-198").first()).toHaveText("Nix");
 });
 
 test("the arrow keys recall the previous command", async ({ page }) => {
@@ -124,6 +184,55 @@ test("the arrow keys recall the previous command", async ({ page }) => {
   await expect(command(page)).toHaveValue("whoami");
   await command(page).press("ArrowDown");
   await expect(command(page)).toHaveValue("");
+});
+
+test.describe("preset commands", () => {
+  const NIX_DEVELOP = `nix develop --command sh -c "figlet 'Nix' | cowsay -n | lolcat -f"`;
+
+  test("one tap runs the hands-on command", async ({ page }) => {
+    const stub = await stubRunner(page, [
+      { type: "stdout", data: "/home/app/.nix-profile/bin/pokemonsay\n" },
+      { type: "complete", exitCode: 0 },
+    ]);
+    await page.goto("/");
+    await expect(command(page)).toBeEnabled();
+
+    await page.locator("#presets button", { hasText: "which pokemonsay" }).click();
+
+    expect(stub.commands).toEqual(["which pokemonsay"]);
+    await expect(lastCell(page).locator("code")).toHaveText("which pokemonsay");
+  });
+
+  test("every hands-on command has a button", async ({ page }) => {
+    await stubRunner(page, []);
+    await page.goto("/");
+
+    await expect(page.locator("#presets button")).toHaveText([
+      "nix run nixpkgs#pokemonsay 'Nix'",
+      "which pokemonsay",
+      NIX_DEVELOP,
+    ]);
+  });
+});
+
+test.describe("connection info", () => {
+  test.use({ locale: "ja" });
+
+  test("the button in the corner names the region and the cloud", async ({ page }) => {
+    await stubRunner(page, []);
+    await page.goto("/");
+
+    const button = page.locator("#stack-info-button");
+    await expect(button).toBeEnabled();
+    await expect(button).toHaveText("接続先");
+
+    await button.click();
+
+    const dialog = page.locator("#stack-info-dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("東京");
+    await expect(dialog).toContainText("AWS");
+  });
 });
 
 test.describe("shell creation failure", () => {
@@ -149,7 +258,7 @@ test.describe("session reassignment", () => {
 
   test("recreates the shell and asks the user to retry", async ({ page }) => {
     await page.route("**/api/shell", async (route) => {
-      await route.fulfill({ status: 204 });
+      await route.fulfill({ status: 204, headers: { "X-Stack-Name": STACK } });
     });
     await page.route("**/api/execute", async (route) => {
       await route.fulfill({
@@ -164,6 +273,6 @@ test.describe("session reassignment", () => {
 
     await run(page, "date");
 
-    await expect(screen(page)).toContainText("Session recreated");
+    await expect(lastCell(page)).toContainText("Session recreated");
   });
 });

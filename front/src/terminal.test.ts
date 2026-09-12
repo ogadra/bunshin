@@ -1,10 +1,13 @@
 // @vitest-environment happy-dom
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { SseEventType } from "./client";
-import { createHistory, formatEvent, initTerminal, type TerminalView } from "./terminal";
+import { createHistory, formatEvent, initTerminal } from "./terminal";
+import type { Transcript } from "./transcript";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
+
+const STACK = "ap-northeast-1";
 
 beforeEach(() => {
   mockFetch.mockReset();
@@ -69,6 +72,8 @@ describe("createHistory", () => {
   });
 });
 
+type StubCell = { command: string; written: string[]; finished: boolean };
+
 const setup = () => {
   document.body.innerHTML = `
     <form id="input-bar"><input id="command" disabled /><button disabled></button></form>
@@ -81,14 +86,29 @@ const setup = () => {
     button: form.querySelector("button") as HTMLButtonElement,
     status: document.getElementById("status") as HTMLElement,
   };
-  const written: string[] = [];
-  const view: TerminalView = {
-    write: (data) => {
-      written.push(data);
+  const cells: StubCell[] = [];
+  const transcript: Transcript = {
+    begin(command) {
+      const cell: StubCell = { command, written: [], finished: false };
+      cells.push(cell);
+      return {
+        write(data: string): void {
+          cell.written.push(data);
+        },
+        finish(): void {
+          cell.finished = true;
+        },
+      };
     },
   };
-  return { els, view, written };
+  const stacks: string[] = [];
+  const onStack = (stackName: string): void => {
+    stacks.push(stackName);
+  };
+  return { els, transcript, cells, stacks, onStack };
 };
+
+const okShell = { ok: true, headers: { get: () => STACK } };
 
 const flush = async (): Promise<void> => {
   await vi.advanceTimersByTimeAsync(0);
@@ -106,22 +126,23 @@ describe("initTerminal", () => {
     vi.useRealTimers();
   });
 
-  test("a successful shell creation enables the input and prints the prompt", async () => {
-    const { els, view, written } = setup();
-    mockFetch.mockResolvedValue({ ok: true });
+  test("a successful shell creation enables the input and reports the stack", async () => {
+    const { els, transcript, cells, stacks, onStack } = setup();
+    mockFetch.mockResolvedValue(okShell);
 
-    initTerminal(view, els, "en");
+    initTerminal(transcript, els, "en", onStack);
     expect(els.status.textContent).toBe("Connecting…");
     await flush();
 
     expect(els.status.hidden).toBe(true);
     expect(els.input.disabled).toBe(false);
     expect(els.button.disabled).toBe(false);
-    expect(written).toEqual(["$ "]);
+    expect(stacks).toEqual([STACK]);
+    expect(cells).toEqual([]);
   });
 
   test("a failed shell creation keeps the status visible with the reason", async () => {
-    const { els, view } = setup();
+    const { els, transcript, onStack } = setup();
     mockFetch.mockResolvedValue({
       ok: false,
       status: 503,
@@ -129,7 +150,7 @@ describe("initTerminal", () => {
       clone: () => ({ json: async () => ({ code: "NO_IDLE_RUNNER" }) }),
     });
 
-    initTerminal(view, els, "ja");
+    initTerminal(transcript, els, "ja", onStack);
     await flush();
 
     expect(els.status.hidden).toBe(false);
@@ -138,7 +159,7 @@ describe("initTerminal", () => {
   });
 
   test("a retry that succeeds hides the status and enables the input", async () => {
-    const { els, view, written } = setup();
+    const { els, transcript, onStack } = setup();
     mockFetch
       .mockResolvedValueOnce({
         ok: false,
@@ -146,9 +167,9 @@ describe("initTerminal", () => {
         headers: { get: () => null },
         clone: () => ({ json: async () => ({ code: "NO_IDLE_RUNNER" }) }),
       })
-      .mockResolvedValue({ ok: true });
+      .mockResolvedValue(okShell);
 
-    initTerminal(view, els, "en");
+    initTerminal(transcript, els, "en", onStack);
     await vi.advanceTimersByTimeAsync(0);
     expect(els.input.disabled).toBe(true);
 
@@ -156,16 +177,43 @@ describe("initTerminal", () => {
 
     expect(els.status.hidden).toBe(true);
     expect(els.input.disabled).toBe(false);
-    expect(written).toEqual(["$ "]);
+  });
+
+  test("a command opens a cell that is closed once the run ends", async () => {
+    const { els, transcript, cells, onStack } = setup();
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/shell") return Promise.resolve(okShell);
+      return Promise.resolve({
+        ok: true,
+        headers: { get: (name: string) => (name === "X-Stack-Name" ? STACK : null) },
+        body: {
+          getReader: () => ({
+            read: async () => ({ done: true, value: undefined }),
+            cancel: vi.fn(),
+          }),
+        },
+      });
+    });
+
+    initTerminal(transcript, els, "en", onStack);
+    await flush();
+    els.input.value = "date";
+    els.form.dispatchEvent(new Event("submit"));
+    await flush();
+
+    expect(cells).toHaveLength(1);
+    expect(cells[0].command).toBe("date");
+    expect(cells[0].finished).toBe(true);
+    expect(els.input.value).toBe("");
   });
 
   test("a failed shell recreation keeps the input disabled and falls back to reconnecting", async () => {
-    const { els, view, written } = setup();
+    const { els, transcript, cells, onStack } = setup();
     let shellCalls = 0;
     mockFetch.mockImplementation((url: string) => {
       if (url === "/api/shell") {
         shellCalls += 1;
-        if (shellCalls === 1) return Promise.resolve({ ok: true });
+        if (shellCalls === 1) return Promise.resolve(okShell);
         return Promise.resolve({
           ok: false,
           status: 503,
@@ -180,7 +228,7 @@ describe("initTerminal", () => {
       });
     });
 
-    initTerminal(view, els, "ja");
+    initTerminal(transcript, els, "ja", onStack);
     await flush();
     els.input.value = "date";
     els.form.dispatchEvent(new Event("submit"));
@@ -190,11 +238,12 @@ describe("initTerminal", () => {
     expect(els.button.disabled).toBe(true);
     expect(els.status.hidden).toBe(false);
     expect(els.status.textContent).toBe("実行環境に空きがありません 再試行します…");
-    expect(written).toEqual(["$ ", "date\n", "\x1b[31m実行環境に空きがありません\x1b[0m\n"]);
+    expect(cells[0].written).toEqual(["\x1b[31m実行環境に空きがありません\x1b[0m\n"]);
+    expect(cells[0].finished).toBe(true);
   });
 
   test("a shell recreation aborted by the unload does not start reconnecting", async () => {
-    const { els, view } = setup();
+    const { els, transcript, onStack } = setup();
     const created: Array<string | undefined> = [];
     mockFetch.mockImplementation((url: string, init: { method?: string; signal?: AbortSignal }) => {
       if (url !== "/api/shell") {
@@ -205,7 +254,7 @@ describe("initTerminal", () => {
         });
       }
       created.push(init.method);
-      if (created.length === 1) return Promise.resolve({ ok: true });
+      if (created.length === 1) return Promise.resolve(okShell);
       if (init.method === "DELETE") return Promise.resolve({ ok: true });
       return new Promise((_, reject) => {
         init.signal?.addEventListener("abort", () => {
@@ -214,7 +263,7 @@ describe("initTerminal", () => {
       });
     });
 
-    initTerminal(view, els, "en");
+    initTerminal(transcript, els, "en", onStack);
     await flush();
     els.input.value = "date";
     els.form.dispatchEvent(new Event("submit"));
@@ -227,9 +276,9 @@ describe("initTerminal", () => {
   });
 
   test("the arrow keys replace the input with history entries", async () => {
-    const { els, view } = setup();
-    mockFetch.mockResolvedValue({ ok: true });
-    initTerminal(view, els, "en");
+    const { els, transcript, onStack } = setup();
+    mockFetch.mockResolvedValue(okShell);
+    initTerminal(transcript, els, "en", onStack);
     await flush();
 
     els.input.value = "date";
@@ -243,9 +292,9 @@ describe("initTerminal", () => {
   });
 
   test("an empty command is not submitted", async () => {
-    const { els, view } = setup();
-    mockFetch.mockResolvedValue({ ok: true });
-    initTerminal(view, els, "en");
+    const { els, transcript, onStack } = setup();
+    mockFetch.mockResolvedValue(okShell);
+    initTerminal(transcript, els, "en", onStack);
     await flush();
     mockFetch.mockReset();
 
@@ -254,5 +303,68 @@ describe("initTerminal", () => {
     await flush();
 
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test("run executes a command without going through the input", async () => {
+    const { els, transcript, cells, onStack } = setup();
+    const commands: string[] = [];
+    mockFetch.mockImplementation((url: string, init: { body?: string }) => {
+      if (url === "/api/shell") return Promise.resolve(okShell);
+      commands.push(JSON.parse(init.body ?? "{}").command);
+      return Promise.resolve({
+        ok: true,
+        headers: { get: (name: string) => (name === "X-Stack-Name" ? STACK : null) },
+        body: {
+          getReader: () => ({
+            read: async () => ({ done: true, value: undefined }),
+            cancel: vi.fn(),
+          }),
+        },
+      });
+    });
+
+    const terminal = initTerminal(transcript, els, "en", onStack);
+    await flush();
+
+    terminal.run("which pokemonsay");
+    await flush();
+
+    expect(commands).toEqual(["which pokemonsay"]);
+    expect(cells[0].command).toBe("which pokemonsay");
+  });
+
+  test("the busy listener follows the connection and the running command", async () => {
+    const { els, transcript, onStack } = setup();
+    mockFetch.mockResolvedValue(okShell);
+
+    const terminal = initTerminal(transcript, els, "en", onStack);
+    const states: boolean[] = [];
+    terminal.onBusyChange((busy) => {
+      states.push(busy);
+    });
+    expect(states).toEqual([true]);
+
+    await flush();
+    expect(states).toEqual([true, false]);
+  });
+
+  test("a command is ignored while another one is running", async () => {
+    const { els, transcript, cells, onStack } = setup();
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/shell") return Promise.resolve(okShell);
+      return new Promise(() => {
+        // 実行中のまま止めて、2 本目が弾かれることを見る
+      });
+    });
+
+    const terminal = initTerminal(transcript, els, "en", onStack);
+    await flush();
+
+    terminal.run("date");
+    await flush();
+    terminal.run("whoami");
+    await flush();
+
+    expect(cells).toHaveLength(1);
   });
 });
