@@ -193,6 +193,39 @@ describe("initTerminal", () => {
     expect(written).toEqual(["$ ", "date\n", "\x1b[31m実行環境に空きがありません\x1b[0m\n"]);
   });
 
+  test("a shell recreation aborted by the unload does not start reconnecting", async () => {
+    const { els, view } = setup();
+    const created: Array<string | undefined> = [];
+    mockFetch.mockImplementation((url: string, init: { method?: string; signal?: AbortSignal }) => {
+      if (url !== "/api/shell") {
+        return Promise.resolve({
+          ok: false,
+          status: 400,
+          headers: { get: (name: string) => (name === "X-Session-Reassigned" ? "true" : null) },
+        });
+      }
+      created.push(init.method);
+      if (created.length === 1) return Promise.resolve({ ok: true });
+      if (init.method === "DELETE") return Promise.resolve({ ok: true });
+      return new Promise((_, reject) => {
+        init.signal?.addEventListener("abort", () => {
+          reject(new DOMException("aborted", "AbortError"));
+        });
+      });
+    });
+
+    initTerminal(view, els, "en");
+    await flush();
+    els.input.value = "date";
+    els.form.dispatchEvent(new Event("submit"));
+    await flush();
+
+    window.dispatchEvent(new Event("beforeunload"));
+    await flush();
+
+    expect(created.filter((method) => method === "POST")).toHaveLength(2);
+  });
+
   test("the arrow keys replace the input with history entries", async () => {
     const { els, view } = setup();
     mockFetch.mockResolvedValue({ ok: true });

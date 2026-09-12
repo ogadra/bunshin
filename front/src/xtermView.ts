@@ -14,7 +14,8 @@ export const createXtermView = (container: HTMLElement): TerminalView => {
   term.open(container);
   fit.fit();
 
-  // 接続完了で #status が消えると container の高さだけが変わり、window の resize は起きない
+  // 接続完了で #status が消えると container の高さだけが変わる。
+  // window の resize は起きない
   const observer = new ResizeObserver(() => {
     fit.fit();
   });

@@ -114,6 +114,12 @@ export const initTerminal = (view: TerminalView, els: TerminalElements, lang: La
     }
   };
 
+  const beginReconnect = (): void => {
+    status.hidden = false;
+    status.textContent = translate(lang, "termConnecting");
+    void connect(INITIAL_DELAY_MS);
+  };
+
   const run = async (): Promise<void> => {
     const command = input.value.trim();
     if (command === "" || running) return;
@@ -140,6 +146,7 @@ export const initTerminal = (view: TerminalView, els: TerminalElements, lang: La
           await createShell(controller.signal);
           writeLine(`${YELLOW}${translate(lang, "termSessionRecreated")}${RESET}`);
         } catch (createErr: unknown) {
+          if (controller.signal.aborted) return;
           writeLine(`${RED}${messageOf(lang, createErr)}${RESET}`);
           shellLost = true;
         }
@@ -151,9 +158,7 @@ export const initTerminal = (view: TerminalView, els: TerminalElements, lang: La
       running = false;
       if (shellLost) {
         // shell がないままプロンプトを出すと、打てるのに必ず失敗するコマンドを誘う
-        status.hidden = false;
-        status.textContent = translate(lang, "termConnecting");
-        void connect(INITIAL_DELAY_MS);
+        beginReconnect();
       } else {
         view.write(PROMPT);
         setDisabled(false);
@@ -180,6 +185,5 @@ export const initTerminal = (view: TerminalView, els: TerminalElements, lang: La
     deleteShell();
   });
 
-  status.textContent = translate(lang, "termConnecting");
-  void connect(INITIAL_DELAY_MS);
+  beginReconnect();
 };
