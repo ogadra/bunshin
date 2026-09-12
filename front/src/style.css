@@ -61,21 +61,20 @@ body {
 
 .presets {
   display: flex;
+  flex-direction: column;
   gap: 8px;
   padding: 8px 12px;
-  overflow-x: auto;
 }
 
 .preset {
-  flex: 0 0 auto;
-  max-width: 60vw;
   padding: 8px 14px;
   border: 1px solid #3c3c3c;
-  border-radius: 999px;
+  border-radius: 6px;
   background: #2d2d2d;
   color: #d4d4d4;
   font-family: monospace;
   font-size: 18px;
+  text-align: left;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

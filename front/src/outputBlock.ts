@@ -41,10 +41,10 @@ export const createOutputBlock = (container: HTMLElement): OutputBlock => {
   term.loadAddon(fit);
   term.open(container);
 
-  let written = false;
   // 末尾の改行をそのまま書くとカーソルが空行へ進む。
   // その空行に合わせて rows を詰めると、xterm は先頭の行を scrollback へ捨てる
   let trailingNewlines = "";
+  let content = "";
 
   const columns = (): number => {
     const proposed = fit.proposeDimensions();
@@ -61,16 +61,25 @@ export const createOutputBlock = (container: HTMLElement): OutputBlock => {
     term.resize(columns(), Math.max(buffer.baseY + buffer.cursorY + 1, 1));
   };
 
+  const push = (data: string): void => {
+    const cols = columns();
+    // rows が足りないと xterm は溢れた行を scrollback へ送る。
+    // 送られた行は rows を戻しても表示に返らないので、書く前に確保する
+    term.resize(cols, term.rows + requiredRows(data, cols));
+    term.write(data, fitToContent);
+  };
+
   let width = container.clientWidth;
   const observer = new ResizeObserver(() => {
     // 行数を変えると container の高さも動く。
     // 幅が変わったときだけ折り返しを取り直す
     if (container.clientWidth === width) return;
     width = container.clientWidth;
-    const previousCols = term.cols;
-    const cols = columns();
-    term.resize(cols, term.rows * Math.max(Math.ceil(previousCols / cols), 1) + 1);
-    term.write("", fitToContent);
+    // 折り返しが増えると xterm は溢れた行を scrollback へ送る。
+    // 幅に合わせた行数を確保しなおすため、空の端末に書き直す
+    term.reset();
+    term.resize(columns(), 1);
+    if (content !== "") push(content);
   });
   observer.observe(container);
 
@@ -81,16 +90,12 @@ export const createOutputBlock = (container: HTMLElement): OutputBlock => {
       trailingNewlines = buffered.slice(body.length);
       if (body === "") return;
 
-      written = true;
-      const cols = columns();
-      // rows が足りないと xterm は溢れた行を scrollback へ送る。
-      // 送られた行は rows を戻しても表示に返らないので、書く前に確保する
-      term.resize(cols, term.rows + requiredRows(body, cols));
-      term.write(body, fitToContent);
+      content += body;
+      push(body);
     },
     finish(): void {
       term.write("", () => {
-        if (!written) {
+        if (content === "") {
           container.hidden = true;
           observer.disconnect();
           return;
