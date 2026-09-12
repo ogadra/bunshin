@@ -125,6 +125,7 @@ export const initTerminal = (view: TerminalView, els: TerminalElements, lang: La
 
     const controller = new AbortController();
     execAbort = controller;
+    let shellLost = false;
 
     try {
       for await (const event of execute(command, controller.signal)) {
@@ -140,16 +141,24 @@ export const initTerminal = (view: TerminalView, els: TerminalElements, lang: La
           writeLine(`${YELLOW}${translate(lang, "termSessionRecreated")}${RESET}`);
         } catch (createErr: unknown) {
           writeLine(`${RED}${messageOf(lang, createErr)}${RESET}`);
+          shellLost = true;
         }
       } else {
         writeLine(`${RED}${messageOf(lang, err)}${RESET}`);
       }
     } finally {
       if (execAbort === controller) execAbort = null;
-      view.write(PROMPT);
       running = false;
-      setDisabled(false);
-      focusCommand();
+      if (shellLost) {
+        // shell がないままプロンプトを出すと、打てるのに必ず失敗するコマンドを誘う
+        status.hidden = false;
+        status.textContent = translate(lang, "termConnecting");
+        void connect(INITIAL_DELAY_MS);
+      } else {
+        view.write(PROMPT);
+        setDisabled(false);
+        focusCommand();
+      }
     }
   };
 

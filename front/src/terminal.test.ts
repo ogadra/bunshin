@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, test, expect, vi, beforeEach } from "vitest";
+import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { SseEventType } from "./client";
 import { createHistory, formatEvent, initTerminal, type TerminalView } from "./terminal";
 
@@ -91,10 +91,21 @@ const setup = () => {
 };
 
 const flush = async (): Promise<void> => {
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await vi.advanceTimersByTimeAsync(0);
 };
 
 describe("initTerminal", () => {
+  // 接続失敗は再試行タイマーを積む。
+  // 実タイマーのままだとテストを跨いで発火する
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
   test("a successful shell creation enables the input and prints the prompt", async () => {
     const { els, view, written } = setup();
     mockFetch.mockResolvedValue({ ok: true });
@@ -127,7 +138,6 @@ describe("initTerminal", () => {
   });
 
   test("a retry that succeeds hides the status and enables the input", async () => {
-    vi.useFakeTimers();
     const { els, view, written } = setup();
     mockFetch
       .mockResolvedValueOnce({
@@ -147,7 +157,40 @@ describe("initTerminal", () => {
     expect(els.status.hidden).toBe(true);
     expect(els.input.disabled).toBe(false);
     expect(written).toEqual(["$ "]);
-    vi.useRealTimers();
+  });
+
+  test("a failed shell recreation keeps the input disabled and falls back to reconnecting", async () => {
+    const { els, view, written } = setup();
+    let shellCalls = 0;
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/shell") {
+        shellCalls += 1;
+        if (shellCalls === 1) return Promise.resolve({ ok: true });
+        return Promise.resolve({
+          ok: false,
+          status: 503,
+          headers: { get: () => null },
+          clone: () => ({ json: async () => ({ code: "NO_IDLE_RUNNER" }) }),
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 400,
+        headers: { get: (name: string) => (name === "X-Session-Reassigned" ? "true" : null) },
+      });
+    });
+
+    initTerminal(view, els, "ja");
+    await flush();
+    els.input.value = "date";
+    els.form.dispatchEvent(new Event("submit"));
+    await flush();
+
+    expect(els.input.disabled).toBe(true);
+    expect(els.button.disabled).toBe(true);
+    expect(els.status.hidden).toBe(false);
+    expect(els.status.textContent).toBe("実行環境に空きがありません 再試行します…");
+    expect(written).toEqual(["$ ", "date\n", "\x1b[31m実行環境に空きがありません\x1b[0m\n"]);
   });
 
   test("the arrow keys replace the input with history entries", async () => {
