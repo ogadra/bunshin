@@ -609,8 +609,8 @@ func TestGetResolveSession_CookieSecure(t *testing.T) {
 			if !c.HttpOnly {
 				t.Error("expected HttpOnly=true on session_id cookie")
 			}
-			if c.SameSite != http.SameSiteStrictMode {
-				t.Errorf("expected SameSite=Strict on session_id cookie, got %v", c.SameSite)
+			if c.SameSite != http.SameSiteNoneMode {
+				t.Errorf("expected SameSite=None on session_id cookie, got %v", c.SameSite)
 			}
 			return
 		}

@@ -29,7 +29,8 @@
         { "name": "RUNNER_APP_PORT", "value": "5000" },
         { "name": "CLOUD", "value": "AWS" },
         { "name": "NGINX_RESOLVER", "value": "169.254.169.253" },
-        { "name": "BROKER_HOST", "value": "broker.internal" }
+        { "name": "BROKER_HOST", "value": "broker.internal" },
+        { "name": "FRAME_ANCESTORS", "value": "{{ must_env `FRAME_ANCESTORS` }}" }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",

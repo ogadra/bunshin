@@ -59,6 +59,9 @@ var brokerBase string
 // forwardTargetBase は cross-region forward 先モックの制御 URL。TestMain で初期化される。
 var forwardTargetBase string
 
+// frameAncestors は nginx に渡した埋め込み許可 origin。TestMain で初期化される。
+var frameAncestors string
+
 // runnerHostnames は全 runner のホスト名。TestMain で初期化される。
 // テスト間の runner リセットに使用する。
 var runnerHostnames []string
@@ -78,6 +81,11 @@ func TestMain(m *testing.M) {
 	forwardTargetBase = os.Getenv("FORWARD_TARGET_URL")
 	if forwardTargetBase == "" {
 		fmt.Fprintln(os.Stderr, "FORWARD_TARGET_URL environment variable is required")
+		os.Exit(1)
+	}
+	frameAncestors = os.Getenv("FRAME_ANCESTORS")
+	if frameAncestors == "" {
+		fmt.Fprintln(os.Stderr, "FRAME_ANCESTORS environment variable is required")
 		os.Exit(1)
 	}
 
@@ -485,16 +493,19 @@ func TestStaticUnknownPathNotFound(t *testing.T) {
 }
 
 // securityHeaders はnginx/security-headers.confがcatch-all serverに付けるheader。
-var securityHeaders = map[string]string{
-	"Strict-Transport-Security": "max-age=31536000",
-	"X-Content-Type-Options":    "nosniff",
-	"X-Frame-Options":           "SAMEORIGIN",
-	"Referrer-Policy":           "strict-origin-when-cross-origin",
+// frame-ancestorsはnginxに渡したFRAME_ANCESTORSをそのまま並べる。
+func securityHeaders() map[string]string {
+	return map[string]string{
+		"Strict-Transport-Security": "max-age=31536000",
+		"X-Content-Type-Options":    "nosniff",
+		"Content-Security-Policy":   "frame-ancestors " + frameAncestors,
+		"Referrer-Policy":           "strict-origin-when-cross-origin",
+	}
 }
 
 func assertSecurityHeaders(t *testing.T, label string, resp *http.Response) {
 	t.Helper()
-	for name, want := range securityHeaders {
+	for name, want := range securityHeaders() {
 		if got := resp.Header.Get(name); got != want {
 			t.Errorf("%s: %s: want %q, got %q", label, name, want, got)
 		}
@@ -551,7 +562,7 @@ func TestSecurityHeadersAbsentOnPortForward(t *testing.T) {
 		map[string]string{"Host": portForwardHost(strings.Repeat("0", 32), perlHmrStack)},
 	)
 	defer resp.Body.Close()
-	for name := range securityHeaders {
+	for name := range securityHeaders() {
 		if got := resp.Header.Get(name); got != "" {
 			t.Errorf("GET pf /: %s: want absent, got %q", name, got)
 		}

@@ -15,13 +15,14 @@ RUN pnpm build
 FROM openresty/openresty:1.31.1.1-alpine@sha256:5f621903212ed7194a6bd31de7a76c1cfbe92e7b7a6fdb0f2b38626e97bd38c4 AS config-test
 RUN apk add --no-cache ca-certificates gettext
 COPY nginx/errors.conf /etc/nginx/errors.conf
-COPY nginx/security-headers.conf /etc/nginx/security-headers.conf
+COPY nginx/security-headers.conf /etc/nginx/security-headers.conf.template
+COPY nginx/render-conf.sh /usr/local/bin/render-conf.sh
 COPY nginx/lua/ /usr/local/openresty/nginx/lua/
 COPY nginx/nginx.conf /etc/nginx/nginx.conf.template
 ARG NGINX_RESOLVER=127.0.0.11
 ARG BROKER_HOST=broker
 ARG CLOUD
-RUN envsubst '${NGINX_RESOLVER} ${BROKER_HOST}' < /etc/nginx/nginx.conf.template > /usr/local/openresty/nginx/conf/nginx.conf \
+RUN FRAME_ANCESTORS=https://config-test.invalid sh /usr/local/bin/render-conf.sh \
     && STACK_NAME=config-test INTERNAL_DOMAIN=config-test.invalid BUNSHIN_STACKS=config-test RUNNER_API_PORT=3000 RUNNER_APP_PORT=5000 CLOUD=$CLOUD openresty -t \
     && for t in /usr/local/openresty/nginx/lua/*_test.lua; do /usr/local/openresty/luajit/bin/luajit "$t" || exit 1; done \
     && rm -f /tmp/nginx.pid
@@ -36,10 +37,11 @@ RUN apk add --no-cache ca-certificates gettext \
     && rm -rf /usr/local/openresty/nginx/html \
     && chown -R nginx:nginx /usr/local/openresty/nginx /run
 COPY --chown=nginx:nginx nginx/errors.conf /etc/nginx/errors.conf
-COPY --chown=nginx:nginx nginx/security-headers.conf /etc/nginx/security-headers.conf
+COPY --chown=nginx:nginx nginx/security-headers.conf /etc/nginx/security-headers.conf.template
+COPY --chown=nginx:nginx nginx/render-conf.sh /usr/local/bin/render-conf.sh
 COPY --chown=nginx:nginx nginx/lua/ /usr/local/openresty/nginx/lua/
 COPY --chown=nginx:nginx nginx/nginx.conf /etc/nginx/nginx.conf.template
 COPY --from=front-build --chown=nginx:nginx /app/dist/ /usr/local/openresty/nginx/html/
 RUN rm -f /usr/local/openresty/nginx/lua/*_test.lua
 USER nginx
-CMD ["/bin/sh", "-c", "envsubst '${NGINX_RESOLVER} ${BROKER_HOST}' < /etc/nginx/nginx.conf.template > /usr/local/openresty/nginx/conf/nginx.conf && exec openresty -g 'daemon off;'"]
+CMD ["/bin/sh", "-c", "sh /usr/local/bin/render-conf.sh && exec openresty -g 'daemon off;'"]
