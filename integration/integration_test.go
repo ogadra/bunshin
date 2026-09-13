@@ -457,7 +457,7 @@ func TestStaticIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /: read body: %v", err)
 	}
-	for _, want := range []string{"<title>bunshin</title>", `id="command"`, `id="terminal"`} {
+	for _, want := range []string{"<title>bunshin</title>", `id="command"`, `id="transcript"`} {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("GET /: want the built index.html containing %q, got %.200q", want, body)
 		}
