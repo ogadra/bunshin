@@ -37,6 +37,6 @@ const terminal = initTerminal(
 const presets = createPresetBar(document.getElementById("presets") as HTMLElement, (command) => {
   terminal.run(command);
 });
-terminal.onBusyChange((busy) => {
+terminal.setBusyListener((busy) => {
   presets.setDisabled(busy);
 });

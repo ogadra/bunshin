@@ -23,7 +23,7 @@ export interface TerminalElements {
 
 export interface TerminalController {
   run(command: string): void;
-  onBusyChange(listener: (busy: boolean) => void): void;
+  setBusyListener(listener: (busy: boolean) => void): void;
 }
 
 /**
@@ -213,7 +213,7 @@ export const initTerminal = (
     run(command: string): void {
       void run(command);
     },
-    onBusyChange(listener: (busy: boolean) => void): void {
+    setBusyListener(listener: (busy: boolean) => void): void {
       busyListener = listener;
       listener(busy);
     },

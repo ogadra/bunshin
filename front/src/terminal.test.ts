@@ -385,13 +385,13 @@ describe("initTerminal", () => {
     expect(cells[0].command).toBe("which pokemonsay");
   });
 
-  test("the busy listener follows the connection and the running command", async () => {
+  test("the busy listener starts busy and clears once the shell is up", async () => {
     const { els, transcript, onStack } = setup();
     mockFetch.mockResolvedValue(okShell);
 
     const terminal = initTerminal(transcript, els, "en", onStack);
     const states: boolean[] = [];
-    terminal.onBusyChange((busy) => {
+    terminal.setBusyListener((busy) => {
       states.push(busy);
     });
     expect(states).toEqual([true]);
