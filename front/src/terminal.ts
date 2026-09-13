@@ -96,6 +96,16 @@ export const initTerminal = (
     busyListener?.(next);
   };
 
+  // 接続先の表示が組み立てられなくても端末は使える。
+  // 接続の失敗として扱うとshellを作り直し続け、そのたびにrunnerを1台掴む。
+  const reportStack = (stackName: string): void => {
+    try {
+      onStack(stackName);
+    } catch (err: unknown) {
+      console.error("onStack", err);
+    }
+  };
+
   const focusCommand = (): void => {
     // 接続完了とコマンド完了は非同期に起きる。
     // 他要素へ移ったフォーカスは奪わない
@@ -107,13 +117,9 @@ export const initTerminal = (
   let execAbort: AbortController | null = null;
 
   const connect = async (delay: number): Promise<void> => {
+    let stackName: string;
     try {
-      const { stackName } = await createShell(connectAbort.signal);
-      if (connectAbort.signal.aborted) return;
-      onStack(stackName);
-      status.hidden = true;
-      setBusy(false);
-      focusCommand();
+      ({ stackName } = await createShell(connectAbort.signal));
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === "AbortError") return;
       if (connectAbort.signal.aborted) return;
@@ -121,7 +127,13 @@ export const initTerminal = (
       setTimeout(() => {
         if (!connectAbort.signal.aborted) void connect(Math.min(delay * 2, MAX_DELAY_MS));
       }, delay);
+      return;
     }
+    if (connectAbort.signal.aborted) return;
+    status.hidden = true;
+    setBusy(false);
+    focusCommand();
+    reportStack(stackName);
   };
 
   const beginReconnect = (): void => {
@@ -143,7 +155,7 @@ export const initTerminal = (
 
     try {
       const execution = await startExecute(command, controller.signal);
-      onStack(execution.stackName);
+      reportStack(execution.stackName);
       for await (const event of execution.events) {
         const text = formatEvent(event);
         if (text !== null) block.write(text);
@@ -151,10 +163,10 @@ export const initTerminal = (
     } catch (err: unknown) {
       if (controller.signal.aborted) return;
       if (err instanceof SessionReassignedError) {
-        // 別 runner に張り替わっており、そこには shell がないので作り直す
+        // 別runnerに張り替わっており、そこにはshellがないので作り直す
         try {
           const { stackName } = await createShell(controller.signal);
-          onStack(stackName);
+          reportStack(stackName);
           writeLine(block, `${YELLOW}${translate(lang, "termSessionRecreated")}${RESET}`);
         } catch (createErr: unknown) {
           if (controller.signal.aborted) return;
@@ -168,7 +180,7 @@ export const initTerminal = (
       if (execAbort === controller) execAbort = null;
       block.finish();
       if (shellLost) {
-        // shell がないまま入力を戻すと、打てるのに必ず失敗するコマンドを誘う
+        // shellがないまま入力を戻すと、打てるのに必ず失敗するコマンドを誘う
         beginReconnect();
       } else {
         setBusy(false);

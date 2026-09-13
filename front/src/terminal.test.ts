@@ -141,6 +141,26 @@ describe("initTerminal", () => {
     expect(cells).toEqual([]);
   });
 
+  test("a stack name the dialog rejects leaves the shell alone", async () => {
+    const { els, transcript } = setup();
+    let shellCalls = 0;
+    mockFetch.mockImplementation(() => {
+      shellCalls += 1;
+      return Promise.resolve(okShell);
+    });
+    const reject = (): never => {
+      throw new Error("unknown stack name: ap-northeast-9");
+    };
+
+    initTerminal(transcript, els, "en", reject);
+    await flush();
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(shellCalls).toBe(1);
+    expect(els.input.disabled).toBe(false);
+    expect(els.status.hidden).toBe(true);
+  });
+
   test("a failed shell creation keeps the status visible with the reason", async () => {
     const { els, transcript, onStack } = setup();
     mockFetch.mockResolvedValue({
