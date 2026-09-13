@@ -353,7 +353,7 @@ describe("initTerminal", () => {
     mockFetch.mockImplementation((url: string) => {
       if (url === "/api/shell") return Promise.resolve(okShell);
       return new Promise(() => {
-        // 実行中のまま止めて、2 本目が弾かれることを見る
+        // 実行中のまま止めて、2本目が弾かれることを見る
       });
     });
 

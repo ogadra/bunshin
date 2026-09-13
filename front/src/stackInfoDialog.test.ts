@@ -9,7 +9,7 @@ beforeEach(() => {
 const setup = (lang: "en" | "ja") => {
   const button = document.createElement("button");
   const dialog = document.createElement("dialog");
-  // happy-dom は showModal を持たない
+  // happy-domはshowModalを持たない
   const showModal = vi.fn();
   Object.assign(dialog, { showModal });
   document.body.append(button, dialog);

@@ -2,8 +2,8 @@ import { AppError } from "./errors/AppError";
 import { classifyResponse } from "./errors/classify";
 import { SessionReassignedError } from "./errors/SessionReassignedError";
 
-// STACK_NAMEはbroker単一ソースにするため、compose interpolationではなく
-// brokerからのレスポンスに載せたX-Stack-Nameで受け取る
+// compose interpolationでSTACK_NAMEを焼き込むと、
+// fallbackで別stackへ移ったセッションを追えない
 const stackNameHeader = "X-Stack-Name";
 
 const sessionReassignedHeader = "X-Session-Reassigned";
@@ -79,8 +79,7 @@ async function* readEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<Sse
   }
 }
 
-// stack名は本文のstreamより先に要る。
-// 接続先の表示を出力の読み終わりまで待たせない
+// bodyを読み切ってから返すと、接続先の表示がstreamの終わりまで出ない
 export const startExecute = async (command: string, signal?: AbortSignal): Promise<Execution> => {
   const res = await fetch("/api/execute", {
     method: "POST",

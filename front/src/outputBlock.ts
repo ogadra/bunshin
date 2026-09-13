@@ -34,15 +34,15 @@ export const requiredRows = (data: string, cols: number): number => {
 };
 
 export const createOutputBlock = (container: HTMLElement): OutputBlock => {
-  // runner の stdout は \n だけを返す。
-  // convertEol で行頭復帰込みに解釈させる
+  // runnerのstdoutは\nだけを返す。
+  // convertEolで行頭復帰込みに解釈させる
   const term = new Terminal({ convertEol: true, fontSize: FONT_SIZE, rows: 1 });
   const fit = new FitAddon();
   term.loadAddon(fit);
   term.open(container);
 
   // 末尾の改行をそのまま書くとカーソルが空行へ進む。
-  // その空行に合わせて rows を詰めると、xterm は先頭の行を scrollback へ捨てる
+  // その空行に合わせてrowsを詰めると、xtermは先頭の行をscrollbackへ捨てる
   let trailingNewlines = "";
   let content = "";
 
@@ -54,7 +54,7 @@ export const createOutputBlock = (container: HTMLElement): OutputBlock => {
     return proposed.cols;
   };
 
-  // 高さは FitAddon に決めさせない。
+  // 高さはFitAddonに決めさせない。
   // ブロックはページと一緒に縦へ伸び、内側にスクロールを持たない
   const fitToContent = (): void => {
     const buffer = term.buffer.active;
@@ -63,19 +63,19 @@ export const createOutputBlock = (container: HTMLElement): OutputBlock => {
 
   const push = (data: string): void => {
     const cols = columns();
-    // rows が足りないと xterm は溢れた行を scrollback へ送る。
-    // 送られた行は rows を戻しても表示に返らないので、書く前に確保する
+    // rowsが足りないとxtermは溢れた行をscrollbackへ送る。
+    // 送られた行はrowsを戻しても表示に返らないので、書く前に確保する
     term.resize(cols, term.rows + requiredRows(data, cols));
     term.write(data, fitToContent);
   };
 
   let width = container.clientWidth;
   const observer = new ResizeObserver(() => {
-    // 行数を変えると container の高さも動く。
+    // 行数を変えるとcontainerの高さも動く。
     // 幅が変わったときだけ折り返しを取り直す
     if (container.clientWidth === width) return;
     width = container.clientWidth;
-    // 折り返しが増えると xterm は溢れた行を scrollback へ送る。
+    // 折り返しが増えるとxtermは溢れた行をscrollbackへ送る。
     // 幅に合わせた行数を確保しなおすため、空の端末に書き直す
     term.reset();
     term.resize(columns(), 1);
