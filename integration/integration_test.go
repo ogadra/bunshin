@@ -550,6 +550,47 @@ func TestSecurityHeadersOnAPI(t *testing.T) {
 	assertSecurityHeaders(t, "POST /api/execute", resp)
 }
 
+// TestApiRejectsCrossSiteRequest は/api/*がSec-Fetch-Siteで送信元を絞ることを検証する。
+// cookieはSameSite=Noneで他サイトからも送られるため、nginxが手前で閉じる。
+func TestApiRejectsCrossSiteRequest(t *testing.T) {
+	cases := []struct {
+		site       string
+		wantStatus int
+	}{
+		{"cross-site", http.StatusForbidden},
+		// port-forwardサブドメインのユーザーappからapexを叩く経路。
+		{"same-site", http.StatusForbidden},
+		{"same-origin", http.StatusNoContent},
+		{"none", http.StatusNoContent},
+	}
+	for _, tc := range cases {
+		t.Run(tc.site, func(t *testing.T) {
+			resp := doRequestWithHeaders(
+				t,
+				http.MethodPost,
+				nginxBase+"/api/shell",
+				"",
+				"",
+				map[string]string{"Sec-Fetch-Site": tc.site},
+			)
+			defer resp.Body.Close()
+			if resp.StatusCode != tc.wantStatus {
+				t.Fatalf("POST /api/shell Sec-Fetch-Site=%s: want %d, got %d", tc.site, tc.wantStatus, resp.StatusCode)
+			}
+			if tc.wantStatus != http.StatusNoContent {
+				return
+			}
+			var sessionID string
+			for _, c := range resp.Cookies() {
+				if c.Name == "session_id" {
+					sessionID = c.Value
+				}
+			}
+			resetRunners(t, sessionID)
+		})
+	}
+}
+
 // TestSecurityHeadersAbsentOnPortForward はport-forward serverがsecurity headerを付けないことを検証する。
 // runner appのresponse headerはapp自身が持つ、という既存の判断を固定する。
 func TestSecurityHeadersAbsentOnPortForward(t *testing.T) {

@@ -1,6 +1,13 @@
 -- broker /resolve/session をサブリクエストで呼び、session_id cookie からセッションを解決する。
 -- brokerの実ステータスをそのままクライアントへ返す。
 local core = require("resolve_core")
+local csrf = require("csrf")
+
+if not csrf.is_allowed(ngx.var.http_sec_fetch_site) then
+    ngx.log(ngx.WARN, "csrf_blocked sec_fetch_site=", tostring(ngx.var.http_sec_fetch_site),
+        " uri=", tostring(ngx.var.request_uri))
+    return ngx.exit(ngx.HTTP_FORBIDDEN)
+end
 
 -- Hostが<stack>.<internal_domain>完全一致のときだけX-Fallback-* / X-Bunshin-Client-Address
 -- を信頼する。公開経路からregexにマッチするHostを作られても詐称できないよう完全一致で閉じる。
