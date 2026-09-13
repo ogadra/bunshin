@@ -59,7 +59,7 @@ var brokerBase string
 // forwardTargetBase は cross-region forward 先モックの制御 URL。TestMain で初期化される。
 var forwardTargetBase string
 
-// frameAncestors は nginx に渡した埋め込み許可 origin。TestMain で初期化される。
+// frameAncestorsはnginxに渡した埋め込み許可origin。TestMainで初期化される。
 var frameAncestors string
 
 // runnerHostnames は全 runner のホスト名。TestMain で初期化される。

@@ -95,7 +95,6 @@ func (h *Handler) GetResolveSession(c *gin.Context) {
 		return
 	}
 	if result.Created {
-		// frontはslideサイトのiframeから読み込まれる。
 		// Strictだとcross-siteのiframe内でcookieが送られない
 		c.SetSameSite(http.SameSiteNoneMode)
 		c.SetCookie(sessionIDCookie, result.SessionID, 0, "/", "", true, true)
