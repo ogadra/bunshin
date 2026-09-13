@@ -16,7 +16,7 @@ export interface OutputBlock {
  * lolcat colours a single character with a whole escape sequence, so the escapes are dropped
  * rather than counted.
  */
-const requiredRows = (data: string, cols: number): number => {
+export const requiredRows = (data: string, cols: number): number => {
   let visible = 0;
   let escaped = false;
   for (const char of data) {

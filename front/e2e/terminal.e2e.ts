@@ -203,6 +203,35 @@ test.describe("preset commands", () => {
     await expect(lastCell(page).locator("code")).toHaveText("which pokemonsay");
   });
 
+  test("the buttons go back to enabled once the command finishes", async ({ page }) => {
+    let finish = (): void => undefined;
+    const running = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    await page.route("**/api/shell", async (route) => {
+      await route.fulfill({ status: 204, headers: { "X-Stack-Name": STACK } });
+    });
+    await page.route("**/api/execute", async (route) => {
+      await running;
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        headers: { "X-Stack-Name": STACK },
+        body: sse([{ type: "complete", exitCode: 0 }]),
+      });
+    });
+    await page.goto("/");
+    const buttons = page.locator("#presets button");
+    await expect(buttons.first()).toBeEnabled();
+
+    await buttons.filter({ hasText: "which pokemonsay" }).click();
+    await expect(buttons.first()).toBeDisabled();
+
+    finish();
+
+    await expect(buttons.first()).toBeEnabled();
+  });
+
   test("every hands-on command has a button", async ({ page }) => {
     await stubRunner(page, []);
     await page.goto("/");
