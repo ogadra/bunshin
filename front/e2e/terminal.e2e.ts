@@ -118,6 +118,23 @@ test("an output block is as tall as the lines it holds", async ({ page }) => {
   await expectNoInnerScroll(lastCell(page).locator(".cell-output"));
 });
 
+test("a block written in one chunk keeps every line", async ({ page }) => {
+  const lines = Array.from({ length: 1500 }, (_, i) => `line ${String(i)}`).join("\n");
+  await stubRunner(page, [
+    { type: "stdout", data: `${lines}\n` },
+    { type: "complete", exitCode: 0 },
+  ]);
+  await page.goto("/");
+  await expect(command(page)).toBeEnabled();
+
+  await run(page, "seq");
+
+  const output = lastCell(page).locator(".cell-output");
+  await expect(output).toContainText("line 0");
+  await expect(output).toContainText("line 1499");
+  await expectNoInnerScroll(output);
+});
+
 test("a narrower window reflows a finished block without losing it", async ({ page }) => {
   const text = "0123456789".repeat(6);
   await stubRunner(page, [

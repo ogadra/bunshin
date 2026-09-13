@@ -15,9 +15,13 @@ export interface OutputBlock {
  * Upper bound on the rows the data needs, counting every visible character as full width.
  * lolcat colours a single character with a whole escape sequence, so the escapes are dropped
  * rather than counted.
+ *
+ * Each newline claims a row of its own. A run counted as one long line reserves far too
+ * little, and the lines beyond the scrollback limit leave the buffer for good.
  */
 export const requiredRows = (data: string, cols: number): number => {
-  let visible = 0;
+  let rows = 1;
+  let width = 0;
   let escaped = false;
   for (const char of data) {
     if (char === ESCAPE) {
@@ -28,9 +32,14 @@ export const requiredRows = (data: string, cols: number): number => {
       escaped = char < "@" || char > "~" || char === "[";
       continue;
     }
-    visible += 1;
+    if (char === "\n") {
+      rows += Math.max(Math.ceil((width * 2) / cols), 1);
+      width = 0;
+      continue;
+    }
+    width += 1;
   }
-  return Math.ceil((visible * 2) / cols) + 1;
+  return rows + Math.ceil((width * 2) / cols);
 };
 
 export const createOutputBlock = (container: HTMLElement): OutputBlock => {

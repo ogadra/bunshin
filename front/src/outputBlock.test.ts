@@ -18,6 +18,18 @@ describe("requiredRows", () => {
     expect(requiredRows("", 80)).toBe(1);
   });
 
+  test("claims a row for every line in the chunk", () => {
+    expect(requiredRows("a\nb\nc", 80)).toBe(4);
+  });
+
+  test("claims a row for a blank line", () => {
+    expect(requiredRows("a\n\nb", 80)).toBe(4);
+  });
+
+  test("adds the wrapping of each line on top of its own row", () => {
+    expect(requiredRows("0123456789\nok", 10)).toBe(4);
+  });
+
   test("drops the escapes lolcat wraps around each character", () => {
     expect(requiredRows(colour("0123456789"), 10)).toBe(requiredRows("0123456789", 10));
   });
