@@ -22,7 +22,10 @@ COPY nginx/nginx.conf /etc/nginx/nginx.conf.template
 ARG NGINX_RESOLVER=127.0.0.11
 ARG BROKER_HOST=broker
 ARG CLOUD
-RUN FRAME_ANCESTORS=https://config-test.invalid sh /usr/local/bin/render-conf.sh \
+RUN ! sh /usr/local/bin/render-conf.sh \
+    && ! FRAME_ANCESTORS='https://a" always; add_header X-Injected 1' sh /usr/local/bin/render-conf.sh \
+    && ! FRAME_ANCESTORS='*' sh /usr/local/bin/render-conf.sh \
+    && FRAME_ANCESTORS=https://config-test.invalid sh /usr/local/bin/render-conf.sh \
     && STACK_NAME=config-test INTERNAL_DOMAIN=config-test.invalid BUNSHIN_STACKS=config-test RUNNER_API_PORT=3000 RUNNER_APP_PORT=5000 CLOUD=$CLOUD openresty -t \
     && for t in /usr/local/openresty/nginx/lua/*_test.lua; do /usr/local/openresty/luajit/bin/luajit "$t" || exit 1; done \
     && rm -f /tmp/nginx.pid
