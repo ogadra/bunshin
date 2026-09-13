@@ -90,8 +90,15 @@ func TestDeleteShell(t *testing.T) {
 
 	expired := false
 	for _, c := range w.Result().Cookies() {
-		if c.Name == "shell_id" && c.MaxAge < 0 {
+		if c.Name != "shell_id" {
+			continue
+		}
+		if c.MaxAge < 0 {
 			expired = true
+		}
+		// ブラウザは属性が揃った時だけ既存のcookieを置き換える。
+		if c.SameSite != http.SameSiteNoneMode {
+			t.Errorf("cookie SameSite = %v, want %v", c.SameSite, http.SameSiteNoneMode)
 		}
 	}
 	if !expired {

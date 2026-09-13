@@ -53,7 +53,10 @@ local _, executed, vars = run({
 }, "POST", "/api/execute")
 check("fallback executes reassigned location", executed == "@forward_reassigned_fallback")
 check("fallback keeps reassigned signal", vars.session_reassigned == "true")
-check("fallback clears stale shell cookie", vars.resolve_expire_shell_cookie ~= nil)
+check(
+    "fallback expires the stale shell cookie with the attributes it was set with",
+    vars.resolve_expire_shell_cookie == "shell_id=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=None"
+)
 check("fallback forwards stack", vars.forward_host == "ap-northeast-3.example.com")
 check("fallback forwards fallback stack", vars.fwd_fallback_stack == "ap-northeast-3")
 
