@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const STACK = "ap-northeast-1";
 
@@ -6,6 +6,16 @@ const command = (page: Page) => page.locator("#command");
 const status = (page: Page) => page.locator("#status");
 const cells = (page: Page) => page.locator(".cell");
 const lastCell = (page: Page) => cells(page).last();
+
+/**
+ * The block grows with the page instead of scrolling inside itself.
+ * The height follows the write callback, so the measurement is retried.
+ */
+const expectNoInnerScroll = async (output: Locator): Promise<void> => {
+  await expect
+    .poll(() => output.evaluate((el) => el.scrollHeight - el.clientHeight))
+    .toBeLessThanOrEqual(1);
+};
 
 const sse = (events: unknown[]): string =>
   events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("");
@@ -105,11 +115,7 @@ test("an output block is as tall as the lines it holds", async ({ page }) => {
   const rows = lastCell(page).locator(".xterm-rows > div");
   await expect(rows).toHaveCount(12);
   await expect(lastCell(page).locator(".cell-output")).toContainText("line 11");
-  // ブロックは内側にスクロールを持たず、ページと一緒に縦へ伸びる
-  const overflow = await lastCell(page)
-    .locator(".cell-output")
-    .evaluate((el) => el.scrollHeight - el.clientHeight);
-  expect(overflow).toBeLessThanOrEqual(1);
+  await expectNoInnerScroll(lastCell(page).locator(".cell-output"));
 });
 
 test("a narrower window reflows a finished block without losing it", async ({ page }) => {
@@ -129,8 +135,7 @@ test("a narrower window reflows a finished block without losing it", async ({ pa
   await page.setViewportSize({ width: 400, height: 800 });
 
   await expect(output).toContainText(text);
-  const overflow = await output.evaluate((el) => el.scrollHeight - el.clientHeight);
-  expect(overflow).toBeLessThanOrEqual(1);
+  await expectNoInnerScroll(output);
 });
 
 test("a command with no output leaves no empty block", async ({ page }) => {
