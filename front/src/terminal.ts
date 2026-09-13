@@ -1,27 +1,29 @@
-import { createShell, deleteShell, execute, SseEventType, type SseEvent } from "./client";
+import { createShell, deleteShell, startExecute, SseEventType, type SseEvent } from "./client";
 import { AppError } from "./errors/AppError";
 import { classifyThrown } from "./errors/classify";
 import { SessionReassignedError } from "./errors/SessionReassignedError";
 import { translate, type Lang } from "./i18n";
+import type { OutputBlock } from "./outputBlock";
+import type { Transcript } from "./transcript";
 
 const GRAY = "\x1b[38;5;252m";
 const RED = "\x1b[31m";
 const YELLOW = "\x1b[33m";
 const RESET = "\x1b[0m";
-const PROMPT = "$ ";
 
 const MAX_DELAY_MS = 8000;
 const INITIAL_DELAY_MS = 1000;
-
-export interface TerminalView {
-  write(data: string): void;
-}
 
 export interface TerminalElements {
   form: HTMLFormElement;
   input: HTMLInputElement;
   button: HTMLButtonElement;
   status: HTMLElement;
+}
+
+export interface TerminalController {
+  run(command: string): void;
+  setBusyListener(listener: (busy: boolean) => void): void;
 }
 
 /**
@@ -72,18 +74,36 @@ const messageOf = (lang: Lang, err: unknown): string => {
   return translate(lang, classified.key);
 };
 
-export const initTerminal = (view: TerminalView, els: TerminalElements, lang: Lang): void => {
+export const initTerminal = (
+  transcript: Transcript,
+  els: TerminalElements,
+  lang: Lang,
+  onStack: (stackName: string) => void,
+): TerminalController => {
   const { form, input, button, status } = els;
   const history = createHistory();
-  let running = false;
+  let busy = true;
+  let busyListener: ((busy: boolean) => void) | null = null;
 
-  const writeLine = (text: string): void => {
-    view.write(`${text}\n`);
+  const writeLine = (block: OutputBlock, text: string): void => {
+    block.write(`${text}\n`);
   };
 
-  const setDisabled = (disabled: boolean): void => {
-    input.disabled = disabled;
-    button.disabled = disabled;
+  const setBusy = (next: boolean): void => {
+    busy = next;
+    input.disabled = next;
+    button.disabled = next;
+    busyListener?.(next);
+  };
+
+  // 接続先の表示が組み立てられなくても端末は使える。
+  // 接続の失敗として扱うとshellを作り直し続け、そのたびにrunnerを1台掴む。
+  const reportStack = (stackName: string): void => {
+    try {
+      onStack(stackName);
+    } catch (err: unknown) {
+      console.error("onStack", err);
+    }
   };
 
   const focusCommand = (): void => {
@@ -97,13 +117,9 @@ export const initTerminal = (view: TerminalView, els: TerminalElements, lang: La
   let execAbort: AbortController | null = null;
 
   const connect = async (delay: number): Promise<void> => {
+    let stackName: string;
     try {
-      await createShell(connectAbort.signal);
-      if (connectAbort.signal.aborted) return;
-      status.hidden = true;
-      setDisabled(false);
-      view.write(PROMPT);
-      focusCommand();
+      ({ stackName } = await createShell(connectAbort.signal));
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === "AbortError") return;
       if (connectAbort.signal.aborted) return;
@@ -111,7 +127,13 @@ export const initTerminal = (view: TerminalView, els: TerminalElements, lang: La
       setTimeout(() => {
         if (!connectAbort.signal.aborted) void connect(Math.min(delay * 2, MAX_DELAY_MS));
       }, delay);
+      return;
     }
+    if (connectAbort.signal.aborted) return;
+    status.hidden = true;
+    setBusy(false);
+    focusCommand();
+    reportStack(stackName);
   };
 
   const beginReconnect = (): void => {
@@ -120,48 +142,48 @@ export const initTerminal = (view: TerminalView, els: TerminalElements, lang: La
     void connect(INITIAL_DELAY_MS);
   };
 
-  const run = async (): Promise<void> => {
-    const command = input.value.trim();
-    if (command === "" || running) return;
+  const run = async (command: string): Promise<void> => {
+    if (command === "" || busy) return;
     input.value = "";
     history.push(command);
-    running = true;
-    setDisabled(true);
-    writeLine(command);
+    setBusy(true);
+    const block = transcript.begin(command);
 
     const controller = new AbortController();
     execAbort = controller;
     let shellLost = false;
 
     try {
-      for await (const event of execute(command, controller.signal)) {
+      const execution = await startExecute(command, controller.signal);
+      reportStack(execution.stackName);
+      for await (const event of execution.events) {
         const text = formatEvent(event);
-        if (text !== null) view.write(text);
+        if (text !== null) block.write(text);
       }
     } catch (err: unknown) {
       if (controller.signal.aborted) return;
       if (err instanceof SessionReassignedError) {
-        // 別 runner に張り替わっており、そこには shell がないので作り直す
+        // 別runnerに張り替わっており、そこにはshellがないので作り直す
         try {
-          await createShell(controller.signal);
-          writeLine(`${YELLOW}${translate(lang, "termSessionRecreated")}${RESET}`);
+          const { stackName } = await createShell(controller.signal);
+          reportStack(stackName);
+          writeLine(block, `${YELLOW}${translate(lang, "termSessionRecreated")}${RESET}`);
         } catch (createErr: unknown) {
           if (controller.signal.aborted) return;
-          writeLine(`${RED}${messageOf(lang, createErr)}${RESET}`);
+          writeLine(block, `${RED}${messageOf(lang, createErr)}${RESET}`);
           shellLost = true;
         }
       } else {
-        writeLine(`${RED}${messageOf(lang, err)}${RESET}`);
+        writeLine(block, `${RED}${messageOf(lang, err)}${RESET}`);
       }
     } finally {
       if (execAbort === controller) execAbort = null;
-      running = false;
+      block.finish();
       if (shellLost) {
-        // shell がないままプロンプトを出すと、打てるのに必ず失敗するコマンドを誘う
+        // shellがないまま入力を戻すと、打てるのに必ず失敗するコマンドを誘う
         beginReconnect();
       } else {
-        view.write(PROMPT);
-        setDisabled(false);
+        setBusy(false);
         focusCommand();
       }
     }
@@ -176,7 +198,7 @@ export const initTerminal = (view: TerminalView, els: TerminalElements, lang: La
 
   form.addEventListener("submit", (e) => {
     e.preventDefault();
-    void run();
+    void run(input.value.trim());
   });
 
   window.addEventListener("beforeunload", () => {
@@ -186,4 +208,14 @@ export const initTerminal = (view: TerminalView, els: TerminalElements, lang: La
   });
 
   beginReconnect();
+
+  return {
+    run(command: string): void {
+      void run(command);
+    },
+    setBusyListener(listener: (busy: boolean) => void): void {
+      busyListener = listener;
+      listener(busy);
+    },
+  };
 };

@@ -1,5 +1,12 @@
+import { AppError } from "./errors/AppError";
 import { classifyResponse } from "./errors/classify";
 import { SessionReassignedError } from "./errors/SessionReassignedError";
+
+// compose interpolationでSTACK_NAMEを焼き込むと、
+// fallbackで別stackへ移ったセッションを追えない
+const stackNameHeader = "X-Stack-Name";
+
+const sessionReassignedHeader = "X-Session-Reassigned";
 
 export const SseEventType = {
   STDOUT: "stdout",
@@ -12,9 +19,24 @@ export type SseEvent =
   | { type: typeof SseEventType.STDERR; data: string }
   | { type: typeof SseEventType.COMPLETE; exitCode: number };
 
-export const createShell = async (signal?: AbortSignal): Promise<void> => {
+export interface Execution {
+  stackName: string;
+  events: AsyncGenerator<SseEvent>;
+}
+
+const requireHeader = (res: Response, name: string): string => {
+  const value = res.headers.get(name);
+  if (value === null) {
+    console.error(`missing required header: ${name}`);
+    throw new AppError("errorInternal");
+  }
+  return value;
+};
+
+export const createShell = async (signal?: AbortSignal): Promise<{ stackName: string }> => {
   const res = await fetch("/api/shell", { method: "POST", signal });
   if (!res.ok) throw await classifyResponse(res);
+  return { stackName: requireHeader(res, stackNameHeader) };
 };
 
 export const deleteShell = (): void => {
@@ -23,20 +45,8 @@ export const deleteShell = (): void => {
   });
 };
 
-export async function* execute(command: string, signal?: AbortSignal): AsyncGenerator<SseEvent> {
-  const res = await fetch("/api/execute", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ command }),
-    signal,
-  });
-  if (res.headers.get("X-Session-Reassigned") === "true") {
-    throw new SessionReassignedError();
-  }
-  if (!res.ok) throw await classifyResponse(res);
-  if (!res.body) throw new Error("No response body");
-
-  const reader = res.body.getReader();
+async function* readEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<SseEvent> {
+  const reader = body.getReader();
   const decoder = new TextDecoder();
   const chunks: string[] = [];
   let completed = false;
@@ -68,3 +78,20 @@ export async function* execute(command: string, signal?: AbortSignal): AsyncGene
     }
   }
 }
+
+// bodyを読み切ってから返すと、接続先の表示がstreamの終わりまで出ない
+export const startExecute = async (command: string, signal?: AbortSignal): Promise<Execution> => {
+  const res = await fetch("/api/execute", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ command }),
+    signal,
+  });
+  if (res.headers.get(sessionReassignedHeader) === "true") {
+    throw new SessionReassignedError();
+  }
+  if (!res.ok) throw await classifyResponse(res);
+  if (!res.body) throw new Error("No response body");
+
+  return { stackName: requireHeader(res, stackNameHeader), events: readEvents(res.body) };
+};
