@@ -200,7 +200,7 @@ describe("initTerminal", () => {
   });
 
   test("a command opens a cell that is closed once the run ends", async () => {
-    const { els, transcript, cells, onStack } = setup();
+    const { els, transcript, cells, stacks, onStack } = setup();
     mockFetch.mockImplementation((url: string) => {
       if (url === "/api/shell") return Promise.resolve(okShell);
       return Promise.resolve({
@@ -225,6 +225,38 @@ describe("initTerminal", () => {
     expect(cells[0].command).toBe("date");
     expect(cells[0].finished).toBe(true);
     expect(els.input.value).toBe("");
+    // 接続時とexecuteの応答でそれぞれ1回ずつ報告される。
+    expect(stacks).toEqual([STACK, STACK]);
+  });
+
+  test("a recreated shell reports the stack the session moved to", async () => {
+    const { els, transcript, cells, stacks, onStack } = setup();
+    const moved = "asia-northeast2";
+    let shellCalls = 0;
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/shell") {
+        shellCalls += 1;
+        if (shellCalls === 1) return Promise.resolve(okShell);
+        return Promise.resolve({ ok: true, headers: { get: () => moved } });
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 400,
+        headers: { get: (name: string) => (name === "X-Session-Reassigned" ? "true" : null) },
+      });
+    });
+
+    initTerminal(transcript, els, "en", onStack);
+    await flush();
+    els.input.value = "date";
+    els.form.dispatchEvent(new Event("submit"));
+    await flush();
+
+    expect(stacks).toEqual([STACK, moved]);
+    expect(cells[0].written).toEqual([
+      "\x1b[33mSession recreated. Run the command again.\x1b[0m\n",
+    ]);
+    expect(els.input.disabled).toBe(false);
   });
 
   test("a failed shell recreation keeps the input disabled and falls back to reconnecting", async () => {

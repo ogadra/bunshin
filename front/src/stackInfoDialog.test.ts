@@ -9,11 +9,18 @@ beforeEach(() => {
 const setup = (lang: "en" | "ja") => {
   const button = document.createElement("button");
   const dialog = document.createElement("dialog");
-  // happy-domはshowModalを持たない
+  // happy-domはshowModalもcloseも持たない
   const showModal = vi.fn();
-  Object.assign(dialog, { showModal });
+  const close = vi.fn();
+  Object.assign(dialog, { showModal, close });
   document.body.append(button, dialog);
-  return { button, dialog, showModal, controller: createStackInfoDialog(button, dialog, lang) };
+  return {
+    button,
+    dialog,
+    showModal,
+    close,
+    controller: createStackInfoDialog(button, dialog, lang),
+  };
 };
 
 const valueOf = (dialog: HTMLDialogElement, role: string): string | null =>
@@ -47,6 +54,22 @@ describe("createStackInfoDialog", () => {
 
     expect(valueOf(dialog, "region-value")).toBe("Osaka");
     expect(valueOf(dialog, "cloud-value")).toBe("Google Cloud");
+  });
+
+  test("a click on the backdrop closes the dialog", () => {
+    const { dialog, close } = setup("en");
+
+    dialog.click();
+
+    expect(close).toHaveBeenCalled();
+  });
+
+  test("a click inside the dialog leaves it open", () => {
+    const { dialog, close } = setup("en");
+
+    dialog.querySelector("dl")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(close).not.toHaveBeenCalled();
   });
 
   test("an unknown stack name is rejected", () => {
