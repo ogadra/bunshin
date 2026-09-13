@@ -3,7 +3,7 @@ local core = require("resolve_core")
 local function mark_reassigned()
     ngx.var.session_reassigned = "true"
     if ngx.req.get_method() ~= "POST" or ngx.var.uri ~= "/api/shell" then
-        ngx.var.resolve_expire_shell_cookie = "shell_id=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Strict"
+        ngx.var.resolve_expire_shell_cookie = "shell_id=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=None"
     end
 end
 

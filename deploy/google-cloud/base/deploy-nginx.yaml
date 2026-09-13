@@ -80,6 +80,8 @@ spec:
               value: ${NGINX_RESOLVER}
             - name: BROKER_HOST
               value: broker.bunshin.svc.cluster.local
+            - name: FRAME_ANCESTORS
+              value: ${FRAME_ANCESTORS}
           resources:
             requests:
               cpu: 250m

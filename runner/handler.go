@@ -163,7 +163,8 @@ func handleCreateShell(sm *ShellManager) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, errorResponse{Error: err.Error()})
 			return
 		}
-		c.SetSameSite(http.SameSiteStrictMode)
+		// Strictだとcross-siteのiframe内でcookieが送られない
+		c.SetSameSite(http.SameSiteNoneMode)
 		c.SetCookie(shellIDCookie, id, 0, "/", "", true, true)
 		c.Status(http.StatusNoContent)
 	}
@@ -186,7 +187,7 @@ func handleDeleteShell(sm *ShellManager) gin.HandlerFunc {
 			}
 			return
 		}
-		c.SetSameSite(http.SameSiteStrictMode)
+		c.SetSameSite(http.SameSiteNoneMode)
 		c.SetCookie(shellIDCookie, "", -1, "/", "", true, true)
 		c.Status(http.StatusNoContent)
 	}
