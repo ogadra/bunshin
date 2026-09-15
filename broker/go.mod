@@ -4,7 +4,7 @@ go 1.26.1
 
 require (
 	cloud.google.com/go/firestore v1.25.0
-	github.com/aws/aws-sdk-go-v2 v1.46.0
+	github.com/aws/aws-sdk-go-v2 v1.47.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.38
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.3
 	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.21.3
