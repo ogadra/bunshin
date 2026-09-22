@@ -140,7 +140,7 @@ RUN unset NIX_PATH && HM_OUT="$(nix-build '<home-manager>' -A home-manager --no-
 # Not `-d`: it drops the home-manager generations that `--rollback` needs.
 
 # production image
-FROM --platform=linux/amd64 alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+FROM --platform=linux/amd64 alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 
 ENV PATH="/usr/local/bin:/root/.nix-profile/bin:/nix/var/nix/profiles/default/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin" \
     USER="root" \
