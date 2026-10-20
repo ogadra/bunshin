@@ -26,7 +26,7 @@ RUN CGO_ENABLED=1 go test -race -v -count=1 ./...
 FROM build AS binary
 RUN CGO_ENABLED=0 go build -o /server .
 
-FROM --platform=linux/amd64 nixos/nix:2.35.2@sha256:7a007c766426c1877758ddc5cb87a965ac131fc78c582ce0083d922d51ae945c AS nix-runtime
+FROM --platform=linux/amd64 nixos/nix:2.35.3@sha256:ff480dbb23511aa1c10710aa068ceea5b93fed9bfce5f5379f3a6b07282cbc7b AS nix-runtime
 
 ENV PATH="/usr/local/bin:${PATH}"
 
