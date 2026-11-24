@@ -1,5 +1,5 @@
 # checkov:skip=CKV_DOCKER_2:health check is managed by compose/orchestrator
-FROM golang:1.27.1-alpine@sha256:cf6fca6641884b8433441b2b0652976f975e1d0fdd26d177eaaf8596087f3125 AS build
+FROM golang:1.27.4-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS build
 WORKDIR /app
 COPY broker/go.mod broker/go.sum ./
 RUN go mod download
@@ -27,7 +27,7 @@ RUN apk add --no-cache gcc musl-dev \
 
 # binary build
 # not FROM build: that stage runs on the target platform, which puts the compiler under QEMU
-FROM --platform=$BUILDPLATFORM golang:1.27.1-alpine@sha256:cf6fca6641884b8433441b2b0652976f975e1d0fdd26d177eaaf8596087f3125 AS binary
+FROM --platform=$BUILDPLATFORM golang:1.27.4-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS binary
 WORKDIR /app
 COPY broker/go.mod broker/go.sum ./
 RUN go mod download
